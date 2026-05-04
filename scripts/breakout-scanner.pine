@@ -1,0 +1,130 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0
+// © breakout-scanner
+//@version=5
+indicator("Breakout Scanner - Early or Confirmed", overlay=true, max_labels_count=500, max_boxes_count=500)
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+// Structure & Trend
+grp_structure = "Structure & Trend"
+len_fast_ma = input.int(20, "Fast MA Length", group=grp_structure, minval=1)
+len_slow_ma = input.int(50, "Slow MA Length", group=grp_structure, minval=1)
+len_trend_ma = input.int(200, "Trend MA Length", group=grp_structure, minval=1)
+ma_type = input.string("EMA", "MA Type", options=["EMA", "SMA"], group=grp_structure)
+
+// Breakout
+grp_breakout = "Breakout"
+signal_mode = input.string("Early (on touch)", "Signal Mode", options=["Early (on touch)", "Confirmed (on close)"], group=grp_breakout, tooltip="Early: fires when price breaks resistance (high > resistance) - less lag, more false breakouts. Confirmed: waits for bar close - fewer false signals, more lag.")
+len_breakout = input.int(20, "Breakout Lookback (bars)", group=grp_breakout, minval=5)
+min_structure_bars = input.int(5, "Min Bars in Structure", group=grp_breakout, minval=3, tooltip="Minimum consolidation bars before breakout")
+volume_mult = input.float(1.2, "Volume Multiplier (vs avg)", group=grp_breakout, minval=1.0, step=0.1, tooltip="Breakout candle volume must be X times average")
+volume_required_early = input.bool(false, "Require Volume (Early Mode)", group=grp_breakout, tooltip="Early mode: bar may still be forming. Disable to get signals without volume confirmation.")
+
+// Display
+grp_display = "Display"
+show_ma = input.bool(true, "Show Moving Averages", group=grp_display)
+show_structure = input.bool(true, "Show Structure Levels", group=grp_display)
+show_signals = input.bool(true, "Show Breakout Signals", group=grp_display)
+show_info_table = input.bool(true, "Show Info Table", group=grp_display)
+
+// ============================================================================
+// CALCULATIONS
+// ============================================================================
+
+// Moving Averages
+fast_ma = ma_type == "EMA" ? ta.ema(close, len_fast_ma) : ta.sma(close, len_fast_ma)
+slow_ma = ma_type == "EMA" ? ta.ema(close, len_slow_ma) : ta.sma(close, len_slow_ma)
+trend_ma = ma_type == "EMA" ? ta.ema(close, len_trend_ma) : ta.sma(close, len_trend_ma)
+
+// Breakout levels (Donchian-style)
+resistance = ta.highest(high, len_breakout)[1]
+support = ta.lowest(low, len_breakout)[1]
+
+// Volume
+avg_volume = ta.sma(volume, 20)
+volume_ok = volume >= avg_volume * volume_mult
+
+// Good structure: price above MAs, uptrend intact
+above_fast = close > fast_ma
+above_slow = close > slow_ma
+above_trend = close > trend_ma
+ma_bullish_stack = fast_ma > slow_ma and slow_ma > trend_ma
+
+atr_val = ta.atr(14)
+
+// Breakout detection
+breakout_up_early = high > resistance and close[1] <= resistance[1]   // Fires when price touches/breaks resistance (leading)
+breakout_up_confirmed = close > resistance and close[1] <= resistance[1]  // Fires on bar close (lagging)
+breakout_up = signal_mode == "Early (on touch)" ? breakout_up_early : breakout_up_confirmed
+breakout_candle_bullish = close > open
+
+// Volume: relax for early mode (bar may still be forming)
+volume_ok_early = not volume_required_early or volume >= avg_volume * volume_mult
+volume_ok_final = signal_mode == "Early (on touch)" ? volume_ok_early : volume_ok
+
+// Full signal: good structure + breakout + volume
+good_structure = above_fast and above_slow and above_trend and ma_bullish_stack
+breakout_signal = breakout_up and breakout_candle_bullish and volume_ok_final and good_structure
+
+// Consolidation: count consecutive bars price stayed in range before breakout
+var int bars_in_range = 0
+if high <= resistance and low >= support
+    bars_in_range += 1
+else
+    bars_in_range := 0
+
+// On breakout bar, use previous bar's count (how long we were in range before breaking)
+consolidation_ok = breakout_up ? bars_in_range[1] >= min_structure_bars : true
+final_signal = breakout_signal and consolidation_ok
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// SCREENER: Output 1 = breakout, 0 = no breakout. Filter on "Breakout Signal" == 1
+plot(final_signal ? 1 : 0, "Breakout Signal", display=display.none)
+plot(good_structure ? 1 : 0, "Good Structure", display=display.none)
+
+// Moving Averages
+plot(show_ma ? fast_ma : na, "Fast MA", color=color.new(color.blue, 0), linewidth=2)
+plot(show_ma ? slow_ma : na, "Slow MA", color=color.new(color.orange, 0), linewidth=2)
+plot(show_ma ? trend_ma : na, "Trend MA", color=color.new(color.purple, 0), linewidth=2)
+
+plot(show_structure ? resistance : na, "Resistance", color=color.new(color.red, 50), linewidth=1)
+plot(show_structure ? support : na, "Support", color=color.new(color.green, 50), linewidth=1)
+
+// Breakout signal
+plotshape(show_signals and final_signal, "Breakout", shape.triangleup, location.belowbar, color.new(color.green, 0), size=size.normal)
+plotshape(show_signals and breakout_up and not final_signal, "Weak Breakout", shape.circle, location.belowbar, color.new(color.yellow, 0), size=size.small)
+
+// Background tint when structure is good (optional)
+bgcolor(good_structure ? color.new(color.green, 95) : na)
+
+// ============================================================================
+// INFO TABLE (for scanner use)
+// ============================================================================
+
+var table info_table = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast and show_info_table
+    table.cell(info_table, 0, 0, "Mode", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 0, signal_mode == "Early (on touch)" ? "Early" : "Confirmed", text_color=color.aqua, text_size=size.small)
+    table.cell(info_table, 0, 1, "Structure", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 1, good_structure ? "✓ Good" : "✗ Weak", text_color=good_structure ? color.green : color.red, text_size=size.small)
+    table.cell(info_table, 0, 2, "Volume", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 2, volume_ok_final ? "✓ OK" : "✗ Below", text_color=volume_ok_final ? color.green : color.gray, text_size=size.small)
+    table.cell(info_table, 0, 3, "At Resistance", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 3, math.abs(close - resistance) / atr_val < 0.5 ? "Yes" : "No", text_color=color.yellow, text_size=size.small)
+    table.cell(info_table, 0, 4, "Bars in Range", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 4, str.tostring(bars_in_range), text_color=color.white, text_size=size.small)
+    table.cell(info_table, 0, 5, "Signal", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 5, final_signal ? "BREAKOUT" : (breakout_up ? "Weak" : "-"), text_color=final_signal ? color.lime : color.gray, text_size=size.small)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+alertcondition(final_signal, "Breakout", "Breakout: Good structure + volume confirmation")
+alertcondition(breakout_up, "Breakout (any)", "Price broke above resistance")

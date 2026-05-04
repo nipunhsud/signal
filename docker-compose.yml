@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: signal-forge-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-nipunsud}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: signal_forge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nipunsud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dashboard server
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+      target: dashboard
+    container_name: signal-forge-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: node server.js
+
+  # Breakout Agent - Tier 1
+  agent-tier-1:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+    env_file: .env.tiers/.env.tier-1
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm start
+    restart: on-failure
+
+  # Breakout Agent - Tier 2
+  agent-tier-2:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+    env_file: .env.tiers/.env.tier-2
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm start
+    restart: on-failure
+
+  # Breakout Agent - Tier 3
+  agent-tier-3:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+    env_file: .env.tiers/.env.tier-3
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm start
+    restart: on-failure
+
+  # Breakout Agent - Tier 4
+  agent-tier-4:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+    env_file: .env.tiers/.env.tier-4
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm start
+    restart: on-failure
+
+  # Breakout Agent - Tier 5
+  agent-tier-5:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+    env_file: .env.tiers/.env.tier-5
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm start
+    restart: on-failure
+
+volumes:
+  postgres_data:
+    driver: local
+

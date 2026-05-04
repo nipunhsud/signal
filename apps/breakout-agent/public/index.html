@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal Forge - Breakout Signals Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="bg-gray-900 text-white">
+  <div id="app"></div>
+  <div id="drawer"></div>
+
+  <script>
+    class Dashboard {
+      constructor() {
+        this.signals = [];
+        this.shortlist = [];
+        this.loading = true;
+        this.scanning = false;
+        this.filtering = '';
+        this.minConfidence = 65;
+        this.sortBy = 'confidence';
+        this.sortDirection = 'desc';
+        this.selectedAsset = null;
+        this.currentAssetIndex = 0;
+        this._chartToken = 0;
+        this.init();
+      }
+
+      async init() {
+        this.fetchSignals();
+        this.fetchShortlist();
+        setInterval(() => this.fetchSignals(), 5000);
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+          const filtered = this.getFilteredSignals();
+          if (!filtered.length) return;
+
+          if (e.code === 'Space') {
+            e.preventDefault();
+            this.currentAssetIndex = (this.currentAssetIndex + 1) % filtered.length;
+            this.openDrawer(filtered[this.currentAssetIndex]);
+          } else if (e.code === 'ArrowLeft') {
+            this.currentAssetIndex = (this.currentAssetIndex - 1 + filtered.length) % filtered.length;
+            this.openDrawer(filtered[this.currentAssetIndex]);
+          } else if (e.code === 'ArrowRight') {
+            this.currentAssetIndex = (this.currentAssetIndex + 1) % filtered.length;
+            this.openDrawer(filtered[this.currentAssetIndex]);
+          } else if (e.code === 'Escape') {
+            this.closeDrawer();
+          }
+        });
+
+        this.render();
+      }
+
+      async fetchSignals() {
+        try {
+          const res = await fetch('/api/signals');
+          const data = await res.json();
+
+          if (data.highConfidence && data.mediumConfidence) {
+            this.signals = [...data.highConfidence, ...data.mediumConfidence];
+          } else {
+            this.signals = Array.isArray(data) ? data : [];
+          }
+
+          this.loading = false;
+          this.render();
+        } catch (error) {
+          console.error('Failed to fetch signals:', error);
+        }
+      }
+
+      async fetchShortlist() {
+        try {
+          const res = await fetch('/api/shortlist');
+          this.shortlist = await res.json();
+          this.render();
+        } catch (error) {
+          console.error('Failed to fetch shortlist:', error);
+        }
+      }
+
+      async toggleShortlist(asset, e) {
+        e.stopPropagation();
+        const isInList = this.shortlist.some(item => item.asset === asset);
+        try {
+          if (isInList) {
+            await fetch(`/api/shortlist/${encodeURIComponent(asset)}`, { method: 'DELETE' });
+          } else {
+            await fetch('/api/shortlist', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ asset }),
+            });
+          }
+          await this.fetchShortlist();
+        } catch (error) {
+          console.error('Failed to update shortlist:', error);
+        }
+      }
+
+      openDrawer(signal) {
+        this.selectedAsset = signal;
+        this.renderDrawer();
+      }
+
+      closeDrawer() {
+        this.selectedAsset = null;
+        this.renderDrawer();
+      }
+
+      renderDrawer() {
+        const drawer = document.getElementById('drawer');
+        if (!this.selectedAsset) {
+          drawer.innerHTML = '';
+          return;
+        }
+
+        const signal = this.selectedAsset;
+        const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
+
+        const filtered = this.getFilteredSignals();
+        const currentIndex = filtered.findIndex(s => s.asset === signal.asset);
+        const assetPosition = currentIndex >= 0 ? `${currentIndex + 1}/${filtered.length}` : '';
+
+        const assetEscaped = signal.asset.replace(/'/g, "\\'");
+        drawer.innerHTML = `
+          <div class="fixed inset-0 z-40 bg-black/50 transition-opacity" onclick="dashboard.closeDrawer();"></div>
+          <div class="fixed right-0 top-0 h-screen w-96 bg-gray-800 shadow-lg transform transition-transform z-50 overflow-y-auto">
+            <div class="sticky top-0 bg-gray-700 p-6 border-b border-gray-600">
+              <div class="flex justify-between items-center mb-2">
+                <h2 class="text-2xl font-bold">${signal.asset}</h2>
+                <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
+              </div>
+              <div class="text-xs text-gray-400 flex justify-between">
+                <span>${assetPosition}</span>
+                <span class="text-right">SPACE: next | ← →: nav | ESC: close</span>
+              </div>
+            </div>
+
+            <div class="p-6 space-y-6">
+              <!-- Chart -->
+              <div id="chart-container" style="height:240px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
+
+              <!-- Quick Stats -->
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-gray-400">Confidence</span>
+                  <div class="bg-green-600 px-3 py-1 rounded font-bold">${signal.confidence}%</div>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-gray-400">Signal Type</span>
+                  <span class="text-lg">${signal.signalType === 'green' ? '🟢 Green' : signal.signalType === 'orange' ? '🟠 Orange' : '🟡 Yellow'}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Alert Status</span>
+                  <span>${signal.shouldAlert ? '⚠️ Active' : '✓ Tracked'}</span>
+                </div>
+              </div>
+
+              <!-- Price Levels -->
+              <div class="border-t border-gray-600 pt-4 space-y-3">
+                <h3 class="font-semibold text-gray-300">Price Levels</h3>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Current</span>
+                  <span class="font-mono">$${signal.currentPrice.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Resistance</span>
+                  <span class="font-mono text-red-400">$${signal.resistance.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Support</span>
+                  <span class="font-mono text-green-400">$${signal.support.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <!-- Agent Decision -->
+              <div class="border-t border-gray-600 pt-4">
+                <h3 class="font-semibold text-gray-300 mb-2">Agent Analysis</h3>
+                <div class="bg-gray-700 p-3 rounded text-sm text-gray-300 whitespace-pre-wrap break-words">
+                  ${signal.agentDecision || 'No analysis available'}
+                </div>
+              </div>
+
+              <!-- Shortlist -->
+              <div class="border-t border-gray-600 pt-4">
+                <button
+                  onclick="dashboard.toggleShortlist('${assetEscaped}', event);"
+                  class="w-full px-4 py-2 rounded-lg font-semibold transition ${
+                    inShortlist
+                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                  }"
+                >
+                  ${inShortlist ? '⭐ Remove from Shortlist' : '☆ Add to Shortlist'}
+                </button>
+              </div>
+
+              <!-- Timestamp -->
+              <div class="border-t border-gray-600 pt-4 text-xs text-gray-500">
+                <p>Updated: ${new Date(signal.createdAt).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const chartToken = ++this._chartToken;
+        fetch('/api/candles/' + encodeURIComponent(signal.asset))
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          })
+          .then(bars => {
+            if (chartToken !== this._chartToken) return; // drawer navigated away
+            if (!bars || !bars.length) {
+              const el = document.getElementById('chart-container');
+              if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400">No price data available</div>';
+              return;
+            }
+            const el = document.getElementById('chart-container');
+            if (!el) return;
+            el.innerHTML = ''; // Clear placeholder
+            const chart = LightweightCharts.createChart(el, {
+              autoSize: true,
+              height: 240,
+              layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
+              grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+              crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+              rightPriceScale: { borderColor: '#374151' },
+              timeScale: { borderColor: '#374151', timeVisible: false },
+            });
+            const series = chart.addCandlestickSeries({
+              upColor: '#10b981',
+              downColor: '#ef4444',
+              borderVisible: false,
+              wickUpColor: '#10b981',
+              wickDownColor: '#ef4444',
+            });
+            series.setData(bars);
+            chart.timeScale().fitContent();
+            if (signal.resistance) {
+              series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
+            }
+            if (signal.support) {
+              series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
+            }
+          })
+          .catch(err => {
+            const el = document.getElementById('chart-container');
+            if (el) el.innerHTML = `<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>`;
+            console.error('Chart error:', err);
+          });
+      }
+
+      isInShortlist(asset) {
+        return this.shortlist.some(item => item.asset === asset);
+      }
+
+      async runScan() {
+        this.scanning = true;
+        this.render();
+        try {
+          const res = await fetch('/api/scan', { method: 'POST' });
+          const data = await res.json();
+          console.log('Scan started:', data);
+          setTimeout(() => this.fetchSignals(), 2000);
+        } catch (error) {
+          console.error('Failed to start scan:', error);
+        } finally {
+          this.scanning = false;
+          this.render();
+        }
+      }
+
+      getSignalColor(confidence) {
+        if (confidence > 85) return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
+        if (confidence > 75) return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
+        return { emoji: '🟡', label: 'yellow', bgClass: 'bg-yellow-600' };
+      }
+
+      getTradingViewUrl(asset) {
+        return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(asset)}`;
+      }
+
+      getFilteredSignals() {
+        let filtered = this.signals.filter(s => s.confidence >= this.minConfidence);
+
+        if (this.filtering) {
+          filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
+        }
+
+        // Sort
+        filtered.sort((a, b) => {
+          let compareVal = 0;
+          if (this.sortBy === 'confidence') {
+            compareVal = b.confidence - a.confidence;
+          } else if (this.sortBy === 'asset') {
+            compareVal = a.asset.localeCompare(b.asset);
+          }
+          return this.sortDirection === 'asc' ? -compareVal : compareVal;
+        });
+
+        return filtered;
+      }
+
+      toggleSort(field) {
+        if (this.sortBy === field) {
+          this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortBy = field;
+          this.sortDirection = 'desc';
+        }
+        this.render();
+      }
+
+      render() {
+        const filtered = this.getFilteredSignals();
+        const validSignals = this.signals.filter(s => s.confidence >= this.minConfidence);
+        const greenCount = validSignals.filter(s => s.confidence > 85).length;
+        const orangeCount = validSignals.filter(s => s.confidence > 75 && s.confidence <= 85).length;
+        const alertCount = validSignals.filter(s => s.shouldAlert).length;
+
+        document.getElementById('app').innerHTML = `
+          <div class="min-h-screen p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <!-- Header -->
+              <div class="mb-8">
+                <h1 class="text-4xl font-bold mb-2">📊 Signal Forge</h1>
+                <p class="text-gray-400">Real-time breakout detection dashboard</p>
+              </div>
+
+              <!-- Stats -->
+              <div class="grid grid-cols-5 gap-4 mb-8">
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <p class="text-gray-400 text-sm">Valid Signals (≥65%)</p>
+                  <p class="text-2xl font-bold">${validSignals.length}</p>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <p class="text-gray-400 text-sm">🟢 Green (>85%)</p>
+                  <p class="text-2xl font-bold text-green-500">${greenCount}</p>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <p class="text-gray-400 text-sm">🟠 Orange (75-85%)</p>
+                  <p class="text-2xl font-bold text-orange-500">${orangeCount}</p>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <p class="text-gray-400 text-sm">⚠️ Alerts</p>
+                  <p class="text-2xl font-bold text-red-500">${alertCount}</p>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <p class="text-gray-400 text-sm">⭐ Shortlist</p>
+                  <p class="text-2xl font-bold text-yellow-500">${this.shortlist.length}</p>
+                </div>
+              </div>
+
+              <!-- Controls -->
+              <div class="mb-6 space-y-4">
+                <div class="flex gap-4">
+                  <input
+                    type="text"
+                    placeholder="Search assets..."
+                    value="${this.filtering}"
+                    onkeyup="dashboard.filtering = this.value; dashboard.render();"
+                    class="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onclick="dashboard.runScan();"
+                    ${this.scanning ? 'disabled' : ''}
+                    class="px-6 py-2 rounded-lg font-semibold transition ${
+                      this.scanning
+                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }"
+                  >
+                    ${this.scanning ? '🔄 Scanning...' : '▶️ Run Scan Now'}
+                  </button>
+                </div>
+
+                <!-- Confidence Filter -->
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm text-gray-400">Min Confidence: ${this.minConfidence}%</label>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="${this.minConfidence}"
+                    oninput="dashboard.minConfidence = parseInt(this.value); dashboard.render();"
+                    class="w-full accent-blue-500"
+                  />
+                  <div class="flex justify-between text-xs text-gray-500 mt-2">
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Table -->
+              ${this.loading ? `
+                <div class="text-center py-12">
+                  <p class="text-gray-400">Loading signals...</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800 rounded-lg overflow-hidden">
+                  <table class="w-full">
+                    <thead>
+                      <tr class="bg-gray-700 border-b border-gray-600">
+                        <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('asset');">
+                          Asset ${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('confidence');">
+                          Confidence ${this.sortBy === 'confidence' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Price</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Resistance</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Support</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Alert</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${filtered.map((signal, idx) => {
+                        const color = this.getSignalColor(signal.confidence);
+                        const time = new Date(signal.createdAt).toLocaleTimeString();
+                        const tvUrl = this.getTradingViewUrl(signal.asset);
+                        const inShortlist = this.isInShortlist(signal.asset);
+                        const assetEscaped = signal.asset.replace(/'/g, "\\'");
+                        return `
+                          <tr
+                            class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 hover:bg-gray-700 cursor-pointer transition"
+                            data-signal-index="${idx}"
+                            onclick="dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
+                          >
+                            <td class="px-6 py-4 font-bold text-lg">
+                              <div class="flex items-center gap-2">
+                                <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="text-lg hover:scale-125 transition" title="Add to shortlist">
+                                  ${inShortlist ? '⭐' : '☆'}
+                                </button>
+                                <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">
+                                  ${signal.asset} ↗
+                                </a>
+                              </div>
+                            </td>
+                            <td class="px-6 py-4">
+                              <div class="${color.bgClass} px-3 py-1 rounded text-white font-bold inline-block">
+                                ${signal.confidence}%
+                              </div>
+                            </td>
+                            <td class="px-6 py-4 text-2xl">${color.emoji} ${color.label}</td>
+                            <td class="px-6 py-4">$${signal.currentPrice.toFixed(2)}</td>
+                            <td class="px-6 py-4">$${signal.resistance.toFixed(2)}</td>
+                            <td class="px-6 py-4">$${signal.support.toFixed(2)}</td>
+                            <td class="px-6 py-4">${signal.shouldAlert ? '⚠️' : ''}</td>
+                            <td class="px-6 py-4 text-gray-400">${time}</td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+
+              <!-- Footer -->
+              <div class="mt-8 text-center text-gray-500 text-sm">
+                <p>Auto-refreshes every 5 seconds • Last update: ${new Date().toLocaleTimeString()}</p>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    const dashboard = new Dashboard();
+  </script>
+</body>
+</html>

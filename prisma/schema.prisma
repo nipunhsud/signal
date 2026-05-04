@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BreakoutSignal {
+  id String @id @default(cuid())
+
+  // Asset being traded
+  asset String
+
+  // Agent analysis
+  confidence Float @default(0)
+  agentDecision String?
+  shouldAlert Boolean @default(false)
+
+  // Price levels
+  resistance Float
+  support Float
+  currentPrice Float
+
+  // Timing
+  createdAt DateTime @default(now())
+  executedAt DateTime?
+
+  // For aggregation
+  @@index([asset, createdAt])
+  @@index([shouldAlert, createdAt])
+}
+
+// Extensible for future agents
+model Signal {
+  id String @id @default(cuid())
+
+  agentName String // "BreakoutAgent", "SentimentAgent", etc.
+  asset String
+  signalType String // "breakout", "reversal", "divergence", etc.
+
+  confidence Float
+  metadata Json // Flexible storage for agent-specific data
+
+  shouldAlert Boolean @default(false)
+  createdAt DateTime @default(now())
+  executedAt DateTime?
+
+  @@index([agentName, asset])
+  @@index([shouldAlert, createdAt])
+}
+
+model AgentRun {
+  id String @id @default(cuid())
+
+  agentName String
+  status String // "success", "error", "partial"
+  signalsFound Int @default(0)
+  alertsSent Int @default(0)
+
+  errorMessage String?
+  duration Int // ms
+
+  startedAt DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([agentName, completedAt])
+}
+
+model Trade {
+  id               String    @id @default(cuid())
+  breakoutSignalId String
+  asset            String
+  conid            String
+  orderId          String?
+  side             String    // "BUY"
+  quantity         Int
+  entryPrice       Float
+  stopLossPrice    Float
+  positionValue    Float
+  maxPositionSize  Float
+  status           String    // "submitted" | "error"
+  errorMessage     String?
+  accountId        String
+  cashBefore       Float
+  createdAt        DateTime  @default(now())
+  filledAt         DateTime?
+
+  @@index([asset, createdAt])
+  @@index([status, createdAt])
+  @@index([breakoutSignalId])
+}
+
+model Shortlist {
+  id        String   @id @default(cuid())
+  asset     String   @unique
+  notes     String?
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([asset])
+}

@@ -1,0 +1,25 @@
+{
+  "name": "signal-forge",
+  "version": "1.0.0",
+  "description": "Multi-agent trading signal platform",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "prettier": "^3.0.0",
+    "prisma": "^5.22.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "express": "^5.2.1",
+    "financialmodelingprep": "^1.1.0"
+  }
+}
