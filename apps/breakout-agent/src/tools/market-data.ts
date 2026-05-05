@@ -165,6 +165,40 @@ async function fetchAlpacaData(symbol: string): Promise<MarketData> {
   }
 }
 
+function calculateBarsInRange(allBars: any[]): number {
+  if (allBars.length < 6) return 0;
+
+  // Look at the last 30 bars max to find consolidation
+  const lookback = Math.min(30, allBars.length);
+  const recentBars = allBars.slice(-lookback);
+
+  // Determine consolidation range: use prior bars to find support/resistance
+  // (exclude the potential breakout bar from range calculation)
+  const priorBars = recentBars.slice(0, -1);
+  if (priorBars.length < 2) return 0;
+
+  const rangeHigh = Math.max(...priorBars.map((b: any) => b.high));
+  const rangeLow = Math.min(...priorBars.map((b: any) => b.low));
+
+  // Count consecutive bars in range, working backwards from latest
+  let barsInRange = 0;
+  for (let i = recentBars.length - 1; i >= 0; i--) {
+    const bar = recentBars[i];
+    const barHigh = bar.high;
+    const barLow = bar.low;
+
+    // Bar is in range if high <= rangeHigh AND low >= rangeLow
+    if (barHigh <= rangeHigh && barLow >= rangeLow) {
+      barsInRange++;
+    } else {
+      // Stop counting when we hit a bar outside the range
+      break;
+    }
+  }
+
+  return barsInRange;
+}
+
 let cachedFedRate: number | null = null;
 let fedRateFetchTime = 0;
 
@@ -252,6 +286,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const highs = history.map((b: any) => b.high);
       const lows = history.map((b: any) => b.low);
       const avgVolume = history.reduce((sum: number, b: any) => sum + b.volume, 0) / history.length;
+
+      // Calculate barsInRange: count consecutive bars in consolidation before breakout
+      const barsInRange = calculateBarsInRange(allBars);
 
       let earningsGrowth = 0;
       let epsGrowthPct: number | undefined;
@@ -368,6 +405,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         ma50,
         ma150,
         ma200,
+        barsInRange,
         earningsGrowth,
         epsGrowthPct,
         revenueGrowthPct,
