@@ -29,6 +29,8 @@ export interface MarketData {
   ma200: number;
   // Consolidation (bars in range before breakout)
   barsInRange?: number;
+  consolidationRangePercent?: number; // % range of consolidation bars
+  consolidationVolumePercent?: number; // consolidation avg volume as % of 20-bar avg
   // 52-week high
   high52w?: number;
   // Earnings
@@ -167,40 +169,47 @@ async function fetchAlpacaData(symbol: string): Promise<MarketData> {
   }
 }
 
-function calculateBarsInRange(allBars: any[]): number {
-  if (allBars.length < 6) return 0;
+interface ConsolidationResult {
+  barsInRange: number;
+  consolidationRangePercent: number;
+  consolidationVolumePercent: number; // avg consolidation volume as % of 20-bar avg
+}
+
+function calculateBarsInRange(allBars: any[]): ConsolidationResult {
+  if (allBars.length < 6) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
 
   const currentBar = allBars[allBars.length - 1];
   const prev5Bars = allBars.slice(-6, -1); // Previous 5 bars before current
 
-  if (prev5Bars.length < 3) return 0;
+  if (prev5Bars.length < 3) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
 
   // Calculate average volume from last 20 bars for reference
   const avgVolume = allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
 
-  // Check if previous bars form tight consolidation
+  // Check if previous bars form consolidation (allow up to 15% range with sliding scale)
   const consolidationHigh = Math.max(...prev5Bars.map((b: any) => b.high));
   const consolidationLow = Math.min(...prev5Bars.map((b: any) => b.low));
   const consolidationRange = consolidationHigh - consolidationLow;
   const consolidationRangePercent = (consolidationRange / consolidationLow) * 100;
 
-  // Consolidation must be tight (< 3% range)
-  if (consolidationRangePercent > 3) return 0;
-
-  // Consolidation must have low volume (< 80% of average = indecision)
+  // Calculate consolidation volume as % of 20-bar average (lower is better, penalty applied in breakout-logic.ts)
   const consolidationAvgVolume = prev5Bars.reduce((sum: number, b: any) => sum + b.volume, 0) / prev5Bars.length;
-  if (consolidationAvgVolume > avgVolume * 0.8) return 0;
+  const consolidationVolumePercent = (consolidationAvgVolume / avgVolume) * 100;
 
   // Current bar must break above consolidation
   const breaksAboveConsolidation = currentBar.close > consolidationHigh;
-  if (!breaksAboveConsolidation) return 0;
+  if (!breaksAboveConsolidation) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
 
   // Current bar must have high volume (>= 1.2x average)
   const highVolume = currentBar.volume >= avgVolume * 1.2;
-  if (!highVolume) return 0;
+  if (!highVolume) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
 
-  // All conditions met: return count of consolidation bars found
-  return prev5Bars.length;
+  // All conditions met: return count, range %, and volume % (penalties applied in breakout-logic.ts)
+  return {
+    barsInRange: prev5Bars.length,
+    consolidationRangePercent,
+    consolidationVolumePercent
+  };
 }
 
 let cachedFedRate: number | null = null;
@@ -292,7 +301,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const avgVolume = history.reduce((sum: number, b: any) => sum + b.volume, 0) / history.length;
 
       // Calculate barsInRange: count consecutive bars in consolidation before breakout
-      const barsInRange = calculateBarsInRange(allBars);
+      const consolidationResult = calculateBarsInRange(allBars);
 
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
@@ -412,7 +421,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         ma50,
         ma150,
         ma200,
-        barsInRange,
+        barsInRange: consolidationResult.barsInRange,
+        consolidationRangePercent: consolidationResult.consolidationRangePercent,
+        consolidationVolumePercent: consolidationResult.consolidationVolumePercent,
         high52w,
         earningsGrowth,
         epsGrowthPct,

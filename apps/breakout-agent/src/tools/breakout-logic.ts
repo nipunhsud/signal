@@ -73,7 +73,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const hasEarningsGrowth = earningsGrowth > 5;
   const breakoutSignal = breakout && goodStructure && volumeOk && bullishCandle;
 
-  // PINE SCRIPT GREEN CONE: ALL conditions met = 99% confidence
+  // PINE SCRIPT GREEN CONE: ALL conditions met = 99% base, adjusted for consolidation quality
   const pineScriptGreen = breakoutSignal && consolidationOk && maStack;
 
   // Calculate confidence - 99% ONLY when Pine Script green cone (all conditions met)
@@ -81,7 +81,25 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
   if (pineScriptGreen) {
     // All conditions met: full Pine Script signal = green cone on TradingView
-    confidence = 0.99;
+    // Apply dual penalties:
+    // 1. Range penalty: -1% per 1% over 5% (e.g., 9% range = -4%)
+    // 2. Volume penalty: -1% per 1% over 100% (e.g., 105% volume = -5%)
+    let consolidationQuality = 0.99;
+
+    const rangePercent = data.consolidationRangePercent || 0;
+    if (rangePercent > 5) {
+      const rangePenalty = (rangePercent - 5) / 100;
+      consolidationQuality -= rangePenalty;
+    }
+
+    const volumePercent = data.consolidationVolumePercent || 0;
+    if (volumePercent > 100) {
+      const volumePenalty = (volumePercent - 100) / 100;
+      consolidationQuality -= volumePenalty;
+    }
+
+    consolidationQuality = Math.max(0.8, consolidationQuality); // Floor at 80%
+    confidence = consolidationQuality;
   } else if (breakoutSignal && maStack) {
     // Breakout + structure + volume, but missing consolidation or bullish candle
     confidence = 0.65; // Base confidence for valid breakout
