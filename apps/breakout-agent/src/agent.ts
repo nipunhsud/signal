@@ -93,6 +93,7 @@ export class BreakoutAgent {
           }
         }
 
+        // Only clamp when NOT using pineScriptGreen (which is always 0.99)
         confidence = Math.min(0.95, Math.max(0.2, confidence));
       }
 
