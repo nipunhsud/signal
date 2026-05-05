@@ -174,31 +174,40 @@ function calculateBarsInRange(allBars: any[]): number {
   const lookback = Math.min(30, allBars.length);
   const recentBars = allBars.slice(-lookback);
 
-  // Determine consolidation range: use prior bars to find support/resistance
-  // (exclude the potential breakout bar from range calculation)
-  const priorBars = recentBars.slice(0, -1);
-  if (priorBars.length < 2) return 0;
+  if (recentBars.length < 2) return 0;
 
-  const rangeHigh = Math.max(...priorBars.map((b: any) => b.high));
-  const rangeLow = Math.min(...priorBars.map((b: any) => b.low));
+  // Find the consolidation range: look for the tightest range in recent bars
+  // Strategy: count consecutive bars that stay within a tight range
+  // Start from the earliest bar and find a consolidation zone
 
-  // Count consecutive bars in range, working backwards from latest
-  let barsInRange = 0;
-  for (let i = recentBars.length - 1; i >= 0; i--) {
-    const bar = recentBars[i];
-    const barHigh = bar.high;
-    const barLow = bar.low;
+  let maxConsecutiveInRange = 0;
 
-    // Bar is in range if high <= rangeHigh AND low >= rangeLow
-    if (barHigh <= rangeHigh && barLow >= rangeLow) {
-      barsInRange++;
-    } else {
-      // Stop counting when we hit a bar outside the range
-      break;
+  // Try different starting points to find the longest consolidation
+  for (let startIdx = 0; startIdx < recentBars.length - 1; startIdx++) {
+    // Define range from this bar onwards
+    const rangeHigh = Math.max(...recentBars.slice(startIdx).map((b: any) => b.high));
+    const rangeLow = Math.min(...recentBars.slice(startIdx).map((b: any) => b.low));
+
+    // Count consecutive bars within this range working backwards
+    let consecutiveInRange = 0;
+    for (let i = startIdx; i < recentBars.length; i++) {
+      const bar = recentBars[i];
+      // Bar is in range if high <= rangeHigh AND low >= rangeLow
+      if (bar.high <= rangeHigh && bar.low >= rangeLow) {
+        consecutiveInRange++;
+      } else {
+        // First bar outside range ends the consolidation count
+        break;
+      }
+    }
+
+    // Track the longest consolidation found
+    if (consecutiveInRange >= 5) {
+      maxConsecutiveInRange = Math.max(maxConsecutiveInRange, consecutiveInRange);
     }
   }
 
-  return barsInRange;
+  return maxConsecutiveInRange;
 }
 
 let cachedFedRate: number | null = null;
