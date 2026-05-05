@@ -170,44 +170,37 @@ async function fetchAlpacaData(symbol: string): Promise<MarketData> {
 function calculateBarsInRange(allBars: any[]): number {
   if (allBars.length < 6) return 0;
 
-  // Look at the last 30 bars max to find consolidation
-  const lookback = Math.min(30, allBars.length);
-  const recentBars = allBars.slice(-lookback);
+  const currentBar = allBars[allBars.length - 1];
+  const prev5Bars = allBars.slice(-6, -1); // Previous 5 bars before current
 
-  if (recentBars.length < 2) return 0;
+  if (prev5Bars.length < 3) return 0;
 
-  // Find the consolidation range: look for the tightest range in recent bars
-  // Strategy: count consecutive bars that stay within a tight range
-  // Start from the earliest bar and find a consolidation zone
+  // Calculate average volume from last 20 bars for reference
+  const avgVolume = allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
 
-  let maxConsecutiveInRange = 0;
+  // Check if previous bars form tight consolidation
+  const consolidationHigh = Math.max(...prev5Bars.map((b: any) => b.high));
+  const consolidationLow = Math.min(...prev5Bars.map((b: any) => b.low));
+  const consolidationRange = consolidationHigh - consolidationLow;
+  const consolidationRangePercent = (consolidationRange / consolidationLow) * 100;
 
-  // Try different starting points to find the longest consolidation
-  for (let startIdx = 0; startIdx < recentBars.length - 1; startIdx++) {
-    // Define range from this bar onwards
-    const rangeHigh = Math.max(...recentBars.slice(startIdx).map((b: any) => b.high));
-    const rangeLow = Math.min(...recentBars.slice(startIdx).map((b: any) => b.low));
+  // Consolidation must be tight (< 3% range)
+  if (consolidationRangePercent > 3) return 0;
 
-    // Count consecutive bars within this range working backwards
-    let consecutiveInRange = 0;
-    for (let i = startIdx; i < recentBars.length; i++) {
-      const bar = recentBars[i];
-      // Bar is in range if high <= rangeHigh AND low >= rangeLow
-      if (bar.high <= rangeHigh && bar.low >= rangeLow) {
-        consecutiveInRange++;
-      } else {
-        // First bar outside range ends the consolidation count
-        break;
-      }
-    }
+  // Consolidation must have low volume (< 80% of average = indecision)
+  const consolidationAvgVolume = prev5Bars.reduce((sum: number, b: any) => sum + b.volume, 0) / prev5Bars.length;
+  if (consolidationAvgVolume > avgVolume * 0.8) return 0;
 
-    // Track the longest consolidation found
-    if (consecutiveInRange >= 5) {
-      maxConsecutiveInRange = Math.max(maxConsecutiveInRange, consecutiveInRange);
-    }
-  }
+  // Current bar must break above consolidation
+  const breaksAboveConsolidation = currentBar.close > consolidationHigh;
+  if (!breaksAboveConsolidation) return 0;
 
-  return maxConsecutiveInRange;
+  // Current bar must have high volume (>= 1.2x average)
+  const highVolume = currentBar.volume >= avgVolume * 1.2;
+  if (!highVolume) return 0;
+
+  // All conditions met: return count of consolidation bars found
+  return prev5Bars.length;
 }
 
 let cachedFedRate: number | null = null;

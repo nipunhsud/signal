@@ -13,9 +13,11 @@
     }
   </style>
 </head>
-<body class="bg-gray-900 text-white">
-  <div id="app"></div>
-  <div id="drawer"></div>
+<body class="bg-gray-900 text-white m-0 p-0">
+  <div id="container" class="flex h-screen w-screen bg-gray-900">
+    <div id="app" class="flex-1 overflow-auto"></div>
+    <div id="drawer" class="relative bg-gray-800 border-l border-gray-700 shadow-lg" style="width: 0px; overflow: hidden; transition: width 0.2s ease;"></div>
+  </div>
 
   <script>
     class Dashboard {
@@ -75,7 +77,7 @@
           const newWidth = Math.max(300, Math.min(900, window.innerWidth - e.clientX));
           this.drawerWidth = newWidth;
           localStorage.setItem('drawerWidth', newWidth);
-          const drawer = document.querySelector('#drawer > div:last-child');
+          const drawer = document.getElementById('drawer');
           if (drawer) drawer.style.width = newWidth + 'px';
         });
 
@@ -149,9 +151,11 @@
       renderDrawer() {
         const drawer = document.getElementById('drawer');
         if (!this.selectedAsset) {
+          drawer.style.width = '0px';
           drawer.innerHTML = '';
           return;
         }
+        drawer.style.width = this.drawerWidth + 'px';
 
         const signal = this.selectedAsset;
         const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
@@ -162,10 +166,9 @@
 
         const assetEscaped = signal.asset.replace(/'/g, "\\'");
         drawer.innerHTML = `
-          <div class="fixed inset-0 z-40 bg-black/50 transition-opacity" onclick="dashboard.closeDrawer();"></div>
-          <div id="drawer-resize-handle" class="fixed right-0 top-0 h-screen w-1 bg-gray-700 hover:bg-blue-500 cursor-col-resize z-50 transition"></div>
-          <div class="fixed right-0 top-0 h-screen bg-gray-800 shadow-lg transform transition-transform z-50 overflow-y-auto" style="width: ${this.drawerWidth}px;">
-            <div class="sticky top-0 bg-gray-700 p-6 border-b border-gray-600">
+          <div id="drawer-resize-handle" class="absolute left-0 top-0 bottom-0 w-1 bg-gray-600 hover:bg-blue-500 cursor-col-resize transition z-50"></div>
+          <div class="h-screen overflow-y-auto pl-1">
+            <div class="sticky top-0 bg-gray-800 p-6 border-b border-gray-700">
               <div class="flex justify-between items-center mb-2">
                 <h2 class="text-2xl font-bold">${signal.asset}</h2>
                 <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
@@ -197,7 +200,7 @@
               </div>
 
               <!-- Price Levels -->
-              <div class="border-t border-gray-600 pt-4 space-y-3">
+              <div class="border-t border-gray-700 pt-4 space-y-3">
                 <h3 class="font-semibold text-gray-300">📈 Price Levels</h3>
                 <div class="space-y-2">
                   <div class="flex justify-between items-center">
@@ -227,7 +230,7 @@
 
               <!-- Breakout Metrics (ONLY show when Pine Script Green) -->
               ${signal.pineScriptGreen ? `
-              <div class="border-t border-gray-600 pt-4">
+              <div class="border-t border-gray-700 pt-4">
                 <h3 class="font-semibold text-gray-300 mb-3">🎯 📊 Pine Script Green Cone</h3>
                 <div class="bg-green-900 p-3 rounded-lg border border-green-700 mb-3">
                   <p class="text-green-200 font-semibold">✓ All conditions met: 99% confidence</p>
@@ -258,7 +261,7 @@
               ` : ''}
 
               <!-- Agent Decision -->
-              <div class="border-t border-gray-600 pt-4">
+              <div class="border-t border-gray-700 pt-4">
                 <h3 class="font-semibold text-gray-300 mb-2">💡 Agent Analysis</h3>
                 <div class="bg-gray-700 p-3 rounded text-sm text-gray-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                   ${signal.agentDecision || 'No analysis available'}
@@ -266,7 +269,7 @@
               </div>
 
               <!-- Shortlist -->
-              <div class="border-t border-gray-600 pt-4">
+              <div class="border-t border-gray-700 pt-4">
                 <button
                   onclick="dashboard.toggleShortlist('${assetEscaped}', event);"
                   class="w-full px-4 py-2 rounded-lg font-semibold transition ${
@@ -280,7 +283,7 @@
               </div>
 
               <!-- Timestamp -->
-              <div class="border-t border-gray-600 pt-4 text-xs text-gray-500">
+              <div class="border-t border-gray-700 pt-4 text-xs text-gray-500">
                 <p>Updated: ${new Date(signal.createdAt).toLocaleString()}</p>
               </div>
             </div>
@@ -356,9 +359,13 @@
       }
 
       getSignalColor(signal) {
-        // Pine Script Green = highest confidence
+        // Pine Script Green Cone = 99% (all conditions met)
         if (signal.pineScriptGreen || signal.confidence === 99) {
           return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
+        }
+        // 95-98%: High confidence breakout (near-perfect but not full green cone)
+        if (signal.confidence >= 95) {
+          return { emoji: '💚', label: 'light-green', bgClass: 'bg-green-500' };
         }
         if (signal.confidence > 85) return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
         if (signal.confidence > 75) return { emoji: '🟡', label: 'yellow', bgClass: 'bg-yellow-600' };
@@ -403,12 +410,14 @@
       render() {
         const filtered = this.getFilteredSignals();
         const validSignals = this.signals.filter(s => s.confidence >= this.minConfidence);
-        const greenCount = validSignals.filter(s => s.confidence > 85).length;
-        const orangeCount = validSignals.filter(s => s.confidence > 75 && s.confidence <= 85).length;
+        const greenCount = validSignals.filter(s => s.pineScriptGreen || s.confidence === 99).length;
+        const brightCount = validSignals.filter(s => !s.pineScriptGreen && s.confidence >= 95 && s.confidence < 99).length;
+        const orangeCount = validSignals.filter(s => s.confidence > 85 && s.confidence < 95).length;
+        const yellowCount = validSignals.filter(s => s.confidence > 75 && s.confidence <= 85).length;
         const alertCount = validSignals.filter(s => s.shouldAlert).length;
 
         document.getElementById('app').innerHTML = `
-          <div class="min-h-screen p-8 bg-gray-900">
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
               <div class="mb-8">
@@ -417,17 +426,21 @@
               </div>
 
               <!-- Stats -->
-              <div class="grid grid-cols-5 gap-4 mb-8">
+              <div class="grid grid-cols-6 gap-4 mb-8">
                 <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">Valid Signals (≥65%)</p>
+                  <p class="text-gray-400 text-sm">Valid Signals</p>
                   <p class="text-2xl font-bold">${validSignals.length}</p>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">🟢 Green (>85%)</p>
-                  <p class="text-2xl font-bold text-green-500">${greenCount}</p>
+                <div class="bg-green-900 p-4 rounded-lg border border-green-700">
+                  <p class="text-green-400 text-sm">🟢 Green Cone (99%)</p>
+                  <p class="text-2xl font-bold text-green-400">${greenCount}</p>
+                </div>
+                <div class="bg-green-800 p-4 rounded-lg border border-green-600">
+                  <p class="text-green-300 text-sm">💚 High Conf (95%)</p>
+                  <p class="text-2xl font-bold text-green-300">${brightCount}</p>
                 </div>
                 <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">🟠 Orange (75-85%)</p>
+                  <p class="text-gray-400 text-sm">🟠 Orange (85%)</p>
                   <p class="text-2xl font-bold text-orange-500">${orangeCount}</p>
                 </div>
                 <div class="bg-gray-800 p-4 rounded-lg">
@@ -493,7 +506,7 @@
                 <div class="bg-gray-800 rounded-lg overflow-hidden">
                   <table class="w-full">
                     <thead>
-                      <tr class="bg-gray-700 border-b border-gray-600">
+                      <tr class="bg-gray-700 border-b border-gray-700">
                         <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('asset');">
                           Asset ${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
                         </th>

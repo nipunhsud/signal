@@ -36,4 +36,4 @@ export class RateLimiter {
   }
 }
 
-export const globalRateLimiter = new RateLimiter(750);
+export const globalRateLimiter = new RateLimiter(300);
