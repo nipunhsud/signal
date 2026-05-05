@@ -24,6 +24,9 @@ app.get('/api/signals', async (req, res) => {
           "shouldAlert",
           "agentDecision",
           "createdAt",
+          "pineScriptGreen",
+          "bullishCandle",
+          "barsInRange",
           ROW_NUMBER() OVER (PARTITION BY asset ORDER BY "createdAt" DESC) as rn
         FROM "BreakoutSignal"
         WHERE "shouldAlert" = true
@@ -38,7 +41,10 @@ app.get('/api/signals', async (req, res) => {
         support,
         "shouldAlert",
         "agentDecision",
-        "createdAt"
+        "createdAt",
+        "pineScriptGreen",
+        "bullishCandle",
+        "barsInRange"
       FROM ranked
       WHERE rn = 1
         AND confidence >= 0.80
@@ -55,14 +61,16 @@ app.get('/api/signals', async (req, res) => {
       shouldAlert: s.shouldAlert,
       agentDecision: s.agentDecision || '',
       createdAt: s.createdAt,
-      signalType:
-        s.confidence >= 0.90 ? 'green' : s.confidence > 0.75 ? 'orange' : 'yellow',
+      pineScriptGreen: s.pineScriptGreen || false,
+      bullishCandle: s.bullishCandle || false,
+      barsInRange: s.barsInRange || 0,
+      signalType: s.pineScriptGreen ? 'green' : s.confidence >= 0.90 ? 'orange' : 'yellow',
     });
 
-    // Separate by confidence tier
+    // Separate by confidence tier - prioritize Pine Script Green signals
     const formatted = allSignals.map(formatSignal);
-    const highConfidence = formatted.filter(s => s.confidence >= 90);
-    const mediumConfidence = formatted.filter(s => s.confidence >= 80 && s.confidence < 90);
+    const highConfidence = formatted.filter(s => s.pineScriptGreen || s.confidence >= 99); // Green cone = 99%
+    const mediumConfidence = formatted.filter(s => !s.pineScriptGreen && s.confidence >= 80 && s.confidence < 99);
 
     res.json({
       highConfidence,
@@ -155,6 +163,19 @@ app.get('/api/candles/:symbol', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`📊 Dashboard running on http://localhost:${PORT}`);
+
+  // Initialize ngrok for external access
+  try {
+    const ngrokUrl = await ngrok.connect({
+      addr: PORT,
+      authtoken: process.env.NGROK_AUTHTOKEN,
+    });
+    console.log(`🌐 Accessible externally at: ${ngrokUrl}`);
+    console.log(`   • API: ${ngrokUrl}/api/signals`);
+    console.log(`   • Trigger scan: POST ${ngrokUrl}/api/scan`);
+  } catch (error) {
+    console.warn('⚠️  ngrok not available (set NGROK_AUTHTOKEN to enable external access):', error.message);
+  }
 });

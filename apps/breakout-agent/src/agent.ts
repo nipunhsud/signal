@@ -1,9 +1,24 @@
-import { TradeAgent } from '@signal-forge/core';
 import { fetchMarketData } from './tools/market-data.js';
 import { analyzeBreakout } from './tools/breakout-logic.js';
 import { sendEmail } from './email.js';
 import { db } from './db.js';
 import { getConfig } from './config.js';
+
+function getSectorTailwind(sector: string): string {
+  const map: Record<string, string> = {
+    Technology: 'AI adoption & cloud expansion',
+    Semiconductors: 'AI chip demand cycle',
+    Healthcare: 'GLP-1 drug cycle & aging demographics',
+    Energy: 'Energy transition & LNG demand',
+    Financials: 'Rate normalization cycle',
+    'Consumer Cyclical': 'Post-rate-cut spending recovery',
+    Industrials: 'Reshoring & infrastructure spend',
+  };
+  for (const [key, val] of Object.entries(map)) {
+    if (sector.includes(key)) return val;
+  }
+  return '';
+}
 
 export interface BreakoutResult {
   asset: string;
@@ -21,15 +36,8 @@ export interface BreakoutResult {
 type Config = ReturnType<typeof getConfig>;
 
 export class BreakoutAgent {
-  private agent: TradeAgent;
+  constructor() {}
 
-  constructor() {
-    this.agent = new TradeAgent({
-      name: 'BreakoutAgent',
-      description: 'Detects bullish breakout signals with macro context',
-      model: 'gemini-2.5-flash',
-    });
-  }
 
   // 5 parallel tiers × 3 concurrency = 15 assets in flight
   // Rate limiter (750/min = 12.5 calls/sec) queues FMP calls fairly
@@ -57,49 +65,49 @@ export class BreakoutAgent {
       const data = await fetchMarketData(asset, config.dataSource, config.ibkrBaseUrl);
       const breakoutAnalysis = analyzeBreakout(data);
 
-      let confidence = breakoutAnalysis.confidence;
       const volumeRatio = data.volume / data.avgVolume;
       const volumeIncreasing = volumeRatio > 1.3;
 
-      if (breakoutAnalysis.breakoutSignal) {
-        if (breakoutAnalysis.maStackTurning && volumeIncreasing) confidence += 0.1;
-        if (breakoutAnalysis.earningsGrowth > 10) confidence += 0.08;
+      let confidence = breakoutAnalysis.confidence;
+
+      // If Pine Script green cone (all conditions met), confidence is 99%
+      if (breakoutAnalysis.pineScriptGreen) {
+        confidence = 0.99;
+      } else {
+        // Otherwise, apply additional confidence adjustments
+        if (breakoutAnalysis.breakoutSignal) {
+          if (breakoutAnalysis.maStackTurning && volumeIncreasing) confidence += 0.1;
+          if (breakoutAnalysis.earningsGrowth > 10) confidence += 0.08;
+        }
+        confidence = Math.min(0.95, Math.max(0.2, confidence));
       }
-      confidence = Math.min(0.95, Math.max(0.2, confidence));
 
       const isValid = breakoutAnalysis.maStack && breakoutAnalysis.volumeOk;
-      const localReasoning = `${breakoutAnalysis.maStack ? 'Uptrend' : 'No uptrend'} | Vol ${volumeRatio.toFixed(1)}x | Earnings ${breakoutAnalysis.earningsGrowth > 0 ? '+' : ''}${breakoutAnalysis.earningsGrowth.toFixed(1)}%`;
 
-      let agentDecision = localReasoning;
-      let finalConfidence = confidence;
+      const macroContext = breakoutAnalysis.fedFundsRate
+        ? breakoutAnalysis.fedFundsRate > 4.5
+          ? `Fed ${breakoutAnalysis.fedFundsRate.toFixed(2)}% — headwind for growth`
+          : breakoutAnalysis.fedFundsRate > 2.5
+          ? `Fed ${breakoutAnalysis.fedFundsRate.toFixed(2)}% — neutral`
+          : `Fed ${breakoutAnalysis.fedFundsRate.toFixed(2)}% — tailwind for growth`
+        : 'Macro: unavailable';
 
-      if (confidence > 0.9) {
-        try {
-          const prompt = `You are a trading analyst evaluating ${asset} for a breakout trade.
+      const sectorTailwind = getSectorTailwind(breakoutAnalysis.sector || '');
 
-Technical setup:
-- MA Stack (200<150<50<20, proper uptrend): ${breakoutAnalysis.maStack ? 'YES' : 'NO'}
-- MAs turning up: ${breakoutAnalysis.maStackTurning ? 'YES' : 'NO'}
-- Volume vs avg: ${volumeRatio.toFixed(1)}x (${volumeRatio > 1.3 ? 'strong surge' : 'normal'})
-- Earnings growth YoY: ${breakoutAnalysis.earningsGrowth > 0 ? '+' : ''}${breakoutAnalysis.earningsGrowth.toFixed(1)}%
-- Current confidence: ${Math.round(confidence * 100)}%
-- Price breaking above resistance: ${breakoutAnalysis.breakoutSignal ? 'YES' : 'NO'}
+      const localReasoning = [
+        `MA Stack: ${breakoutAnalysis.maStack ? 'Uptrend ✓' : 'No uptrend ✗'}`,
+        `Vol: ${volumeRatio.toFixed(1)}x${volumeIncreasing ? ' ✓' : ''}`,
+        `EPS: ${breakoutAnalysis.epsGrowthPct !== 0 ? (breakoutAnalysis.epsGrowthPct > 0 ? '+' : '') + breakoutAnalysis.epsGrowthPct.toFixed(1) + '%' : 'N/A'}`,
+        `Rev: ${breakoutAnalysis.revenueGrowthPct !== 0 ? (breakoutAnalysis.revenueGrowthPct > 0 ? '+' : '') + breakoutAnalysis.revenueGrowthPct.toFixed(1) + '%' : 'N/A'}`,
+        breakoutAnalysis.epsBeat !== false ? `EPS: ${breakoutAnalysis.epsBeat ? 'Beat' : 'Miss'} ${breakoutAnalysis.epsSurprisePct !== 0 ? (breakoutAnalysis.epsSurprisePct > 0 ? '+' : '') + breakoutAnalysis.epsSurprisePct.toFixed(1) + '%' : ''}` : null,
+        `Sector: ${breakoutAnalysis.sector || 'Unknown'}${breakoutAnalysis.industry ? ' / ' + breakoutAnalysis.industry : ''}`,
+        `Macro: ${macroContext}`,
+        sectorTailwind ? `Tailwind: ${sectorTailwind}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
 
-Search for recent news on ${asset}: analyst upgrades/downgrades, earnings beats/misses, product launches, macro tailwinds, or any catalyst.
-
-Respond in 2-3 sentences: assess conviction. If strong catalyst found, boost confidence to 0.95. If concerns found, lower to 0.80. Otherwise keep at ${Math.round(confidence * 100)}%.`;
-
-          const response = await this.agent.run(prompt, undefined, true);
-          agentDecision = response.raw || response.reasoning || localReasoning;
-
-          if (agentDecision.includes('0.95')) finalConfidence = 0.95;
-          else if (agentDecision.includes('0.80')) finalConfidence = 0.80;
-        } catch (error) {
-          console.warn(`Gemini call failed for ${asset}, skipping LLM enhancement:`, error);
-        }
-      }
-
-      const shouldAlert = isValid && finalConfidence > 0.6 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal;
+      const shouldAlert = isValid && confidence > 0.6 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal;
 
       const result: BreakoutResult = {
         asset,
@@ -109,7 +117,7 @@ Respond in 2-3 sentences: assess conviction. If strong catalyst found, boost con
         currentPrice: data.close,
         volume: data.volume,
         avgVolume: data.avgVolume,
-        confidence: finalConfidence,
+        confidence,
         reasoning: localReasoning,
         shouldAlert,
       };
@@ -117,12 +125,23 @@ Respond in 2-3 sentences: assess conviction. If strong catalyst found, boost con
       await db.breakoutSignal.create({
         data: {
           asset,
-          confidence: finalConfidence,
-          agentDecision,
+          confidence,
+          agentDecision: localReasoning,
           shouldAlert,
           resistance: result.resistance,
           support: result.support,
           currentPrice: result.currentPrice,
+          pineScriptGreen: breakoutAnalysis.pineScriptGreen,
+          barsInRange: breakoutAnalysis.barsInRange || 0,
+          bullishCandle: breakoutAnalysis.bullishCandle,
+          epsGrowthPct: breakoutAnalysis.epsGrowthPct,
+          revenueGrowthPct: breakoutAnalysis.revenueGrowthPct,
+          epsBeat: breakoutAnalysis.epsBeat,
+          epsSurprisePct: breakoutAnalysis.epsSurprisePct,
+          sector: breakoutAnalysis.sector,
+          industry: breakoutAnalysis.industry,
+          fedFundsRate: breakoutAnalysis.fedFundsRate,
+          volumeRatio,
         },
       });
 

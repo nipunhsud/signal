@@ -6,6 +6,12 @@
   <title>Signal Forge - Breakout Signals Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body.resizing {
+      user-select: none;
+      cursor: col-resize !important;
+    }
+  </style>
 </head>
 <body class="bg-gray-900 text-white">
   <div id="app"></div>
@@ -19,12 +25,14 @@
         this.loading = true;
         this.scanning = false;
         this.filtering = '';
-        this.minConfidence = 65;
+        this.minConfidence = 85; // Only show high-confidence signals by default
         this.sortBy = 'confidence';
         this.sortDirection = 'desc';
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
+        this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
+        this._isResizing = false;
         this.init();
       }
 
@@ -50,6 +58,31 @@
             this.openDrawer(filtered[this.currentAssetIndex]);
           } else if (e.code === 'Escape') {
             this.closeDrawer();
+          }
+        });
+
+        // Drawer resize handling
+        document.addEventListener('mousedown', (e) => {
+          if (e.target.id === 'drawer-resize-handle') {
+            this._isResizing = true;
+            document.body.classList.add('resizing');
+            e.preventDefault();
+          }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+          if (!this._isResizing) return;
+          const newWidth = Math.max(300, Math.min(900, window.innerWidth - e.clientX));
+          this.drawerWidth = newWidth;
+          localStorage.setItem('drawerWidth', newWidth);
+          const drawer = document.querySelector('#drawer > div:last-child');
+          if (drawer) drawer.style.width = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+          if (this._isResizing) {
+            this._isResizing = false;
+            document.body.classList.remove('resizing');
           }
         });
 
@@ -130,7 +163,8 @@
         const assetEscaped = signal.asset.replace(/'/g, "\\'");
         drawer.innerHTML = `
           <div class="fixed inset-0 z-40 bg-black/50 transition-opacity" onclick="dashboard.closeDrawer();"></div>
-          <div class="fixed right-0 top-0 h-screen w-96 bg-gray-800 shadow-lg transform transition-transform z-50 overflow-y-auto">
+          <div id="drawer-resize-handle" class="fixed right-0 top-0 h-screen w-1 bg-gray-700 hover:bg-blue-500 cursor-col-resize z-50 transition"></div>
+          <div class="fixed right-0 top-0 h-screen bg-gray-800 shadow-lg transform transition-transform z-50 overflow-y-auto" style="width: ${this.drawerWidth}px;">
             <div class="sticky top-0 bg-gray-700 p-6 border-b border-gray-600">
               <div class="flex justify-between items-center mb-2">
                 <h2 class="text-2xl font-bold">${signal.asset}</h2>
@@ -164,25 +198,69 @@
 
               <!-- Price Levels -->
               <div class="border-t border-gray-600 pt-4 space-y-3">
-                <h3 class="font-semibold text-gray-300">Price Levels</h3>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Current</span>
-                  <span class="font-mono">$${signal.currentPrice.toFixed(2)}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Resistance</span>
-                  <span class="font-mono text-red-400">$${signal.resistance.toFixed(2)}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Support</span>
-                  <span class="font-mono text-green-400">$${signal.support.toFixed(2)}</span>
+                <h3 class="font-semibold text-gray-300">📈 Price Levels</h3>
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Current Price</span>
+                    <span class="font-mono text-lg font-bold">$${signal.currentPrice.toFixed(2)}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Resistance (R)</span>
+                    <span class="font-mono text-red-400 text-lg">$${signal.resistance.toFixed(2)}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Support (S)</span>
+                    <span class="font-mono text-green-400 text-lg">$${signal.support.toFixed(2)}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded text-sm mt-2">
+                    <div class="flex justify-between text-gray-300 mb-1">
+                      <span>Distance to Resistance</span>
+                      <span>${((signal.resistance - signal.currentPrice) / signal.currentPrice * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="flex justify-between text-gray-300">
+                      <span>Distance to Support</span>
+                      <span>${((signal.currentPrice - signal.support) / signal.currentPrice * 100).toFixed(1)}%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
+              <!-- Breakout Metrics (ONLY show when Pine Script Green) -->
+              ${signal.pineScriptGreen ? `
+              <div class="border-t border-gray-600 pt-4">
+                <h3 class="font-semibold text-gray-300 mb-3">🎯 📊 Pine Script Green Cone</h3>
+                <div class="bg-green-900 p-3 rounded-lg border border-green-700 mb-3">
+                  <p class="text-green-200 font-semibold">✓ All conditions met: 99% confidence</p>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Signal Mode</span>
+                    <span class="text-yellow-400">Early (On Touch)</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Structure Quality</span>
+                    <span class="text-green-400">✓ Good</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Volume Confirmation</span>
+                    <span class="text-green-400">✓ OK</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Consolidation Bars</span>
+                    <span class="text-blue-400">${signal.barsInRange || '5+'}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Bullish Candle</span>
+                    <span class="text-green-400">✓ Close > Open</span>
+                  </div>
+                </div>
+              </div>
+              ` : ''}
+
               <!-- Agent Decision -->
               <div class="border-t border-gray-600 pt-4">
-                <h3 class="font-semibold text-gray-300 mb-2">Agent Analysis</h3>
-                <div class="bg-gray-700 p-3 rounded text-sm text-gray-300 whitespace-pre-wrap break-words">
+                <h3 class="font-semibold text-gray-300 mb-2">💡 Agent Analysis</h3>
+                <div class="bg-gray-700 p-3 rounded text-sm text-gray-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                   ${signal.agentDecision || 'No analysis available'}
                 </div>
               </div>
@@ -277,10 +355,14 @@
         }
       }
 
-      getSignalColor(confidence) {
-        if (confidence > 85) return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
-        if (confidence > 75) return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
-        return { emoji: '🟡', label: 'yellow', bgClass: 'bg-yellow-600' };
+      getSignalColor(signal) {
+        // Pine Script Green = highest confidence
+        if (signal.pineScriptGreen || signal.confidence === 99) {
+          return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
+        }
+        if (signal.confidence > 85) return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
+        if (signal.confidence > 75) return { emoji: '🟡', label: 'yellow', bgClass: 'bg-yellow-600' };
+        return { emoji: '⚪', label: 'neutral', bgClass: 'bg-gray-600' };
       }
 
       getTradingViewUrl(asset) {
@@ -428,7 +510,7 @@
                     </thead>
                     <tbody>
                       ${filtered.map((signal, idx) => {
-                        const color = this.getSignalColor(signal.confidence);
+                        const color = this.getSignalColor(signal);
                         const time = new Date(signal.createdAt).toLocaleTimeString();
                         const tvUrl = this.getTradingViewUrl(signal.asset);
                         const inShortlist = this.isInShortlist(signal.asset);

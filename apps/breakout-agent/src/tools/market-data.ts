@@ -27,8 +27,19 @@ export interface MarketData {
   ma50: number;
   ma150: number;
   ma200: number;
+  // Consolidation (bars in range before breakout)
+  barsInRange?: number;
   // Earnings
   earningsGrowth?: number; // YoY earnings growth %
+  // Fundamentals
+  epsGrowthPct?: number;
+  revenueGrowthPct?: number;
+  epsBeat?: boolean;
+  epsSurprisePct?: number;
+  sector?: string;
+  industry?: string;
+  beta?: number;
+  fedFundsRate?: number;
 }
 
 /**
@@ -154,6 +165,38 @@ async function fetchAlpacaData(symbol: string): Promise<MarketData> {
   }
 }
 
+let cachedFedRate: number | null = null;
+let fedRateFetchTime = 0;
+
+async function getFedRate(apiKey: string): Promise<number> {
+  const now = Date.now();
+  if (cachedFedRate !== null && now - fedRateFetchTime < 24 * 60 * 60 * 1000) {
+    return cachedFedRate;
+  }
+
+  try {
+    const data = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/api/v4/economic?name=FEDFUNDS`,
+        {
+          params: { apikey: apiKey },
+          timeout: 10000,
+        }
+      );
+      return res.data;
+    });
+
+    if (data && Array.isArray(data) && data[0]) {
+      cachedFedRate = parseFloat(data[0].value) || 5.25;
+      fedRateFetchTime = now;
+      return cachedFedRate;
+    }
+  } catch (error) {
+    console.warn('Failed to fetch Fed rate, using fallback');
+  }
+  return 5.25;
+}
+
 async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error('FMP_API_KEY not set');
@@ -211,6 +254,14 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const avgVolume = history.reduce((sum: number, b: any) => sum + b.volume, 0) / history.length;
 
       let earningsGrowth = 0;
+      let epsGrowthPct: number | undefined;
+      let revenueGrowthPct: number | undefined;
+      let epsBeat: boolean | undefined;
+      let epsSurprisePct: number | undefined;
+      let sector: string | undefined;
+      let industry: string | undefined;
+      let beta: number | undefined;
+
       try {
         const earningsData = await globalRateLimiter.execute(async () => {
           const earningsRes = await axios.get(
@@ -232,6 +283,76 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         // earnings optional
       }
 
+      try {
+        const qtrEarningsData = await globalRateLimiter.execute(async () => {
+          const qtrRes = await axios.get(
+            `https://financialmodelingprep.com/api/v3/income-statement/${symbol}?period=quarter`,
+            {
+              params: { apikey: apiKey, limit: 5 },
+              timeout: 10000,
+            }
+          );
+          return qtrRes.data;
+        });
+
+        if (qtrEarningsData && qtrEarningsData.length >= 2) {
+          const currentEps = qtrEarningsData[0].eps || 0;
+          const previousEps = qtrEarningsData[1].eps || 0.01;
+          epsGrowthPct = ((currentEps - previousEps) / Math.abs(previousEps)) * 100;
+
+          const currentRev = qtrEarningsData[0].revenue || 0;
+          const previousRev = qtrEarningsData[1].revenue || 1;
+          revenueGrowthPct = ((currentRev - previousRev) / Math.abs(previousRev)) * 100;
+        }
+      } catch {
+        // optional
+      }
+
+      try {
+        const surpriseData = await globalRateLimiter.execute(async () => {
+          const surpriseRes = await axios.get(
+            `https://financialmodelingprep.com/api/v3/earnings-surprises/${symbol}`,
+            {
+              params: { apikey: apiKey, limit: 1 },
+              timeout: 10000,
+            }
+          );
+          return surpriseRes.data;
+        });
+
+        if (surpriseData && surpriseData.length > 0) {
+          const actual = surpriseData[0].actualEarningResult || 0;
+          const estimated = surpriseData[0].estimatedEarning || 0.01;
+          epsBeat = actual > estimated;
+          epsSurprisePct = ((actual - estimated) / Math.abs(estimated)) * 100;
+        }
+      } catch {
+        // optional
+      }
+
+      try {
+        const profileData = await globalRateLimiter.execute(async () => {
+          const profileRes = await axios.get(
+            `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+            {
+              params: { apikey: apiKey },
+              timeout: 10000,
+            }
+          );
+          return profileRes.data;
+        });
+
+        if (profileData && profileData.length > 0) {
+          sector = profileData[0].sector;
+          industry = profileData[0].industry;
+          beta = profileData[0].beta;
+        }
+      } catch {
+        // optional
+      }
+
+      const fedFundsRate = await getFedRate(apiKey);
+
       const result: MarketData = {
         asset: symbol,
         open: latest.open,
@@ -248,6 +369,14 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         ma150,
         ma200,
         earningsGrowth,
+        epsGrowthPct,
+        revenueGrowthPct,
+        epsBeat,
+        epsSurprisePct,
+        sector,
+        industry,
+        beta,
+        fedFundsRate,
       };
 
       marketDataCache.set(cacheKey, result);

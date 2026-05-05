@@ -26,6 +26,21 @@ model BreakoutSignal {
   support Float
   currentPrice Float
 
+  // Pine Script breakout scanner
+  pineScriptGreen Boolean @default(false) // Full green cone: all conditions met
+  barsInRange Int @default(0) // Consolidation bars
+  bullishCandle Boolean @default(false) // Close > Open
+
+  // Fundamentals
+  epsGrowthPct Float?
+  revenueGrowthPct Float?
+  epsBeat Boolean?
+  epsSurprisePct Float?
+  sector String?
+  industry String?
+  fedFundsRate Float?
+  volumeRatio Float?
+
   // Timing
   createdAt DateTime @default(now())
   executedAt DateTime?
@@ -33,6 +48,7 @@ model BreakoutSignal {
   // For aggregation
   @@index([asset, createdAt])
   @@index([shouldAlert, createdAt])
+  @@index([pineScriptGreen, createdAt])
 }
 
 // Extensible for future agents
