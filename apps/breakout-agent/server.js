@@ -11,6 +11,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 app.get('/api/signals', async (req, res) => {
+  console.log('[/api/signals] Handler called');
   try {
     // Get latest signal per asset, last 24h, deduped and filtered
     const allSignals = await db.$queryRaw`
@@ -69,6 +70,7 @@ app.get('/api/signals', async (req, res) => {
 
     // Separate by confidence tier - prioritize Pine Script Green signals
     const formatted = allSignals.map(formatSignal);
+    console.log('Formatted signal sample:', JSON.stringify(formatted[0], null, 2));
     const highConfidence = formatted.filter(s => s.pineScriptGreen || s.confidence >= 99); // Green cone = 99%
     const mediumConfidence = formatted.filter(s => !s.pineScriptGreen && s.confidence >= 80 && s.confidence < 99);
 
@@ -163,19 +165,8 @@ app.get('/api/candles/:symbol', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`📊 Dashboard running on http://localhost:${PORT}`);
-
-  // Initialize ngrok for external access
-  try {
-    const ngrokUrl = await ngrok.connect({
-      addr: PORT,
-      authtoken: process.env.NGROK_AUTHTOKEN,
-    });
-    console.log(`🌐 Accessible externally at: ${ngrokUrl}`);
-    console.log(`   • API: ${ngrokUrl}/api/signals`);
-    console.log(`   • Trigger scan: POST ${ngrokUrl}/api/scan`);
-  } catch (error) {
-    console.warn('⚠️  ngrok not available (set NGROK_AUTHTOKEN to enable external access):', error.message);
-  }
+  console.log(`   • API: http://localhost:${PORT}/api/signals`);
+  console.log(`   • Trigger scan: POST http://localhost:${PORT}/api/scan`);
 });
