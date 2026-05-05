@@ -16,6 +16,7 @@ export interface BreakoutAnalysis {
   consolidationOk: boolean; // barsInRange >= minStructureBars
   pineScriptGreen: boolean; // Full Pine Script signal (green cone)
   confidence: number;
+  high52w: number;
   earningsGrowth: number;
   // Fundamentals
   epsGrowthPct: number;
@@ -33,7 +34,7 @@ export interface BreakoutAnalysis {
  * Parameters match: len_fast_ma=20, len_slow_ma=50, len_trend_ma=200, min_structure_bars=5
  */
 export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
-  const { ma20, ma50, ma150, ma200, close, open, volume, avgVolume, highs, lows, earningsGrowth = 0, epsGrowthPct = 0, revenueGrowthPct = 0, epsBeat = false, epsSurprisePct = 0, sector = '', industry = '', beta = 0, fedFundsRate = 5.25, barsInRange = 0 } = data;
+  const { ma20, ma50, ma150, ma200, close, open, volume, avgVolume, highs, lows, earningsGrowth = 0, epsGrowthPct = 0, revenueGrowthPct = 0, epsBeat = false, epsSurprisePct = 0, sector = '', industry = '', beta = 0, fedFundsRate = 5.25, barsInRange = 0, high52w = 0 } = data;
   const MIN_STRUCTURE_BARS = 5;
 
   // Donchian resistance/support (highest high / lowest low of last 20 bars)
@@ -110,6 +111,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     consolidationOk,
     pineScriptGreen,
     confidence: Math.min(0.99, Math.max(0.1, confidence)),
+    high52w,
     earningsGrowth,
     epsGrowthPct,
     revenueGrowthPct,

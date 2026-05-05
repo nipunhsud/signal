@@ -79,6 +79,20 @@ export class BreakoutAgent {
           if (breakoutAnalysis.maStackTurning && volumeIncreasing) confidence += 0.1;
           if (breakoutAnalysis.earningsGrowth > 10) confidence += 0.08;
         }
+
+        // Boost/penalize based on proximity to 52-week high
+        const distFrom52wHigh = breakoutAnalysis.high52w > 0
+          ? (breakoutAnalysis.high52w - data.close) / breakoutAnalysis.high52w * 100
+          : null;
+
+        if (distFrom52wHigh !== null) {
+          if (distFrom52wHigh <= 10) {
+            confidence += 0.08; // within 10% of 52w high — near breakout territory
+          } else if (distFrom52wHigh > 35) {
+            confidence -= 0.15; // far below 52w high — weak setup
+          }
+        }
+
         confidence = Math.min(0.95, Math.max(0.2, confidence));
       }
 
@@ -94,9 +108,14 @@ export class BreakoutAgent {
 
       const sectorTailwind = getSectorTailwind(breakoutAnalysis.sector || '');
 
+      const distFrom52wHigh = breakoutAnalysis.high52w > 0
+        ? (breakoutAnalysis.high52w - data.close) / breakoutAnalysis.high52w * 100
+        : null;
+
       const localReasoning = [
         `MA Stack: ${breakoutAnalysis.maStack ? 'Uptrend ✓' : 'No uptrend ✗'}`,
         `Vol: ${volumeRatio.toFixed(1)}x${volumeIncreasing ? ' ✓' : ''}`,
+        distFrom52wHigh !== null ? `52wH: ${distFrom52wHigh.toFixed(1)}% below` : null,
         `EPS: ${breakoutAnalysis.epsGrowthPct !== 0 ? (breakoutAnalysis.epsGrowthPct > 0 ? '+' : '') + breakoutAnalysis.epsGrowthPct.toFixed(1) + '%' : 'N/A'}`,
         `Rev: ${breakoutAnalysis.revenueGrowthPct !== 0 ? (breakoutAnalysis.revenueGrowthPct > 0 ? '+' : '') + breakoutAnalysis.revenueGrowthPct.toFixed(1) + '%' : 'N/A'}`,
         breakoutAnalysis.epsBeat !== false ? `EPS: ${breakoutAnalysis.epsBeat ? 'Beat' : 'Miss'} ${breakoutAnalysis.epsSurprisePct !== 0 ? (breakoutAnalysis.epsSurprisePct > 0 ? '+' : '') + breakoutAnalysis.epsSurprisePct.toFixed(1) + '%' : ''}` : null,

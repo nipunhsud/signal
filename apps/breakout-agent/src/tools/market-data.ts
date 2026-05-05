@@ -29,6 +29,8 @@ export interface MarketData {
   ma200: number;
   // Consolidation (bars in range before breakout)
   barsInRange?: number;
+  // 52-week high
+  high52w?: number;
   // Earnings
   earningsGrowth?: number; // YoY earnings growth %
   // Fundamentals
@@ -290,6 +292,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Calculate barsInRange: count consecutive bars in consolidation before breakout
       const barsInRange = calculateBarsInRange(allBars);
 
+      // Calculate 52-week high from ~250 days of data (~1 trading year)
+      const high52w = Math.max(...allBars.map((b: any) => b.high));
+
       let earningsGrowth = 0;
       let epsGrowthPct: number | undefined;
       let revenueGrowthPct: number | undefined;
@@ -406,6 +411,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         ma150,
         ma200,
         barsInRange,
+        high52w,
         earningsGrowth,
         epsGrowthPct,
         revenueGrowthPct,
