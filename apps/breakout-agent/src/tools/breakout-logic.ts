@@ -29,6 +29,15 @@ export interface BreakoutAnalysis {
   fedFundsRate: number;
 }
 
+export interface SetupAnalysis {
+  isSetup: boolean; // Consolidation + bullish MAs + low volume (pre-breakout)
+  setupType: 'none' | 'base' | 'handle';
+  distanceFromMA20: number; // % distance from 20 MA
+  distancePenalty: number; // Confidence penalty for distance from MA20
+  confidence: number; // Setup confidence (99% - distance penalty)
+}
+
+
 /**
  * Replicate Pine Script breakout logic exactly
  * Parameters match: len_fast_ma=20, len_slow_ma=50, len_trend_ma=200, min_structure_bars=5
@@ -142,4 +151,60 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   };
 }
 
+/**
+ * Detect pre-breakout setups: consolidation with bullish MAs turning, low volume
+ * These are "handles" or "bases" ready to break out
+ * Confidence: 99% base, minus penalty for distance from 20 MA
+ */
+export function analyzeSetup(data: MarketData, breakout: BreakoutAnalysis): SetupAnalysis {
+  const { ma20, close, barsInRange = 0, consolidationVolumePercent = 0 } = data;
+  const { maStackTurning, consolidationOk, breakoutSignal } = breakout;
+
+  // Setup conditions: has consolidation but NOT breaking out yet
+  const hasConsolidation = consolidationOk && barsInRange > 0;
+  const notBreakingOut = !breakoutSignal;
+  const bullishMAs = maStackTurning;
+
+  // Low volume during consolidation (< 80% of average)
+  const lowVolumeConsolidation = (consolidationVolumePercent || 0) < 80;
+
+  const isSetup = hasConsolidation && notBreakingOut && bullishMAs && lowVolumeConsolidation;
+
+  if (!isSetup) {
+    return {
+      isSetup: false,
+      setupType: 'none',
+      distanceFromMA20: 0,
+      distancePenalty: 0,
+      confidence: 0
+    };
+  }
+
+  // Calculate distance from 20 MA
+  const distanceFromMA20 = Math.abs(close - ma20) / ma20 * 100;
+
+  // Penalty for distance from 20 MA:
+  // <= 5% away = no penalty
+  // 5-10% away = -1% per 1% over 5%
+  // > 10% away = steeper penalty (lose more points)
+  let distancePenalty = 0;
+  if (distanceFromMA20 > 5) {
+    if (distanceFromMA20 <= 10) {
+      distancePenalty = distanceFromMA20 - 5; // -1% per 1% over 5%
+    } else {
+      // Steeper penalty for >10% away (e.g., 12% away = 2 + (2*1.5) = 5% penalty)
+      distancePenalty = (10 - 5) + (distanceFromMA20 - 10) * 1.5;
+    }
+  }
+
+  const confidence = Math.max(0.8, 0.99 - distancePenalty / 100);
+
+  return {
+    isSetup: true,
+    setupType: distanceFromMA20 < 3 ? 'handle' : 'base',
+    distanceFromMA20,
+    distancePenalty,
+    confidence
+  };
+}
 
