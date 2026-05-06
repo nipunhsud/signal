@@ -27,10 +27,14 @@ export interface MarketData {
   ma50: number;
   ma150: number;
   ma200: number;
-  // Consolidation (bars in range before breakout)
+  // Consolidation (bars in range before breakout) - Type 1
   barsInRange?: number;
   consolidationRangePercent?: number; // % range of consolidation bars
   consolidationVolumePercent?: number; // consolidation avg volume as % of 20-bar avg
+  // Setup consolidation (pre-breakout without breakout yet) - Type 2
+  setupBarsInRange?: number;
+  setupConsolidationRangePercent?: number;
+  setupConsolidationVolumePercent?: number;
   // 52-week high
   high52w?: number;
   // Earnings
@@ -212,6 +216,58 @@ function calculateBarsInRange(allBars: any[]): ConsolidationResult {
   };
 }
 
+/**
+ * Detect setup consolidations: loose recent consolidation without breakout yet
+ * For Type 2 signals (pre-breakout setups)
+ * Allows consolidations up to ~10% range with low volume (< 80%)
+ */
+function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
+  if (allBars.length < 10) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+
+  // Look at the last 10 bars to find consolidation
+  const recentBars = allBars.slice(-10);
+  const avgVolume = allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
+
+  // Find the longest consecutive consolidation in these 10 bars
+  let maxConsolidationBars = 0;
+  let bestConsolidationHigh = 0;
+  let bestConsolidationLow = 0;
+  let bestConsolidationVolume = 0;
+
+  // Check windows of different sizes, from longest to shortest
+  for (let winSize = recentBars.length - 1; winSize >= 3; winSize--) {
+    for (let i = 0; i <= recentBars.length - winSize; i++) {
+      const windowBars = recentBars.slice(i, i + winSize);
+      const high = Math.max(...windowBars.map((b: any) => b.high));
+      const low = Math.min(...windowBars.map((b: any) => b.low));
+      const rangePercent = ((high - low) / low) * 100;
+      const volPercent = windowBars.reduce((sum: number, b: any) => sum + b.volume, 0) / windowBars.length / avgVolume * 100;
+
+      // Allow consolidation (< 12% range) with low volume (< 80%)
+      // This captures handles and loose setups
+      if (rangePercent < 12 && volPercent < 80 && winSize > maxConsolidationBars) {
+        maxConsolidationBars = winSize;
+        bestConsolidationHigh = high;
+        bestConsolidationLow = low;
+        bestConsolidationVolume = volPercent;
+      }
+    }
+    // Stop once we found a valid consolidation
+    if (maxConsolidationBars > 0) break;
+  }
+
+  // Only return if we found a consolidation (at least 3 bars)
+  if (maxConsolidationBars >= 3) {
+    return {
+      barsInRange: maxConsolidationBars,
+      consolidationRangePercent: ((bestConsolidationHigh - bestConsolidationLow) / bestConsolidationLow) * 100,
+      consolidationVolumePercent: bestConsolidationVolume
+    };
+  }
+
+  return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+}
+
 let cachedFedRate: number | null = null;
 let fedRateFetchTime = 0;
 
@@ -300,8 +356,11 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const lows = history.map((b: any) => b.low);
       const avgVolume = history.reduce((sum: number, b: any) => sum + b.volume, 0) / history.length;
 
-      // Calculate barsInRange: count consecutive bars in consolidation before breakout
+      // Calculate barsInRange: count consecutive bars in consolidation before breakout (Type 1)
       const consolidationResult = calculateBarsInRange(allBars);
+
+      // Detect setup consolidation: tight consolidation without breakout (Type 2)
+      const setupConsolidationResult = detectSetupConsolidation(allBars);
 
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
@@ -424,6 +483,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         barsInRange: consolidationResult.barsInRange,
         consolidationRangePercent: consolidationResult.consolidationRangePercent,
         consolidationVolumePercent: consolidationResult.consolidationVolumePercent,
+        setupBarsInRange: setupConsolidationResult.barsInRange,
+        setupConsolidationRangePercent: setupConsolidationResult.consolidationRangePercent,
+        setupConsolidationVolumePercent: setupConsolidationResult.consolidationVolumePercent,
         high52w,
         earningsGrowth,
         epsGrowthPct,

@@ -13,26 +13,37 @@ app.use(express.static('public'));
 app.get('/api/signals', async (req, res) => {
   console.log('[/api/signals] Handler called');
   try {
-    // Get latest signal per asset, last 24h, deduped and filtered
-    const allSignals = await db.$queryRaw`
-      WITH ranked AS (
-        SELECT
+    // Type 1: Breakout signals (+ Type 3 Extensions)
+    const breakoutSignals = await db.$queryRaw`
+      WITH first_green AS (
+        SELECT DISTINCT ON (asset)
           asset,
-          confidence,
-          "currentPrice",
-          resistance,
-          support,
-          "shouldAlert",
-          "agentDecision",
-          "createdAt",
-          "pineScriptGreen",
-          "bullishCandle",
-          "barsInRange",
-          ROW_NUMBER() OVER (PARTITION BY asset ORDER BY "createdAt" DESC) as rn
+          "createdAt" AS "firstGreenAt",
+          resistance AS "entryResistance"
         FROM "BreakoutSignal"
-        WHERE "shouldAlert" = true
-          AND confidence >= 0.80
-          AND "createdAt" > NOW() - INTERVAL '24 hours'
+        WHERE "pineScriptGreen" = true
+        ORDER BY asset, "createdAt" ASC
+      ),
+      ranked AS (
+        SELECT
+          bs.asset,
+          bs.confidence,
+          bs."currentPrice",
+          bs.resistance,
+          bs.support,
+          bs."shouldAlert",
+          bs."agentDecision",
+          bs."createdAt",
+          bs."pineScriptGreen",
+          bs."bullishCandle",
+          bs."barsInRange",
+          fg."firstGreenAt",
+          fg."entryResistance",
+          ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
+        FROM "BreakoutSignal" bs
+        LEFT JOIN first_green fg ON fg.asset = bs.asset
+        WHERE bs.confidence >= 0.80
+          AND bs."createdAt" > NOW() - INTERVAL '24 hours'
       )
       SELECT
         asset,
@@ -45,34 +56,105 @@ app.get('/api/signals', async (req, res) => {
         "createdAt",
         "pineScriptGreen",
         "bullishCandle",
-        "barsInRange"
+        "barsInRange",
+        "firstGreenAt",
+        "entryResistance"
       FROM ranked
       WHERE rn = 1
         AND confidence >= 0.80
       ORDER BY confidence DESC, "createdAt" DESC
     `;
 
-    // Format response
-    const formatSignal = (s) => ({
-      asset: s.asset,
-      confidence: Math.round(s.confidence * 100),
-      currentPrice: s.currentPrice,
-      resistance: s.resistance,
-      support: s.support,
-      shouldAlert: s.shouldAlert,
-      agentDecision: s.agentDecision || '',
-      createdAt: s.createdAt,
-      pineScriptGreen: s.pineScriptGreen || false,
-      bullishCandle: s.bullishCandle || false,
-      barsInRange: s.barsInRange || 0,
-      signalType: s.pineScriptGreen ? 'green' : s.confidence >= 0.90 ? 'orange' : 'yellow',
+    // Type 2: Setup signals
+    const setupSignals = await db.signal.findMany({
+      where: {
+        agentName: 'BreakoutAgent',
+        signalType: { startsWith: 'setup-' },
+        confidence: { gte: 0.80 },
+        createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+      },
+      orderBy: { confidence: 'desc' },
     });
 
-    // Separate by confidence tier - prioritize Pine Script Green signals
-    const formatted = allSignals.map(formatSignal);
-    console.log('Formatted signal sample:', JSON.stringify(formatted[0], null, 2));
-    const highConfidence = formatted.filter(s => s.pineScriptGreen || s.confidence >= 99); // Green cone = 99%
-    const mediumConfidence = formatted.filter(s => !s.pineScriptGreen && s.confidence >= 80 && s.confidence < 99);
+    // Format Type 1 & Type 3 response
+    const formatBreakout = (s) => {
+      const firstGreenAt = s.firstGreenAt ? new Date(s.firstGreenAt) : null;
+      const hoursSinceFirstGreen = firstGreenAt ? (Date.now() - firstGreenAt.getTime()) / (1000 * 60 * 60) : null;
+      const daysSinceBreakout = hoursSinceFirstGreen !== null ? hoursSinceFirstGreen / 24 : null;
+      const entryResistance = s.entryResistance ? parseFloat(s.entryResistance) : null;
+
+      // Type 3: Green cone conditions met, but first green was before today (yellow dot re-test/extension)
+      // Type 1: Green cone conditions met for first time today (true green cone breakout)
+      const isExtension = (
+        s.pineScriptGreen &&
+        firstGreenAt !== null &&
+        daysSinceBreakout !== null &&
+        daysSinceBreakout > 0
+      );
+
+      const signalType = isExtension ? 'extension' : (s.pineScriptGreen ? 'breakout' : 'breakout');
+      const pctGainFromEntry = (isExtension && entryResistance > 0)
+        ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
+        : null;
+
+      // Extensions get lowered confidence (re-tests, not fresh breakouts)
+      let displayConfidence = Math.round(s.confidence * 100);
+      if (isExtension) {
+        displayConfidence = Math.min(displayConfidence, 85); // Cap extensions at 85%
+      }
+
+      return {
+        asset: s.asset,
+        confidence: displayConfidence,
+        currentPrice: s.currentPrice,
+        resistance: s.resistance,
+        support: s.support,
+        shouldAlert: s.shouldAlert,
+        agentDecision: s.agentDecision || '',
+        createdAt: s.createdAt,
+        pineScriptGreen: s.pineScriptGreen || false,
+        bullishCandle: s.bullishCandle || false,
+        barsInRange: s.barsInRange || 0,
+        signalType,
+        displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
+        firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
+        entryResistance,
+        daysSinceBreakout: daysSinceBreakout !== null ? Math.round(daysSinceBreakout * 10) / 10 : null,
+        pctGainFromEntry,
+      };
+    };
+
+    // Format Type 2 response
+    const formatSetup = (s) => {
+      const meta = s.metadata || {};
+      return {
+        asset: s.asset,
+        confidence: Math.round(s.confidence * 100),
+        currentPrice: meta.currentPrice || 0,
+        ma20: meta.ma20 || 0,
+        distanceFromMA20: meta.distanceFromMA20 || 0,
+        createdAt: s.createdAt,
+        signalType: 'setup',
+        setupType: meta.setupType || 'unknown',
+        consolidationRange: meta.setupConsolidationRangePercent || 0,
+        consolidationVolume: meta.setupConsolidationVolumePercent || 0,
+        displayType: s.confidence >= 0.95 ? 'green' : s.confidence >= 0.85 ? 'orange' : 'yellow',
+      };
+    };
+
+    // Combine and format
+    const formattedBreakouts = breakoutSignals.map(formatBreakout);
+    const formattedSetups = setupSignals.map(formatSetup);
+
+    const allSignals = [...formattedBreakouts, ...formattedSetups];
+    const sorted = allSignals.sort((a, b) => b.confidence - a.confidence);
+
+    const highConfidence = sorted.filter(s => s.confidence >= 95);
+    const mediumConfidence = sorted.filter(s => s.confidence >= 80 && s.confidence < 95);
+
+    const breakoutCount = formattedBreakouts.filter(s => s.signalType === 'breakout').length;
+    const extensionCount = formattedBreakouts.filter(s => s.signalType === 'extension').length;
+    const setupCount = formattedSetups.length;
 
     res.json({
       highConfidence,
@@ -80,7 +162,10 @@ app.get('/api/signals', async (req, res) => {
       stats: {
         highConfidenceCount: highConfidence.length,
         mediumConfidenceCount: mediumConfidence.length,
-        total: highConfidence.length + mediumConfidence.length,
+        total: sorted.length,
+        breakoutCount,
+        extensionCount,
+        setupCount,
       },
     });
   } catch (error) {
@@ -152,7 +237,7 @@ app.get('/api/candles/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const apiKey = process.env.FMP_API_KEY;
-    const url = `https://financialmodelingprep.com/api/v3/historical-price-full/${encodeURIComponent(symbol)}?limit=250&apikey=${apiKey}`;
+    const url = `https://financialmodelingprep.com/api/v3/historical-price-full/${encodeURIComponent(symbol)}?limit=500&apikey=${apiKey}`;
     const response = await fetch(url);
     const data = await response.json();
     const bars = (data.historical || [])

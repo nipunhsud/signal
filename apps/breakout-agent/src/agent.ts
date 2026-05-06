@@ -1,5 +1,5 @@
 import { fetchMarketData } from './tools/market-data.js';
-import { analyzeBreakout } from './tools/breakout-logic.js';
+import { analyzeBreakout, analyzeSetup } from './tools/breakout-logic.js';
 import { sendEmail } from './email.js';
 import { db } from './db.js';
 import { getConfig } from './config.js';
@@ -64,6 +64,7 @@ export class BreakoutAgent {
     try {
       const data = await fetchMarketData(asset, config.dataSource, config.ibkrBaseUrl);
       const breakoutAnalysis = analyzeBreakout(data);
+      const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
 
       const volumeRatio = data.volume / data.avgVolume;
       const volumeIncreasing = volumeRatio > 1.3;
@@ -164,6 +165,29 @@ export class BreakoutAgent {
           volumeRatio,
         },
       });
+
+      // Store setup signals (Type 2 green cone) in Signal table with metadata
+      if (setupAnalysis.isSetup) {
+        await db.signal.create({
+          data: {
+            agentName: 'BreakoutAgent',
+            asset,
+            signalType: `setup-${setupAnalysis.setupType}`,
+            confidence: setupAnalysis.confidence,
+            shouldAlert: setupAnalysis.confidence > 0.85,
+            metadata: {
+              setupType: setupAnalysis.setupType,
+              distanceFromMA20: setupAnalysis.distanceFromMA20,
+              distancePenalty: setupAnalysis.distancePenalty,
+              ma20: data.ma20,
+              currentPrice: data.close,
+              barsInRange: data.setupBarsInRange,
+              setupConsolidationRangePercent: data.setupConsolidationRangePercent,
+              setupConsolidationVolumePercent: data.setupConsolidationVolumePercent,
+            },
+          },
+        });
+      }
 
       return result;
     } catch (error) {

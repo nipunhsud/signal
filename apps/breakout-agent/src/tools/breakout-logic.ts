@@ -82,8 +82,9 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const hasEarningsGrowth = earningsGrowth > 5;
   const breakoutSignal = breakout && goodStructure && volumeOk && bullishCandle;
 
-  // PINE SCRIPT GREEN CONE: ALL conditions met = 99% base, adjusted for consolidation quality
-  const pineScriptGreen = breakoutSignal && consolidationOk && maStack;
+  // PINE SCRIPT GREEN CONE: Fresh breakout with meaningful consolidation (prevents false signals on extensions)
+  // Requires: breakout signal + strong consolidation (≥5 bars to avoid extension re-tests)
+  const pineScriptGreen = breakoutSignal && consolidationOk && maStack && barsInRange >= 5;
 
   // Calculate confidence - 99% ONLY when Pine Script green cone (all conditions met)
   let confidence = 0.1; // base for weak/no signal
@@ -157,18 +158,19 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
  * Confidence: 99% base, minus penalty for distance from 20 MA
  */
 export function analyzeSetup(data: MarketData, breakout: BreakoutAnalysis): SetupAnalysis {
-  const { ma20, close, barsInRange = 0, consolidationVolumePercent = 0 } = data;
-  const { maStackTurning, consolidationOk, breakoutSignal } = breakout;
+  const { ma20, close, setupBarsInRange = 0, setupConsolidationVolumePercent = 0 } = data;
+  const { maStackTurning, breakoutSignal } = breakout;
 
-  // Setup conditions: has consolidation but NOT breaking out yet
-  const hasConsolidation = consolidationOk && barsInRange > 0;
+  // Setup conditions: has tight consolidation but NOT breaking out yet
+  // Must have setup consolidation bars (Type 2 specific, not Type 1 breakout detection)
+  const hasSetupConsolidation = setupBarsInRange >= 3;
   const notBreakingOut = !breakoutSignal;
   const bullishMAs = maStackTurning;
 
   // Low volume during consolidation (< 80% of average)
-  const lowVolumeConsolidation = (consolidationVolumePercent || 0) < 80;
+  const lowVolumeConsolidation = (setupConsolidationVolumePercent || 0) < 80;
 
-  const isSetup = hasConsolidation && notBreakingOut && bullishMAs && lowVolumeConsolidation;
+  const isSetup = hasSetupConsolidation && notBreakingOut && bullishMAs && lowVolumeConsolidation;
 
   if (!isSetup) {
     return {

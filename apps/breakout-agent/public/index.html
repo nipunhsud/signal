@@ -35,6 +35,7 @@
         this._chartToken = 0;
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
+        this.signalTypeFilter = 'all';
         this.init();
       }
 
@@ -199,37 +200,71 @@
                 </div>
               </div>
 
-              <!-- Price Levels -->
+              <!-- Price & MA Levels -->
               <div class="border-t border-gray-700 pt-4 space-y-3">
-                <h3 class="font-semibold text-gray-300">📈 Price Levels</h3>
+                <h3 class="font-semibold text-gray-300">📈 ${signal.signalType === 'breakout' ? 'Price Levels' : signal.signalType === 'extension' ? 'Extension Levels' : 'Setup Levels'}</h3>
                 <div class="space-y-2">
                   <div class="flex justify-between items-center">
                     <span class="text-gray-400">Current Price</span>
                     <span class="font-mono text-lg font-bold">$${signal.currentPrice.toFixed(2)}</span>
                   </div>
-                  <div class="flex justify-between items-center">
-                    <span class="text-gray-400">Resistance (R)</span>
-                    <span class="font-mono text-red-400 text-lg">$${signal.resistance.toFixed(2)}</span>
-                  </div>
-                  <div class="flex justify-between items-center">
-                    <span class="text-gray-400">Support (S)</span>
-                    <span class="font-mono text-green-400 text-lg">$${signal.support.toFixed(2)}</span>
-                  </div>
-                  <div class="bg-gray-700 p-2 rounded text-sm mt-2">
-                    <div class="flex justify-between text-gray-300 mb-1">
-                      <span>Distance to Resistance</span>
-                      <span>${((signal.resistance - signal.currentPrice) / signal.currentPrice * 100).toFixed(1)}%</span>
+                  ${signal.signalType === 'breakout' ? `
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Resistance (R)</span>
+                      <span class="font-mono text-red-400 text-lg">$${signal.resistance.toFixed(2)}</span>
                     </div>
-                    <div class="flex justify-between text-gray-300">
-                      <span>Distance to Support</span>
-                      <span>${((signal.currentPrice - signal.support) / signal.currentPrice * 100).toFixed(1)}%</span>
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Support (S)</span>
+                      <span class="font-mono text-green-400 text-lg">$${signal.support.toFixed(2)}</span>
                     </div>
-                  </div>
+                    <div class="bg-gray-700 p-2 rounded text-sm mt-2">
+                      <div class="flex justify-between text-gray-300 mb-1">
+                        <span>Distance to Resistance</span>
+                        <span>${((signal.resistance - signal.currentPrice) / signal.currentPrice * 100).toFixed(1)}%</span>
+                      </div>
+                      <div class="flex justify-between text-gray-300">
+                        <span>Distance to Support</span>
+                        <span>${((signal.currentPrice - signal.support) / signal.currentPrice * 100).toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  ` : signal.signalType === 'extension' ? `
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Entry / Breakout Level</span>
+                      <span class="font-mono text-yellow-400 text-lg">$${signal.entryResistance !== null ? signal.entryResistance.toFixed(2) : '—'}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Current Resistance</span>
+                      <span class="font-mono text-red-400 text-lg">$${signal.resistance.toFixed(2)}</span>
+                    </div>
+                  ` : `
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">20-Day MA</span>
+                      <span class="font-mono text-blue-400 text-lg">$${signal.ma20.toFixed(2)}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Distance from MA20</span>
+                      <span class="font-mono text-green-400 text-lg">${signal.distanceFromMA20.toFixed(1)}%</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-400">Setup Type</span>
+                      <span class="font-mono text-yellow-400 text-lg uppercase">${signal.setupType}</span>
+                    </div>
+                    <div class="bg-gray-700 p-2 rounded text-sm mt-2">
+                      <div class="flex justify-between text-gray-300 mb-1">
+                        <span>Consolidation Range</span>
+                        <span>${signal.consolidationRange?.toFixed(1) || 'N/A'}%</span>
+                      </div>
+                      <div class="flex justify-between text-gray-300">
+                        <span>Volume Indecision</span>
+                        <span>${signal.consolidationVolume?.toFixed(0) || 'N/A'}%</span>
+                      </div>
+                    </div>
+                  `}
                 </div>
               </div>
 
-              <!-- Breakout Metrics (ONLY show when Pine Script Green) -->
-              ${signal.pineScriptGreen ? `
+              <!-- Type 1: Breakout Metrics (ONLY show when Pine Script Green) -->
+              ${signal.signalType === 'breakout' && signal.pineScriptGreen ? `
               <div class="border-t border-gray-700 pt-4">
                 <h3 class="font-semibold text-gray-300 mb-3">🎯 📊 Pine Script Green Cone</h3>
                 <div class="bg-green-900 p-3 rounded-lg border border-green-700 mb-3">
@@ -255,6 +290,80 @@
                   <div class="bg-gray-700 p-2 rounded flex justify-between">
                     <span class="text-gray-400">Bullish Candle</span>
                     <span class="text-green-400">✓ Close > Open</span>
+                  </div>
+                </div>
+              </div>
+              ` : ''}
+
+              <!-- Type 3: Extension Metrics (ONLY show for extension signals) -->
+              ${signal.signalType === 'extension' ? `
+              <div class="border-t border-gray-700 pt-4">
+                <h3 class="font-semibold text-gray-300 mb-3">🟡 Extension Phase</h3>
+                <div class="bg-yellow-900 p-3 rounded-lg border border-yellow-700 mb-3">
+                  <p class="text-yellow-200 font-semibold">
+                    ✓ Holding above breakout — Day ${signal.daysSinceBreakout !== null ? Math.ceil(signal.daysSinceBreakout) : '?'} of extension
+                  </p>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Entry Price (orig. resistance)</span>
+                    <span class="text-yellow-400 font-mono">\$${signal.entryResistance !== null ? signal.entryResistance.toFixed(2) : '—'}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Current Price</span>
+                    <span class="text-white font-mono font-bold">\$${signal.currentPrice.toFixed(2)}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">% Gain from Entry</span>
+                    <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'} font-mono font-bold">
+                      ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= 0 ? '+' : '') + signal.pctGainFromEntry.toFixed(2) + '%' : '—'}
+                    </span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Days in Extension</span>
+                    <span class="text-blue-400">${signal.daysSinceBreakout !== null ? signal.daysSinceBreakout.toFixed(1) + ' days' : '—'}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">First Green Date</span>
+                    <span class="text-gray-300">${signal.firstGreenAt ? new Date(signal.firstGreenAt).toLocaleDateString() + ' ' + new Date(signal.firstGreenAt).toLocaleTimeString() : '—'}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Still Above Entry</span>
+                    <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= -1 ? 'text-green-400' : 'text-red-400'}">
+                      ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= -1 ? '✓ Yes' : '✗ No — below entry') : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              ` : ''}
+
+              <!-- Type 2: Setup Metrics (ONLY show for setup signals) -->
+              ${signal.signalType === 'setup' ? `
+              <div class="border-t border-gray-700 pt-4">
+                <h3 class="font-semibold text-gray-300 mb-3">🔵 Pre-Breakout Setup</h3>
+                <div class="bg-blue-900 p-3 rounded-lg border border-blue-700 mb-3">
+                  <p class="text-blue-200 font-semibold">✓ ${(signal.setupType || 'base').toUpperCase()}: Ready to move</p>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Setup Type</span>
+                    <span class="text-blue-400 font-semibold">${(signal.setupType || 'base').toUpperCase()}</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Distance from MA20</span>
+                    <span class="text-green-400">${signal.distanceFromMA20.toFixed(1)}%</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Consolidation Range</span>
+                    <span class="text-yellow-400">${signal.consolidationRange?.toFixed(1) || 'N/A'}%</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">Volume Indecision</span>
+                    <span class="text-yellow-400">${signal.consolidationVolume?.toFixed(0) || 'N/A'}% of avg</span>
+                  </div>
+                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <span class="text-gray-400">MA Alignment</span>
+                    <span class="text-green-400">✓ Bullish Turning</span>
                   </div>
                 </div>
               </div>
@@ -323,12 +432,39 @@
               wickDownColor: '#ef4444',
             });
             series.setData(bars);
-            chart.timeScale().fitContent();
-            if (signal.resistance) {
-              series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
+            // Set chart to show ~30 days of data (or less if fewer bars available)
+            if (bars.length > 0) {
+              const barsToShow = Math.min(30, bars.length);
+              const startIdx = Math.max(0, bars.length - barsToShow);
+              const firstBar = bars[startIdx];
+              const lastBar = bars[bars.length - 1];
+              // Convert date string to Unix timestamp (in seconds)
+              const fromTime = Math.floor(new Date(firstBar.time).getTime() / 1000);
+              const toTime = Math.floor(new Date(lastBar.time).getTime() / 1000);
+              chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
+            } else {
+              chart.timeScale().fitContent();
             }
-            if (signal.support) {
-              series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
+
+            // Type 1: Show resistance/support
+            if (signal.signalType === 'breakout') {
+              if (signal.resistance) {
+                series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
+              }
+              if (signal.support) {
+                series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
+              }
+            }
+            // Type 3: Show entry resistance (yellow dashed) + current resistance (red dashed)
+            else if (signal.signalType === 'extension' && signal.entryResistance) {
+              series.createPriceLine({ price: signal.entryResistance, color: '#eab308', lineWidth: 2, lineStyle: 2, title: 'Entry' });
+              if (signal.resistance && signal.resistance !== signal.entryResistance) {
+                series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
+              }
+            }
+            // Type 2: Show MA20
+            else if (signal.signalType === 'setup' && signal.ma20) {
+              series.createPriceLine({ price: signal.ma20, color: '#3b82f6', lineWidth: 1, lineStyle: 2, title: 'MA20' });
             }
           })
           .catch(err => {
@@ -359,6 +495,10 @@
       }
 
       getSignalColor(signal) {
+        // Type 3 Extension always renders yellow to distinguish from fresh breakouts
+        if (signal.signalType === 'extension') {
+          return { emoji: '🟡', label: 'extension', bgClass: 'bg-yellow-600' };
+        }
         // Pine Script Green Cone = 99% (all conditions met)
         if (signal.pineScriptGreen || signal.confidence === 99) {
           return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
@@ -378,6 +518,11 @@
 
       getFilteredSignals() {
         let filtered = this.signals.filter(s => s.confidence >= this.minConfidence);
+
+        // Signal type filter
+        if (this.signalTypeFilter !== 'all') {
+          filtered = filtered.filter(s => s.signalType === this.signalTypeFilter);
+        }
 
         if (this.filtering) {
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
@@ -414,6 +559,7 @@
         const brightCount = validSignals.filter(s => !s.pineScriptGreen && s.confidence >= 95 && s.confidence < 99).length;
         const orangeCount = validSignals.filter(s => s.confidence > 85 && s.confidence < 95).length;
         const yellowCount = validSignals.filter(s => s.confidence > 75 && s.confidence <= 85).length;
+        const extensionCount = validSignals.filter(s => s.signalType === 'extension').length;
         const alertCount = validSignals.filter(s => s.shouldAlert).length;
 
         document.getElementById('app').innerHTML = `
@@ -426,7 +572,7 @@
               </div>
 
               <!-- Stats -->
-              <div class="grid grid-cols-6 gap-4 mb-8">
+              <div class="grid grid-cols-7 gap-4 mb-8">
                 <div class="bg-gray-800 p-4 rounded-lg">
                   <p class="text-gray-400 text-sm">Valid Signals</p>
                   <p class="text-2xl font-bold">${validSignals.length}</p>
@@ -438,6 +584,10 @@
                 <div class="bg-green-800 p-4 rounded-lg border border-green-600">
                   <p class="text-green-300 text-sm">💚 High Conf (95%)</p>
                   <p class="text-2xl font-bold text-green-300">${brightCount}</p>
+                </div>
+                <div class="bg-yellow-900 p-4 rounded-lg border border-yellow-700">
+                  <p class="text-yellow-400 text-sm">🟡 Extension (1-3d)</p>
+                  <p class="text-2xl font-bold text-yellow-400">${extensionCount}</p>
                 </div>
                 <div class="bg-gray-800 p-4 rounded-lg">
                   <p class="text-gray-400 text-sm">🟠 Orange (85%)</p>
@@ -476,6 +626,24 @@
                   </button>
                 </div>
 
+                <!-- Signal Type Filter Tabs -->
+                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg w-fit">
+                  ${[
+                    { key: 'all', label: 'All' },
+                    { key: 'breakout', label: '🟢 Type 1 Fresh' },
+                    { key: 'setup', label: '🔵 Type 2 Setup' },
+                    { key: 'extension', label: '🟡 Type 3 Ext' },
+                  ].map(tab => {
+                    const count = tab.key === 'all'
+                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
+                      : this.signals.filter(s => s.signalType === tab.key && s.confidence >= this.minConfidence).length;
+                    return `<button onclick="dashboard.signalTypeFilter='${tab.key}';dashboard.render();"
+                      class="px-4 py-2 rounded text-sm font-medium transition ${this.signalTypeFilter === tab.key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
+                      ${tab.label} (${count})
+                    </button>`;
+                  }).join('')}
+                </div>
+
                 <!-- Confidence Filter -->
                 <div class="bg-gray-800 p-4 rounded-lg">
                   <div class="flex items-center justify-between mb-2">
@@ -511,12 +679,12 @@
                           Asset ${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
                         </th>
                         <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('confidence');">
-                          Confidence ${this.sortBy === 'confidence' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
+                          Confidence ↓
                         </th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Price</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Resistance</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Support</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Type</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal Details</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Details 2</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Details 3</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold">Alert</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold">Time</th>
                       </tr>
@@ -530,7 +698,7 @@
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
                         return `
                           <tr
-                            class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 hover:bg-gray-700 cursor-pointer transition"
+                            class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 hover:bg-gray-700 cursor-pointer transition ${signal.signalType === 'extension' ? 'border-l-4 border-yellow-500' : ''}"
                             data-signal-index="${idx}"
                             onclick="dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
                           >
@@ -549,10 +717,40 @@
                                 ${signal.confidence}%
                               </div>
                             </td>
-                            <td class="px-6 py-4 text-2xl">${color.emoji} ${color.label}</td>
-                            <td class="px-6 py-4">$${signal.currentPrice.toFixed(2)}</td>
-                            <td class="px-6 py-4">$${signal.resistance.toFixed(2)}</td>
-                            <td class="px-6 py-4">$${signal.support.toFixed(2)}</td>
+                            <td class="px-6 py-4 text-2xl">${color.emoji}</td>
+                            <td class="px-6 py-4">
+                              ${signal.signalType === 'breakout' ? '🟢 Breakout' : signal.signalType === 'extension' ? '🟡 Ext ' + (signal.daysSinceBreakout !== null ? signal.daysSinceBreakout.toFixed(0) + 'd' : '') : '🔵 Setup'}
+                            </td>
+                            <td class="px-6 py-4">
+                              ${signal.signalType === 'breakout'
+                                ? 'Price: $' + signal.currentPrice.toFixed(2)
+                                : signal.signalType === 'extension'
+                                  ? (signal.pctGainFromEntry !== null
+                                      ? (signal.pctGainFromEntry >= 0 ? '+' : '') + signal.pctGainFromEntry.toFixed(1) + '% gain'
+                                      : 'Below entry')
+                                  : (signal.setupType || 'base').toUpperCase() + ' @ $' + signal.currentPrice.toFixed(2)
+                              }
+                            </td>
+                            <td class="px-6 py-4">
+                              ${signal.signalType === 'breakout'
+                                ? 'R: $' + signal.resistance.toFixed(2)
+                                : signal.signalType === 'extension'
+                                  ? (signal.entryResistance !== null
+                                      ? '$' + signal.entryResistance.toFixed(2) + ' → $' + signal.currentPrice.toFixed(2)
+                                      : '')
+                                  : 'MA20: $' + signal.ma20.toFixed(2)
+                              }
+                            </td>
+                            <td class="px-6 py-4">
+                              ${signal.signalType === 'breakout'
+                                ? 'S: $' + signal.support.toFixed(2)
+                                : signal.signalType === 'extension'
+                                  ? (signal.daysSinceBreakout !== null
+                                      ? signal.daysSinceBreakout.toFixed(1) + 'd since BO'
+                                      : '')
+                                  : 'Dist: ' + signal.distanceFromMA20.toFixed(1) + '%'
+                              }
+                            </td>
                             <td class="px-6 py-4">${signal.shouldAlert ? '⚠️' : ''}</td>
                             <td class="px-6 py-4 text-gray-400">${time}</td>
                           </tr>
