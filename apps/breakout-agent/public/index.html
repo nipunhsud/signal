@@ -11,6 +11,12 @@
       user-select: none;
       cursor: col-resize !important;
     }
+    #app.drawer-open .max-w-7xl {
+      max-width: 100% !important;
+    }
+    #app.drawer-open .p-8 {
+      padding-right: 2rem !important;
+    }
   </style>
 </head>
 <body class="bg-gray-900 text-white m-0 p-0">
@@ -151,12 +157,15 @@
 
       renderDrawer() {
         const drawer = document.getElementById('drawer');
+        const app = document.getElementById('app');
         if (!this.selectedAsset) {
           drawer.style.width = '0px';
           drawer.innerHTML = '';
+          app.classList.remove('drawer-open');
           return;
         }
         drawer.style.width = this.drawerWidth + 'px';
+        app.classList.add('drawer-open');
 
         const signal = this.selectedAsset;
         const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
@@ -171,7 +180,10 @@
           <div class="h-screen overflow-y-auto pl-1">
             <div class="sticky top-0 bg-gray-800 p-6 border-b border-gray-700">
               <div class="flex justify-between items-center mb-2">
-                <h2 class="text-2xl font-bold">${signal.asset}</h2>
+                <div class="flex items-center gap-2">
+                  <h2 class="text-2xl font-bold">${signal.asset}</h2>
+                  <a href="https://www.tradingview.com/symbols/${signal.asset.toUpperCase()}/" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">📈</a>
+                </div>
                 <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
               </div>
               <div class="text-xs text-gray-400 flex justify-between">
