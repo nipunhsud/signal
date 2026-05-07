@@ -139,6 +139,7 @@ app.get('/api/signals', async (req, res) => {
         consolidationRange: meta.setupConsolidationRangePercent || 0,
         consolidationVolume: meta.setupConsolidationVolumePercent || 0,
         displayType: s.confidence >= 0.95 ? 'green' : s.confidence >= 0.85 ? 'orange' : 'yellow',
+        agentDecision: meta.agentDecision || s.agentDecision || '',
       };
     };
 
