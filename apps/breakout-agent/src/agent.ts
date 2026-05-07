@@ -168,6 +168,15 @@ export class BreakoutAgent {
 
       // Store setup signals (Type 2 green cone) in Signal table with metadata
       if (setupAnalysis.isSetup) {
+        const setupReasoning = [
+          `Setup Type: ${setupAnalysis.setupType}`,
+          `MA Stack: ${breakoutAnalysis.maStack ? 'Uptrend ✓' : 'No uptrend ✗'}`,
+          `Distance from MA20: ${setupAnalysis.distanceFromMA20.toFixed(2)}%`,
+          `Consolidation: ${data.setupBarsInRange || 0} bars`,
+          `Range: ${data.setupConsolidationRangePercent || 0}%`,
+          `Volume: ${data.setupConsolidationVolumePercent || 0}% of avg`,
+        ].join(' | ');
+
         await db.signal.create({
           data: {
             agentName: 'BreakoutAgent',
@@ -184,6 +193,7 @@ export class BreakoutAgent {
               barsInRange: data.setupBarsInRange,
               setupConsolidationRangePercent: data.setupConsolidationRangePercent,
               setupConsolidationVolumePercent: data.setupConsolidationVolumePercent,
+              agentDecision: setupReasoning,
             },
           },
         });
