@@ -15,6 +15,7 @@ model BreakoutSignal {
 
   // Asset being traded
   asset String
+  assetType String @default("stock") // "stock" or "etf"
 
   // Agent analysis
   confidence Float @default(0)
@@ -41,6 +42,23 @@ model BreakoutSignal {
   fedFundsRate Float?
   volumeRatio Float?
 
+  // ETF-specific
+  expenseRatio Float?
+  assetUnderManagement Float?
+  etfCategory String?
+
+  // Type 1 vs Type 3 classification
+  breakoutType String @default("unknown") // "Type1" (fresh), "Type3" (continuation), "unknown"
+  priorBaseDays Int @default(0) // # of days in prior consolidation
+  priorBaseRangePercent Float @default(0) // % range of that base
+  priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout
+  liquidityOk Boolean @default(false) // >= 100k avg volume
+
+  // Email alert tracking (deduplication)
+  alertSentAt DateTime?       // When first alert was sent
+  lastAlertPrice Float?       // Price when last alert was sent
+  lastAlertAt DateTime?       // Timestamp of last alert (for re-alerts)
+
   // Timing
   createdAt DateTime @default(now())
   executedAt DateTime?
@@ -49,6 +67,7 @@ model BreakoutSignal {
   @@index([asset, createdAt])
   @@index([shouldAlert, createdAt])
   @@index([pineScriptGreen, createdAt])
+  @@index([asset, alertSentAt])
 }
 
 // Extensible for future agents
@@ -117,6 +136,14 @@ model Shortlist {
   notes     String?
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([asset])
+}
+
+model RemovedAsset {
+  id        String   @id @default(cuid())
+  asset     String   @unique
+  removedAt DateTime @default(now())
 
   @@index([asset])
 }

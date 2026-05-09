@@ -13,6 +13,7 @@ function calculateMA(prices: number[], period: number): number {
 
 export interface MarketData {
   asset: string;
+  assetType: 'stock' | 'etf'; // Indicator for stock vs ETF
   open: number;
   high: number;
   low: number;
@@ -48,6 +49,14 @@ export interface MarketData {
   industry?: string;
   beta?: number;
   fedFundsRate?: number;
+  // ETF-specific
+  expenseRatio?: number; // Annual expense ratio %
+  assetUnderManagement?: number; // AUM in millions
+  etfCategory?: string; // ETF category/type
+  // Prior base and breakout detection (Type 1 vs Type 3 classification)
+  priorBaseDays?: number; // # of days in prior consolidation (bars[-60..-6])
+  priorBaseRangePercent?: number; // % range of that base
+  priorBreakoutBarsAgo?: number; // bars ago since a prior high-volume breakout was detected (0 = none found)
 }
 
 /**
@@ -99,6 +108,7 @@ async function fetchBinanceData(symbol: string): Promise<MarketData> {
 
     return {
       asset: symbol,
+      assetType: 'stock',
       open: latest.open,
       high: latest.high,
       low: latest.low,
@@ -153,6 +163,7 @@ async function fetchAlpacaData(symbol: string): Promise<MarketData> {
 
     return {
       asset: symbol,
+      assetType: 'stock',
       open: latest.open,
       high: latest.high,
       low: latest.low,
@@ -177,6 +188,15 @@ interface ConsolidationResult {
   barsInRange: number;
   consolidationRangePercent: number;
   consolidationVolumePercent: number; // avg consolidation volume as % of 20-bar avg
+}
+
+interface PriorBaseResult {
+  priorBaseDays: number;
+  priorBaseRangePercent: number;
+}
+
+interface PriorBreakoutResult {
+  priorBreakoutBarsAgo: number;
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
@@ -266,6 +286,104 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
   }
 
   return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+}
+
+/**
+ * Detect prior consolidation base (look back 80+ bars for a real base before recent movement)
+ * For Type 1 validation: needs a real 12+ day base before the recent breakout
+ */
+function detectPriorBase(allBars: any[]): PriorBaseResult {
+  if (allBars.length < 100) return { priorBaseDays: 0, priorBaseRangePercent: 0 };
+
+  // Scan a broader window: up to 80 bars back to capture consolidations
+  const maxLookback = Math.min(100, allBars.length - 6);
+  const priorWindow = allBars.slice(-maxLookback, -6);
+  if (priorWindow.length < 12) return { priorBaseDays: 0, priorBaseRangePercent: 0 };
+
+  // Find longest consecutive consolidation (min 12 bars) within 20% band
+  let maxBaseBars = 0;
+  let bestBaseHigh = 0;
+  let bestBaseLow = 0;
+
+  for (let winSize = priorWindow.length; winSize >= 12; winSize--) {
+    for (let i = 0; i <= priorWindow.length - winSize; i++) {
+      const windowBars = priorWindow.slice(i, i + winSize);
+      const high = Math.max(...windowBars.map((b: any) => b.high));
+      const low = Math.min(...windowBars.map((b: any) => b.low));
+      const rangePercent = ((high - low) / low) * 100;
+
+      if (rangePercent <= 20 && winSize > maxBaseBars) {
+        maxBaseBars = winSize;
+        bestBaseHigh = high;
+        bestBaseLow = low;
+      }
+    }
+    if (maxBaseBars > 0) break;
+  }
+
+  if (maxBaseBars >= 12) {
+    return {
+      priorBaseDays: maxBaseBars,
+      priorBaseRangePercent: ((bestBaseHigh - bestBaseLow) / bestBaseLow) * 100,
+    };
+  }
+
+  return { priorBaseDays: 0, priorBaseRangePercent: 0 };
+}
+
+/**
+ * Detect prior high-volume breakout in the 60 bars before recent consolidation
+ * Used to identify Type 3 (continuation after prior breakout) vs Type 1 (fresh breakout)
+ */
+function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
+  if (allBars.length < 70) return { priorBreakoutBarsAgo: 0 };
+
+  const priorWindow = allBars.slice(-65, -6);
+  if (priorWindow.length < 20) return { priorBreakoutBarsAgo: 0 };
+
+  let mostRecentBreakoutBarsAgo = 0;
+
+  // Scan for high-volume breakout: close > rolling 20-bar high AND volume >= 1.5x rolling avg
+  for (let i = 20; i < priorWindow.length; i++) {
+    const bar = priorWindow[i];
+    const historyBars = priorWindow.slice(Math.max(0, i - 20), i);
+    const rollingHigh = Math.max(...historyBars.map((b: any) => b.high));
+    const rollingAvgVol = historyBars.reduce((sum: number, b: any) => sum + b.volume, 0) / historyBars.length;
+
+    if (bar.close > rollingHigh && bar.volume >= rollingAvgVol * 1.5) {
+      // Found a prior breakout; record how many bars ago
+      mostRecentBreakoutBarsAgo = priorWindow.length - 1 - i;
+    }
+  }
+
+  return { priorBreakoutBarsAgo: mostRecentBreakoutBarsAgo };
+}
+
+async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expenseRatio?: number; aum?: number; category?: string }> {
+  try {
+    const etfData = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/api/v3/etf/${symbol}`,
+        {
+          params: { apikey: apiKey },
+          timeout: 10000,
+        }
+      );
+      return res.data;
+    });
+
+    if (etfData && Array.isArray(etfData) && etfData[0]) {
+      const profile = etfData[0];
+      return {
+        expenseRatio: profile.expenseRatio ? parseFloat(profile.expenseRatio) : undefined,
+        aum: profile.aum ? profile.aum : undefined,
+        category: profile.etfCategory || profile.category,
+      };
+    }
+  } catch {
+    // Not an ETF or endpoint failed, return empty
+  }
+  return {};
 }
 
 let cachedFedRate: number | null = null;
@@ -362,6 +480,10 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Detect setup consolidation: tight consolidation without breakout (Type 2)
       const setupConsolidationResult = detectSetupConsolidation(allBars);
 
+      // Detect prior base and prior breakout for Type 1 vs Type 3 classification
+      const priorBaseResult = detectPriorBase(allBars);
+      const priorBreakoutResult = detectPriorBreakout(allBars);
+
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
 
@@ -442,31 +564,47 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         // optional
       }
 
-      try {
-        const profileData = await globalRateLimiter.execute(async () => {
-          const profileRes = await axios.get(
-            `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
-            {
-              params: { apikey: apiKey },
-              timeout: 10000,
-            }
-          );
-          return profileRes.data;
-        });
+      let assetType: 'stock' | 'etf' = 'stock';
+      let expenseRatio: number | undefined;
+      let assetUnderManagement: number | undefined;
+      let etfCategory: string | undefined;
 
-        if (profileData && profileData.length > 0) {
-          sector = profileData[0].sector;
-          industry = profileData[0].industry;
-          beta = profileData[0].beta;
+      // Try to fetch ETF profile first to detect if it's an ETF
+      const etfProfile = await fetchETFProfile(symbol, apiKey);
+      if (etfProfile.aum !== undefined || etfProfile.expenseRatio !== undefined) {
+        assetType = 'etf';
+        expenseRatio = etfProfile.expenseRatio;
+        assetUnderManagement = etfProfile.aum;
+        etfCategory = etfProfile.category;
+      } else {
+        // Only fetch stock profile if not an ETF
+        try {
+          const profileData = await globalRateLimiter.execute(async () => {
+            const profileRes = await axios.get(
+              `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+              {
+                params: { apikey: apiKey },
+                timeout: 10000,
+              }
+            );
+            return profileRes.data;
+          });
+
+          if (profileData && profileData.length > 0) {
+            sector = profileData[0].sector;
+            industry = profileData[0].industry;
+            beta = profileData[0].beta;
+          }
+        } catch {
+          // optional
         }
-      } catch {
-        // optional
       }
 
       const fedFundsRate = await getFedRate(apiKey);
 
       const result: MarketData = {
         asset: symbol,
+        assetType,
         open: latest.open,
         high: latest.high,
         low: latest.low,
@@ -496,6 +634,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         industry,
         beta,
         fedFundsRate,
+        expenseRatio,
+        assetUnderManagement,
+        etfCategory,
+        priorBaseDays: priorBaseResult.priorBaseDays,
+        priorBaseRangePercent: priorBaseResult.priorBaseRangePercent,
+        priorBreakoutBarsAgo: priorBreakoutResult.priorBreakoutBarsAgo,
       };
 
       marketDataCache.set(cacheKey, result);
@@ -563,6 +707,7 @@ async function fetchIBKRData(symbol: string, baseUrl: string): Promise<MarketDat
 
     return {
       asset: symbol,
+      assetType: 'stock',
       open: latest.o,
       high: latest.h,
       low: latest.l,

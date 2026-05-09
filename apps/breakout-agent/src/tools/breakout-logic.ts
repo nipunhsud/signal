@@ -27,6 +27,12 @@ export interface BreakoutAnalysis {
   industry: string;
   beta: number;
   fedFundsRate: number;
+  // Type 1 (fresh breakout from real base) vs Type 3 (continuation)
+  breakoutType: 'Type1' | 'Type3' | 'unknown';
+  priorBaseDays: number;
+  priorBaseRangePercent: number;
+  priorBreakoutBarsAgo: number;
+  liquidityOk: boolean;
 }
 
 export interface SetupAnalysis {
@@ -43,8 +49,9 @@ export interface SetupAnalysis {
  * Parameters match: len_fast_ma=20, len_slow_ma=50, len_trend_ma=200, min_structure_bars=5
  */
 export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
-  const { ma20, ma50, ma150, ma200, close, open, volume, avgVolume, highs, lows, earningsGrowth = 0, epsGrowthPct = 0, revenueGrowthPct = 0, epsBeat = false, epsSurprisePct = 0, sector = '', industry = '', beta = 0, fedFundsRate = 5.25, barsInRange = 0, high52w = 0 } = data;
+  const { ma20, ma50, ma150, ma200, close, open, volume, avgVolume, highs, lows, earningsGrowth = 0, epsGrowthPct = 0, revenueGrowthPct = 0, epsBeat = false, epsSurprisePct = 0, sector = '', industry = '', beta = 0, fedFundsRate = 5.25, barsInRange = 0, high52w = 0, priorBaseDays = 0, priorBaseRangePercent = 0, priorBreakoutBarsAgo = 0 } = data;
   const MIN_STRUCTURE_BARS = 5;
+  const MIN_AVG_VOLUME = 100_000; // Liquidity filter
 
   // Donchian resistance/support (highest high / lowest low of last 20 bars)
   const resistance = Math.max(...highs);
@@ -52,6 +59,9 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
   // Volume check: volume >= avgVolume * 1.2
   const volumeOk = volume >= avgVolume * 1.2;
+
+  // Liquidity check: 20-day avg volume >= 100k shares
+  const liquidityOk = avgVolume >= MIN_AVG_VOLUME;
 
   // Proper uptrend: 200 < 150 < 50 < 20 (ascending MAs)
   const maStack = ma200 < ma150 && ma150 < ma50 && ma50 < ma20;
@@ -86,14 +96,30 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   // Requires: breakout signal + strong consolidation (≥5 bars to avoid extension re-tests)
   const pineScriptGreen = breakoutSignal && consolidationOk && maStack && barsInRange >= 5;
 
-  // Calculate confidence - 99% ONLY when Pine Script green cone (all conditions met)
+  // Type 1 vs Type 3 classification
+  // Type 1: Fresh breakout from real prior base with no recent prior breakout
+  // Type 3: Just a continuation (has pineScriptGreen but no real prior base, or riding a prior breakout)
+  let breakoutType: 'Type1' | 'Type3' | 'unknown' = 'unknown';
+
+  if (pineScriptGreen && liquidityOk) {
+    // Check Type 1 conditions
+    const hasGoodPriorBase = priorBaseDays >= 15 && priorBaseRangePercent <= 35;
+    const noRecentPriorBreakout = priorBreakoutBarsAgo === 0 || priorBreakoutBarsAgo > 45;
+
+    if (hasGoodPriorBase && noRecentPriorBreakout) {
+      breakoutType = 'Type1';
+    } else {
+      breakoutType = 'Type3';
+    }
+  } else if (breakoutSignal && maStack) {
+    breakoutType = 'Type3';
+  }
+
+  // Calculate confidence
   let confidence = 0.1; // base for weak/no signal
 
-  if (pineScriptGreen) {
-    // All conditions met: full Pine Script signal = green cone on TradingView
-    // Apply dual penalties:
-    // 1. Range penalty: -1% per 1% over 5% (e.g., 9% range = -4%)
-    // 2. Volume penalty: -1% per 1% over 100% (e.g., 105% volume = -5%)
+  if (breakoutType === 'Type1') {
+    // Fresh breakout from real base = 99% baseline
     let consolidationQuality = 0.99;
 
     const rangePercent = data.consolidationRangePercent || 0;
@@ -109,6 +135,23 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     }
 
     consolidationQuality = Math.max(0.8, consolidationQuality); // Floor at 80%
+    confidence = consolidationQuality;
+  } else if (breakoutType === 'Type3') {
+    // Continuation: start at 40%, degrade based on how long ago the real breakout was
+    confidence = 0.40;
+    if (priorBreakoutBarsAgo > 0) {
+      const degradation = priorBreakoutBarsAgo * 0.005; // -0.5% per bar ago
+      confidence = Math.max(0.20, confidence - degradation);
+    }
+  } else if (pineScriptGreen) {
+    // Green cone signal but no liquidity = lower confidence
+    let consolidationQuality = 0.80;
+    const rangePercent = data.consolidationRangePercent || 0;
+    if (rangePercent > 5) {
+      const rangePenalty = (rangePercent - 5) / 100;
+      consolidationQuality -= rangePenalty;
+    }
+    consolidationQuality = Math.max(0.5, consolidationQuality);
     confidence = consolidationQuality;
   } else if (breakoutSignal && maStack) {
     // Breakout + structure + volume, but missing consolidation or bullish candle
@@ -149,6 +192,11 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     industry,
     beta,
     fedFundsRate,
+    breakoutType,
+    priorBaseDays,
+    priorBaseRangePercent,
+    priorBreakoutBarsAgo,
+    liquidityOk,
   };
 }
 
