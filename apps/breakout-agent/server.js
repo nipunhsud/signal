@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 const app = express();
 const db = new PrismaClient();
@@ -13,6 +14,12 @@ app.use(express.static('public'));
 app.get('/api/signals', async (req, res) => {
   console.log('[/api/signals] Handler called');
   try {
+    // Get removed assets
+    const removedAssets = await db.removedAsset.findMany({
+      select: { asset: true }
+    });
+    const removedAssetSet = new Set(removedAssets.map(r => r.asset));
+
     // Type 1: Breakout signals (+ Type 3 Extensions)
     const breakoutSignals = await db.$queryRaw`
       WITH first_green AS (
@@ -37,6 +44,9 @@ app.get('/api/signals', async (req, res) => {
           bs."pineScriptGreen",
           bs."bullishCandle",
           bs."barsInRange",
+          bs."assetType",
+          bs."expenseRatio",
+          bs."etfCategory",
           fg."firstGreenAt",
           fg."entryResistance",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
@@ -57,6 +67,9 @@ app.get('/api/signals', async (req, res) => {
         "pineScriptGreen",
         "bullishCandle",
         "barsInRange",
+        "assetType",
+        "expenseRatio",
+        "etfCategory",
         "firstGreenAt",
         "entryResistance"
       FROM ranked
@@ -97,14 +110,33 @@ app.get('/api/signals', async (req, res) => {
         ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
         : null;
 
-      // Extensions get lowered confidence (re-tests, not fresh breakouts)
+      // Extensions show true confidence with distance penalty
       let displayConfidence = Math.round(s.confidence * 100);
-      if (isExtension) {
-        displayConfidence = Math.min(displayConfidence, 85); // Cap extensions at 85%
+      if (isExtension && pctGainFromEntry !== null) {
+        // Penalize based on extension distance from entry:
+        // 0-2%: no penalty (ideal re-entry zone)
+        // 2-5%: -1% per 1% gain
+        // 5%+: -1.5% per 1% gain
+        let extensionPenalty = 0;
+        if (pctGainFromEntry > 2) {
+          if (pctGainFromEntry <= 5) {
+            extensionPenalty = pctGainFromEntry - 2; // -1% per 1%
+          } else {
+            extensionPenalty = (5 - 2) + (pctGainFromEntry - 5) * 1.5; // steeper for >5%
+          }
+        }
+        displayConfidence = Math.max(50, displayConfidence - Math.round(extensionPenalty)); // Floor at 50%
       }
+
+      const assetTypeLabel = s.assetType === 'etf' ? '📊 ETF' : '📈 STOCK';
+      const etfNote = s.assetType === 'etf' && s.expenseRatio ? ` (${s.expenseRatio}% expense)` : '';
 
       return {
         asset: s.asset,
+        assetType: s.assetType || 'stock',
+        assetTypeLabel,
+        expenseRatio: s.expenseRatio,
+        etfCategory: s.etfCategory,
         confidence: displayConfidence,
         currentPrice: s.currentPrice,
         resistance: s.resistance,
@@ -121,6 +153,7 @@ app.get('/api/signals', async (req, res) => {
         entryResistance,
         daysSinceBreakout: daysSinceBreakout !== null ? Math.round(daysSinceBreakout * 10) / 10 : null,
         pctGainFromEntry,
+        displayAsset: `${s.asset} ${assetTypeLabel}${etfNote}`,
       };
     };
 
@@ -143,9 +176,13 @@ app.get('/api/signals', async (req, res) => {
       };
     };
 
-    // Combine and format
-    const formattedBreakouts = breakoutSignals.map(formatBreakout);
-    const formattedSetups = setupSignals.map(formatSetup);
+    // Combine and format, filtering out removed assets
+    const formattedBreakouts = breakoutSignals
+      .filter(s => !removedAssetSet.has(s.asset))
+      .map(formatBreakout);
+    const formattedSetups = setupSignals
+      .filter(s => !removedAssetSet.has(s.asset))
+      .map(formatSetup);
 
     const allSignals = [...formattedBreakouts, ...formattedSetups];
     const sorted = allSignals.sort((a, b) => b.confidence - a.confidence);
@@ -228,6 +265,30 @@ app.delete('/api/shortlist/:asset', async (req, res) => {
   try {
     const { asset } = req.params;
     await db.shortlist.delete({ where: { asset } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/removed-assets', async (req, res) => {
+  try {
+    const { asset } = req.body;
+    const item = await db.removedAsset.upsert({
+      where: { asset },
+      update: { removedAt: new Date() },
+      create: { asset, id: randomUUID() },
+    });
+    res.json(item);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/removed-assets/:asset', async (req, res) => {
+  try {
+    const { asset } = req.params;
+    await db.removedAsset.delete({ where: { asset } });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

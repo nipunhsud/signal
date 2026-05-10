@@ -36,4 +36,5 @@ export class RateLimiter {
   }
 }
 
-export const globalRateLimiter = new RateLimiter(300);
+const callsPerMinute = parseInt(process.env.RATE_LIMIT_PER_MIN || '140');
+export const globalRateLimiter = new RateLimiter(callsPerMinute);

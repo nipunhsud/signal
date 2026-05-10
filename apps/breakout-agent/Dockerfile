@@ -32,6 +32,6 @@ CMD ["node", "dist/index.js"]
 FROM base AS dashboard
 WORKDIR /app/apps/breakout-agent
 EXPOSE 3000
-COPY entrypoint.sh /app/apps/breakout-agent/
+COPY apps/breakout-agent/entrypoint.sh /app/apps/breakout-agent/
 RUN chmod +x /app/apps/breakout-agent/entrypoint.sh
 ENTRYPOINT ["/app/apps/breakout-agent/entrypoint.sh"]

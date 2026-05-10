@@ -61,9 +61,19 @@ Scans assets every hour (or per `CRON_SCHEDULE`), stores signals in DB, sends em
 See `.env.example` for full reference.
 
 **Key configs:**
-- `DATA_SOURCE` — `binance` (crypto) or `alpaca` (stocks)
+- `DATA_SOURCE` — `fmp` (Financial Modeling Prep), `binance` (crypto), or `alpaca` (stocks)
 - `CRON_SCHEDULE` — Standard cron format (default: hourly)
-- `SCAN_ASSETS` — Which symbols to monitor
+- `SCAN_ASSETS` — Which symbols to monitor (CSV list)
+
+**FMP Screener filtering (parallel Docker tier setup):**
+- `MIN_MARKET_CAP` — Minimum market cap in dollars (default: `300000000` = $300M)
+- `MIN_VOLUME` — Minimum average daily volume in shares (default: `100000`)
+- `DYNAMIC_ASSETS` — Set to `true` to fetch filtered universe from FMP
+
+**Sharding & rate limiting (for 5-tier parallel scan):**
+- `SHARD_INDEX` — Which tier this is (0-4, set per `.env.tiers/.env.tier-N`)
+- `SHARD_TOTAL` — Total number of tiers (default: `5`)
+- `RATE_LIMIT_PER_MIN` — API calls per minute for this container (default: `140`)
 
 ## Docker Troubleshooting
 
@@ -101,50 +111,68 @@ docker build -t signal-forge .
 docker run -d --env-file .env signal-forge
 ```
 
-**Distributed tiers (60 agents + dashboard + postgres):**
+**Parallel 5-tier scan with FMP (750 calls/min limit):**
+
+The fastest way to scan 3,000+ liquid US stocks (~26 minutes total):
+
 ```bash
-# 1. Generate tier .env files from your base config
-./scripts/generate-tier-envs.sh 50 60
+# Start all 5 tiers with PM2 for persistent monitoring
+pm2 start ecosystem.config.js
+pm2 logs signal-forge-scan
+pm2 save
+```
 
-# 2. Run all services
-docker-compose up -d
+Or run directly without PM2:
+```bash
+docker-compose up --build agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
+```
 
-# 3. Access dashboard
+**How it works:**
+- **FMP Screener filters** assets to: market cap >$300M + avg volume >100k shares
+- **Universe reduced**: ~15,908 → ~3,000 liquid stocks (80% fewer API calls)
+- **5 Docker containers** process shards in parallel (modulo sharding for even distribution)
+- **Per-container rate limit**: 140 calls/min × 5 = 700/min total (under 750 hard cap)
+- **Estimated scan time**: ~26 minutes for full filtered universe
+- **Cache layer**: 5-min TTL reduces actual API calls by 60-70%
+
+**Access dashboard:**
+```bash
 # http://localhost:3000
+```
 
-# 4. View logs
+**View logs:**
+```bash
+# With PM2
+pm2 logs signal-forge-scan -f
+
+# Or with docker-compose
 docker-compose logs -f agent-tier-1
-docker-compose logs -f dashboard
 ```
 
-**Parameters for tier generation:**
-- `50` = assets per tier
-- `60` = number of tiers
-- Total assets scanned: 50 × 60 = 3,000
-
-Adjust as needed:
+**Customize filters:**
+Edit `.env.tiers/.env.tier-{1..5}`:
 ```bash
-./scripts/generate-tier-envs.sh 100 30   # 30 tiers × 100 assets
-./scripts/generate-tier-envs.sh 25 120   # 120 tiers × 25 assets
+MIN_MARKET_CAP=500000000  # $500M instead of $300M
+MIN_VOLUME=200000         # 200k instead of 100k
 ```
 
-### Optimized Setup: FMP API (750 calls/min limit)
-
-If using Financial Modeling Prep (FMP) API with 6,270+ assets, use the rate-limited 10-tier config:
-
+Then restart:
 ```bash
-cd /Users/nipunsud/github/signal-forge
-./scripts/generate-tier-envs.sh 627 10
-python3 scripts/generate-docker-compose.py 10 > docker-compose.yml
-docker-compose down && docker-compose up -d
+pm2 restart signal-forge-scan
 ```
 
-This reduces from 100 parallel tiers to 10 sequential tiers with:
-- **Global rate limiter** (750 calls/min, enforced across all instances)
-- **Market data cache** (5-min TTL, ~60-70% fewer API calls)
-- **Steady scan**: ~15 min full scan with <1% error rate (vs 20-40% with 100 tiers)
+**Rescan with fresh database:**
 
-See [OPTIMIZATION-CHECKLIST.md](OPTIMIZATION-CHECKLIST.md) for details and monitoring.
+When asked to rescan, always rebuild Docker images to clear the Prisma client cache:
+```bash
+pm2 stop signal-forge-scan
+docker-compose down
+docker-compose build --no-cache agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
+pm2 start ecosystem.config.js
+pm2 logs signal-forge-scan
+```
+
+The `--no-cache` flag ensures Prisma client regenerates with the latest schema, preventing "column does not exist" errors.
 
 ## Tech Stack
 

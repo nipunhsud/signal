@@ -359,7 +359,7 @@ function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
   return { priorBreakoutBarsAgo: mostRecentBreakoutBarsAgo };
 }
 
-async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expenseRatio?: number; aum?: number; category?: string }> {
+async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expenseRatio?: number; aum?: number; category?: string; isETF?: boolean }> {
   try {
     const etfData = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
@@ -378,12 +378,39 @@ async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expens
         expenseRatio: profile.expenseRatio ? parseFloat(profile.expenseRatio) : undefined,
         aum: profile.aum ? profile.aum : undefined,
         category: profile.etfCategory || profile.category,
+        isETF: true,
       };
     }
   } catch {
-    // Not an ETF or endpoint failed, return empty
+    // Not an ETF or endpoint failed, try profile endpoint as fallback
   }
   return {};
+}
+
+async function detectAssetTypeFromProfile(symbol: string, apiKey: string): Promise<'stock' | 'etf'> {
+  try {
+    const profileData = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+        {
+          params: { apikey: apiKey },
+          timeout: 10000,
+        }
+      );
+      return res.data;
+    });
+
+    if (profileData && Array.isArray(profileData) && profileData[0]) {
+      const profile = profileData[0];
+      // Check if profile indicates it's an ETF
+      if (profile.isEtf || profile.type === 'etf' || symbol.match(/^(SPY|QQQ|IVV|VOO|VTI|EEM|TLT|GLD|IWM|EFA|VEA|VGK|VWO|AGG|BND|SCHB|SPLG|ITOT|SCHX|RPV|RSP|EUSA|IUSV|IYLD|VB|VBK|VBR|VO|VOT|VOX|VTV|VUG|VV|VXF|IGTR)$/i)) {
+        return 'etf';
+      }
+    }
+  } catch {
+    // Profile fetch failed, will default to stock
+  }
+  return 'stock';
 }
 
 let cachedFedRate: number | null = null;
@@ -571,32 +598,38 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
 
       // Try to fetch ETF profile first to detect if it's an ETF
       const etfProfile = await fetchETFProfile(symbol, apiKey);
-      if (etfProfile.aum !== undefined || etfProfile.expenseRatio !== undefined) {
+      if (etfProfile.isETF || etfProfile.aum !== undefined || etfProfile.expenseRatio !== undefined) {
         assetType = 'etf';
         expenseRatio = etfProfile.expenseRatio;
         assetUnderManagement = etfProfile.aum;
         etfCategory = etfProfile.category;
       } else {
-        // Only fetch stock profile if not an ETF
-        try {
-          const profileData = await globalRateLimiter.execute(async () => {
-            const profileRes = await axios.get(
-              `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
-              {
-                params: { apikey: apiKey },
-                timeout: 10000,
-              }
-            );
-            return profileRes.data;
-          });
+        // If ETF endpoint didn't confirm it's an ETF, try profile-based detection
+        const detectedType = await detectAssetTypeFromProfile(symbol, apiKey);
+        if (detectedType === 'etf') {
+          assetType = 'etf';
+        } else {
+          // Only fetch stock profile if not an ETF
+          try {
+            const profileData = await globalRateLimiter.execute(async () => {
+              const profileRes = await axios.get(
+                `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+                {
+                  params: { apikey: apiKey },
+                  timeout: 10000,
+                }
+              );
+              return profileRes.data;
+            });
 
-          if (profileData && profileData.length > 0) {
-            sector = profileData[0].sector;
-            industry = profileData[0].industry;
-            beta = profileData[0].beta;
+            if (profileData && profileData.length > 0) {
+              sector = profileData[0].sector;
+              industry = profileData[0].industry;
+              beta = profileData[0].beta;
+            }
+          } catch {
+            // optional
           }
-        } catch {
-          // optional
         }
       }
 

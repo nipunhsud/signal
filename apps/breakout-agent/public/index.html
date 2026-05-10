@@ -17,6 +17,30 @@
     #app.drawer-open .p-8 {
       padding-right: 2rem !important;
     }
+    .signal-row {
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .signal-row:hover {
+      background-color: rgba(239, 68, 68, 0.1) !important;
+    }
+    .signal-row.removing {
+      opacity: 0.5;
+      animation: slideOut 0.3s ease forwards;
+    }
+    @keyframes slideOut {
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+    .delete-btn {
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .signal-row:hover .delete-btn {
+      opacity: 1;
+    }
   </style>
 </head>
 <body class="bg-gray-900 text-white m-0 p-0">
@@ -42,6 +66,8 @@
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
         this.signalTypeFilter = 'all';
+        this._searchDebounceTimer = null;
+        this.showShortlist = false;
         this.init();
       }
 
@@ -145,6 +171,25 @@
         }
       }
 
+      async removeAsset(asset, e) {
+        if (e) e.stopPropagation();
+        const row = e?.target?.closest('tr');
+        try {
+          if (row) row.classList.add('removing');
+          await fetch('/api/removed-assets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asset }),
+          });
+          await new Promise(resolve => setTimeout(resolve, 300)); // Wait for animation
+          this.closeDrawer();
+          await this.fetchSignals();
+        } catch (error) {
+          console.error('Failed to remove asset:', error);
+          if (row) row.classList.remove('removing');
+        }
+      }
+
       openDrawer(signal) {
         this.selectedAsset = signal;
         this.renderDrawer();
@@ -182,7 +227,10 @@
               <div class="flex justify-between items-center mb-2">
                 <div class="flex items-center gap-2">
                   <h2 class="text-2xl font-bold">${signal.asset}</h2>
-                  <a href="https://www.tradingview.com/symbols/${signal.asset.toUpperCase()}/" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">📈</a>
+                  <span class="text-sm font-semibold px-2 py-1 rounded ${signal.assetType === 'etf' ? 'bg-yellow-900 text-yellow-300' : 'bg-green-900 text-green-300'}">
+                    ${signal.assetType === 'etf' ? '📊 ETF' : '📈 STOCK'}
+                  </span>
+                  <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">📈</a>
                 </div>
                 <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
               </div>
@@ -211,6 +259,27 @@
                   <span>${signal.shouldAlert ? '⚠️ Active' : '✓ Tracked'}</span>
                 </div>
               </div>
+
+              <!-- ETF Info (if applicable) -->
+              ${signal.assetType === 'etf' ? `
+              <div class="border-t border-gray-700 pt-4 mt-4">
+                <h3 class="font-semibold text-gray-300 mb-3">📊 ETF Details</h3>
+                <div class="space-y-2">
+                  ${signal.expenseRatio ? `
+                    <div class="bg-gray-700 p-2 rounded flex justify-between">
+                      <span class="text-gray-400">Expense Ratio</span>
+                      <span class="text-yellow-400 font-mono">${signal.expenseRatio}%</span>
+                    </div>
+                  ` : ''}
+                  ${signal.etfCategory ? `
+                    <div class="bg-gray-700 p-2 rounded flex justify-between">
+                      <span class="text-gray-400">Category</span>
+                      <span class="text-blue-400">${signal.etfCategory}</span>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+              ` : ''}
 
               <!-- Price & MA Levels -->
               <div class="border-t border-gray-700 pt-4 space-y-3">
@@ -389,8 +458,8 @@
                 </div>
               </div>
 
-              <!-- Shortlist -->
-              <div class="border-t border-gray-700 pt-4">
+              <!-- Shortlist & Remove -->
+              <div class="border-t border-gray-700 pt-4 space-y-3">
                 <button
                   onclick="dashboard.toggleShortlist('${assetEscaped}', event);"
                   class="w-full px-4 py-2 rounded-lg font-semibold transition ${
@@ -400,6 +469,12 @@
                   }"
                 >
                   ${inShortlist ? '⭐ Remove from Shortlist' : '☆ Add to Shortlist'}
+                </button>
+                <button
+                  onclick="dashboard.removeAsset('${assetEscaped}', event); event.preventDefault();"
+                  class="w-full px-4 py-2 rounded-lg font-semibold transition bg-red-900 hover:bg-red-800 text-red-100 border border-red-700"
+                >
+                  Hide from Dashboard
                 </button>
               </div>
 
@@ -507,25 +582,44 @@
       }
 
       getSignalColor(signal) {
-        // Type 3 Extension always renders yellow to distinguish from fresh breakouts
+        // Type 1: Fresh breakout at 99% = Green with badge
+        if (signal.signalType === 'breakout' && signal.pineScriptGreen && signal.confidence === 99) {
+          return { emoji: '🟢', label: 'green-type1', bgClass: 'bg-green-700', badge: 'TYPE 1' };
+        }
+        // 99% Green Cone (Type 2/3)
+        if (signal.confidence === 99) {
+          return { emoji: '🟢', label: 'green', bgClass: 'bg-green-700' };
+        }
+        // 95-98%: High confidence, bright green
+        if (signal.confidence >= 95) {
+          return { emoji: '🟢', label: 'bright-green', bgClass: 'bg-green-600' };
+        }
+        // 90-94%: Green gradient down
+        if (signal.confidence >= 90) {
+          return { emoji: '🟢', label: 'green-fade', bgClass: 'bg-green-500' };
+        }
+        // 85-89%: Orange
+        if (signal.confidence >= 85) {
+          return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
+        }
+        // Type 3 Extensions below 85%
         if (signal.signalType === 'extension') {
           return { emoji: '🟡', label: 'extension', bgClass: 'bg-yellow-600' };
         }
-        // Pine Script Green Cone = 99% (all conditions met)
-        if (signal.pineScriptGreen || signal.confidence === 99) {
-          return { emoji: '🟢', label: 'green', bgClass: 'bg-green-600' };
-        }
-        // 95-98%: High confidence breakout (near-perfect but not full green cone)
-        if (signal.confidence >= 95) {
-          return { emoji: '💚', label: 'light-green', bgClass: 'bg-green-500' };
-        }
-        if (signal.confidence > 85) return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
-        if (signal.confidence > 75) return { emoji: '🟡', label: 'yellow', bgClass: 'bg-yellow-600' };
+        // Below 85% = filtered out
         return { emoji: '⚪', label: 'neutral', bgClass: 'bg-gray-600' };
       }
 
       getTradingViewUrl(asset) {
         return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(asset)}`;
+      }
+
+      updateSearch(value) {
+        clearTimeout(this._searchDebounceTimer);
+        this._searchDebounceTimer = setTimeout(() => {
+          this.filtering = value;
+          this.render();
+        }, 500);
       }
 
       getFilteredSignals() {
@@ -564,7 +658,102 @@
         this.render();
       }
 
+      renderShortlistPanel() {
+        const signalsByAsset = new Map(this.signals.map(s => [s.asset, s]));
+        const items = this.shortlist.map(item => {
+          const signal = signalsByAsset.get(item.asset);
+          return {
+            ...item,
+            signal,
+            price: signal?.currentPrice,
+            confidence: signal?.confidence,
+          };
+        });
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <!-- Header -->
+              <div class="mb-8 flex items-center gap-4">
+                <button onclick="dashboard.showShortlist = false; dashboard.render();" class="text-2xl hover:text-gray-400 transition">←</button>
+                <div>
+                  <h1 class="text-4xl font-bold">⭐ Shortlist</h1>
+                  <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+
+              <!-- Content -->
+              ${items.length === 0 ? `
+                <div class="text-center py-12">
+                  <p class="text-gray-400 text-lg">No assets on shortlist yet</p>
+                  <p class="text-gray-500 text-sm mt-2">Click the ☆ star next to any asset to add it</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800 rounded-lg overflow-hidden">
+                  <table class="w-full">
+                    <thead>
+                      <tr class="bg-gray-700 border-b border-gray-700">
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Asset</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Added</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal Status</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Price</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Confidence</th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${items.map((item, idx) => `
+                        <tr class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 hover:bg-gray-700 transition">
+                          <td class="px-6 py-4 font-bold text-lg">
+                            <span class="text-blue-400 hover:text-blue-300 cursor-pointer inline-flex items-center gap-2" onclick="dashboard.openDrawer(dashboard.signals.find(s => s.asset === '${item.asset}') || {asset: '${item.asset}'})">
+                              ${item.asset}
+                              <a href="${this.getTradingViewUrl(item.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm" title="Open on TradingView" onclick="event.stopPropagation();">↗</a>
+                            </span>
+                          </td>
+                          <td class="px-6 py-4 text-sm text-gray-400">
+                            ${new Date(item.addedAt).toLocaleDateString()}
+                          </td>
+                          <td class="px-6 py-4">
+                            ${item.signal
+                              ? item.signal.signalType === 'breakout'
+                                ? '<span class="text-green-400">🟢 Breakout</span>'
+                                : item.signal.signalType === 'extension'
+                                ? '<span class="text-yellow-400">🟡 Extension</span>'
+                                : '<span class="text-blue-400">🔵 Setup</span>'
+                              : '<span class="text-gray-500">—</span>'
+                            }
+                          </td>
+                          <td class="px-6 py-4 font-mono">
+                            ${item.price ? '$' + item.price.toFixed(2) : '—'}
+                          </td>
+                          <td class="px-6 py-4">
+                            ${item.confidence ? `<span class="bg-blue-700 px-2 py-1 rounded text-white text-sm">${item.confidence}%</span>` : '—'}
+                          </td>
+                          <td class="px-6 py-4">
+                            <button onclick="dashboard.toggleShortlist('${item.asset.replace(/'/g, "\\'")}', event);" class="px-3 py-1 bg-red-900 hover:bg-red-800 text-red-100 rounded text-sm font-semibold transition">
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
       render() {
+        if (this.showShortlist) {
+          this.renderShortlistPanel();
+        } else {
+          this.renderMainDashboard();
+        }
+      }
+
+      renderMainDashboard() {
         const filtered = this.getFilteredSignals();
         const validSignals = this.signals.filter(s => s.confidence >= this.minConfidence);
         const greenCount = validSignals.filter(s => s.pineScriptGreen || s.confidence === 99).length;
@@ -609,8 +798,8 @@
                   <p class="text-gray-400 text-sm">⚠️ Alerts</p>
                   <p class="text-2xl font-bold text-red-500">${alertCount}</p>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">⭐ Shortlist</p>
+                <div class="bg-yellow-900 p-4 rounded-lg border border-yellow-700 cursor-pointer hover:bg-yellow-800 transition" onclick="dashboard.showShortlist = true; dashboard.render();">
+                  <p class="text-yellow-400 text-sm">⭐ Shortlist</p>
                   <p class="text-2xl font-bold text-yellow-500">${this.shortlist.length}</p>
                 </div>
               </div>
@@ -622,7 +811,7 @@
                     type="text"
                     placeholder="Search assets..."
                     value="${this.filtering}"
-                    onkeyup="dashboard.filtering = this.value; dashboard.render();"
+                    onkeyup="dashboard.updateSearch(this.value);"
                     class="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                   <button
@@ -710,23 +899,34 @@
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
                         return `
                           <tr
-                            class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 hover:bg-gray-700 cursor-pointer transition ${signal.signalType === 'extension' ? 'border-l-4 border-yellow-500' : ''}"
+                            class="signal-row ${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'} border-b border-gray-700 cursor-pointer ${signal.signalType === 'extension' ? 'border-l-4 border-yellow-500' : ''}"
                             data-signal-index="${idx}"
-                            onclick="dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
+                            onclick="if (!event.target.closest('button')) dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
                           >
                             <td class="px-6 py-4 font-bold text-lg">
                               <div class="flex items-center gap-2">
-                                <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="text-lg hover:scale-125 transition" title="Add to shortlist">
+                                <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="text-lg hover:scale-125 transition flex-shrink-0" title="Add to shortlist">
                                   ${inShortlist ? '⭐' : '☆'}
                                 </button>
-                                <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">
-                                  ${signal.asset} ↗
-                                </a>
+                                <div class="flex-grow">
+                                  <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">
+                                    ${signal.asset} ↗
+                                  </a>
+                                  <span class="ml-2 text-sm ${signal.assetType === 'etf' ? 'text-yellow-400' : 'text-green-400'} font-semibold">
+                                    ${signal.assetType === 'etf' ? '📊 ETF' : '📈 STOCK'}
+                                  </span>
+                                </div>
+                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-red-500 hover:text-red-300 px-2 py-1 rounded hover:bg-red-900 text-sm font-semibold flex-shrink-0 transition" title="Remove from dashboard">
+                                  Remove
+                                </button>
                               </div>
                             </td>
                             <td class="px-6 py-4">
-                              <div class="${color.bgClass} px-3 py-1 rounded text-white font-bold inline-block">
-                                ${signal.confidence}%
+                              <div class="flex items-center gap-2">
+                                <div class="${color.bgClass} px-3 py-1 rounded text-white font-bold inline-block">
+                                  ${signal.confidence}%
+                                </div>
+                                ${color.badge ? `<span class="text-xs bg-blue-700 px-2 py-1 rounded text-white font-semibold">${color.badge}</span>` : ''}
                               </div>
                             </td>
                             <td class="px-6 py-4 text-2xl">${color.emoji}</td>

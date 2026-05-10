@@ -3,7 +3,8 @@
     "allow": [
       "Bash(psql postgresql://nipunsud@localhost:5432/signal_forge -c ' *)",
       "Bash(pnpm -F breakout-agent build)",
-      "Bash(docker network *)"
+      "Bash(docker network *)",
+      "Bash(node backtest-proper.js)"
     ]
   }
 }

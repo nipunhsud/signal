@@ -42,45 +42,66 @@ export class BreakoutAgent {
     const apiKey = process.env.FMP_API_KEY;
     if (!apiKey) throw new Error('FMP_API_KEY not set');
 
+    const MIN_MARKET_CAP = parseInt(process.env.MIN_MARKET_CAP || '300000000'); // $300M default
+    const MIN_VOLUME = parseInt(process.env.MIN_VOLUME || '100000'); // 100k shares default
     const US_EXCHANGES = new Set(['NASDAQ', 'NYSE', 'AMEX']);
 
     try {
-      console.log('[FMP] Fetching US asset lists...');
+      console.log('[FMP] Fetching filtered US asset list...');
       const startTime = Date.now();
 
-      const [stocksRes, etfsRes] = await Promise.all([
-        fetch(`https://financialmodelingprep.com/api/v3/available-traded/list?apikey=${apiKey}`),
-        fetch(`https://financialmodelingprep.com/api/v3/etf/list?apikey=${apiKey}`)
-      ]);
+      // Use stock screener for pre-filtered universe (market cap + volume)
+      const screenerRes = await fetch(
+        `https://financialmodelingprep.com/api/v3/stock-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&exchange=NYSE,NASDAQ,AMEX&limit=10000&apikey=${apiKey}`
+      );
 
-      if (!stocksRes.ok || !etfsRes.ok) {
-        throw new Error(`FMP API error: stocks=${stocksRes.status}, etfs=${etfsRes.status}`);
+      if (!screenerRes.ok) {
+        console.warn(`[FMP] Screener returned ${screenerRes.status}, falling back to available-traded/list`);
+        // Fallback to available-traded/list if screener fails
+        const fallbackRes = await fetch(`https://financialmodelingprep.com/api/v3/available-traded/list?apikey=${apiKey}`);
+        if (!fallbackRes.ok) {
+          throw new Error(`FMP API error: ${fallbackRes.status}`);
+        }
+        interface FMPAsset {
+          symbol: string;
+          exchangeShortName?: string;
+        }
+        const assetsData = (await fallbackRes.json()) as FMPAsset[];
+        const allAssets = (Array.isArray(assetsData) ? assetsData : [])
+          .filter((s) => US_EXCHANGES.has(s.exchangeShortName || ''))
+          .map((s) => s.symbol)
+          .filter(Boolean);
+        const elapsed = Date.now() - startTime;
+        console.log(`[FMP] Fell back to ${allAssets.length} US assets in ${elapsed}ms`);
+        return allAssets;
       }
 
-      interface FMPAsset {
+      interface ScreenerResult {
         symbol: string;
-        exchangeShortName?: string;
-        type?: string;
       }
-
-      const stocksData = (await stocksRes.json()) as FMPAsset[];
-      const etfsData = (await etfsRes.json()) as FMPAsset[];
-
-      // Filter to US exchanges only
-      const stockSymbols = (Array.isArray(stocksData) ? stocksData : [])
-        .filter((s) => US_EXCHANGES.has(s.exchangeShortName || ''))
+      const screenerData = (await screenerRes.json()) as ScreenerResult[];
+      const stockSymbols = (Array.isArray(screenerData) ? screenerData : [])
         .map((s) => s.symbol)
         .filter(Boolean);
 
-      const etfSymbols = (Array.isArray(etfsData) ? etfsData : [])
-        .filter((e) => US_EXCHANGES.has(e.exchangeShortName || ''))
-        .map((e) => e.symbol)
-        .filter(Boolean);
+      // Fetch ETFs separately (screener doesn't include ETFs)
+      const etfsRes = await fetch(`https://financialmodelingprep.com/api/v3/etf/list?apikey=${apiKey}`);
+      const etfSymbols = !etfsRes.ok ? [] : (() => {
+        interface FMPAsset {
+          symbol: string;
+          exchangeShortName?: string;
+        }
+        const etfsData = [] as FMPAsset[];
+        return (Array.isArray(etfsData) ? etfsData : [])
+          .filter((e) => US_EXCHANGES.has(e.exchangeShortName || ''))
+          .map((e) => e.symbol)
+          .filter(Boolean);
+      })();
 
       const allAssets = [...new Set([...stockSymbols, ...etfSymbols])];
 
       const elapsed = Date.now() - startTime;
-      console.log(`[FMP] Fetched ${allAssets.length} US assets (${stockSymbols.length} stocks + ${etfSymbols.length} ETFs) in ${elapsed}ms`);
+      console.log(`[FMP] Fetched ${allAssets.length} US assets (${stockSymbols.length} stocks + ${etfSymbols.length} ETFs, market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k) in ${elapsed}ms`);
 
       return allAssets;
     } catch (error) {
@@ -90,15 +111,23 @@ export class BreakoutAgent {
   }
 
   // 5 parallel tiers × 3 concurrency = 15 assets in flight
-  // Rate limiter (750/min = 12.5 calls/sec) queues FMP calls fairly
+  // Rate limiter (per-container from env, sum across tiers < 750/min) queues FMP calls fairly
   // Cache reduces actual API calls by 60-70%, so even safer
   async analyzeMarkets(assets: string[]): Promise<BreakoutResult[]> {
     const config = getConfig();
     const CONCURRENCY = 3;
+
+    // Sharding: divide work across containers
+    const SHARD_INDEX = parseInt(process.env.SHARD_INDEX || '0');
+    const SHARD_TOTAL = parseInt(process.env.SHARD_TOTAL || '1');
+    const shardedAssets = assets.filter((_, i) => i % SHARD_TOTAL === SHARD_INDEX);
+
+    console.log(`[Shard ${SHARD_INDEX}/${SHARD_TOTAL}] Analyzing ${shardedAssets.length}/${assets.length} assets`);
+
     const results: BreakoutResult[] = [];
 
-    for (let i = 0; i < assets.length; i += CONCURRENCY) {
-      const batch = assets.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < shardedAssets.length; i += CONCURRENCY) {
+      const batch = shardedAssets.slice(i, i + CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(asset => this.analyzeAsset(asset, config))
       );
@@ -212,7 +241,7 @@ export class BreakoutAgent {
 
       // Only Type 1 fresh breakouts trigger alerts
       const isType1Breakout = breakoutAnalysis.breakoutType === 'Type1';
-      const shouldAlert = isType1Breakout && isValid && confidence > 0.85 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal;
+      const shouldAlert = isType1Breakout && isValid && confidence > 0.90 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -223,7 +252,7 @@ export class BreakoutAgent {
         }
         if (!breakoutAnalysis.liquidityOk) reasons.push(`illiquid (vol:${(data.avgVolume || 0).toFixed(0)})`);
         if (!isValid) reasons.push(`invalid (maStack:${breakoutAnalysis.maStack} volumeOk:${breakoutAnalysis.volumeOk})`);
-        if (confidence <= 0.85) reasons.push(`confidence:${(confidence*100).toFixed(0)}%`);
+        if (confidence <= 0.90) reasons.push(`confidence:${(confidence*100).toFixed(0)}%`);
         if (!breakoutAnalysis.breakoutSignal) reasons.push('no breakout signal');
         if (breakoutAnalysis.breakoutType === 'Type3' && !shouldAlert) {
           console.log(`⊘ ${asset}: Type 3 continuation (${reasons.join(', ')}) — tracked but not alerted`);
@@ -318,6 +347,12 @@ export class BreakoutAgent {
   }
 
   async sendAlert(result: BreakoutResult): Promise<void> {
+    // Only send email alerts if confidence is above 90%
+    if (result.confidence <= 0.90) {
+      console.log(`⊘ Skip alert ${result.asset}: Confidence ${(result.confidence * 100).toFixed(0)}% <= 90% threshold`);
+      return;
+    }
+
     // Check if we already sent an alert for this asset
     const existingAlert = await db.breakoutSignal.findFirst({
       where: { asset: result.asset, alertSentAt: { not: null } },

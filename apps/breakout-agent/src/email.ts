@@ -10,8 +10,11 @@ function getTransporter() {
   const pass = process.env.EMAIL_PASS;
 
   if (!user || !pass) {
+    console.error('❌ Email config error: EMAIL_USER or EMAIL_PASS not set');
     throw new Error('EMAIL_USER and EMAIL_PASS not configured');
   }
+
+  console.log(`📧 Email config: service=${service}, user=${user}, pass=${pass ? '***' : 'empty'}`);
 
   transporter = nodemailer.createTransport({
     service,
