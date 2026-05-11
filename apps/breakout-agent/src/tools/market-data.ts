@@ -2,6 +2,7 @@ import axios from 'axios';
 import https from 'https';
 import { globalRateLimiter } from './rate-limiter.js';
 import { marketDataCache } from './cache.js';
+import { isDelisted } from './delistings.js';
 
 const ibAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -449,6 +450,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error('FMP_API_KEY not set');
 
+  // Dynamic delisting check before fetching data
+  const delistingStatus = await isDelisted(symbol, apiKey);
+  if (delistingStatus.delisted) {
+    throw new Error(`[DELISTED] ${symbol}: ${delistingStatus.reason || 'Stock is delisted'}`);
+  }
+
   const cacheKey = `market:${symbol}`;
   const cached = marketDataCache.get<MarketData>(cacheKey);
   if (cached) {
@@ -608,29 +615,29 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         const detectedType = await detectAssetTypeFromProfile(symbol, apiKey);
         if (detectedType === 'etf') {
           assetType = 'etf';
-        } else {
-          // Only fetch stock profile if not an ETF
-          try {
-            const profileData = await globalRateLimiter.execute(async () => {
-              const profileRes = await axios.get(
-                `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
-                {
-                  params: { apikey: apiKey },
-                  timeout: 10000,
-                }
-              );
-              return profileRes.data;
-            });
-
-            if (profileData && profileData.length > 0) {
-              sector = profileData[0].sector;
-              industry = profileData[0].industry;
-              beta = profileData[0].beta;
-            }
-          } catch {
-            // optional
-          }
         }
+      }
+
+      // Fetch sector/industry for both stocks and ETFs (they may have sector classification)
+      try {
+        const profileData = await globalRateLimiter.execute(async () => {
+          const profileRes = await axios.get(
+            `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+            {
+              params: { apikey: apiKey },
+              timeout: 10000,
+            }
+          );
+          return profileRes.data;
+        });
+
+        if (profileData && profileData.length > 0) {
+          sector = profileData[0].sector;
+          industry = profileData[0].industry;
+          beta = profileData[0].beta;
+        }
+      } catch {
+        // sector/industry optional
       }
 
       const fedFundsRate = await getFedRate(apiKey);

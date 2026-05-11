@@ -66,6 +66,7 @@
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
         this.signalTypeFilter = 'all';
+        this.sectorFilter = 'all';
         this._searchDebounceTimer = null;
         this.showShortlist = false;
         this.init();
@@ -630,6 +631,11 @@
           filtered = filtered.filter(s => s.signalType === this.signalTypeFilter);
         }
 
+        // Sector filter
+        if (this.sectorFilter !== 'all') {
+          filtered = filtered.filter(s => s.sector === this.sectorFilter);
+        }
+
         if (this.filtering) {
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
         }
@@ -656,6 +662,16 @@
           this.sortDirection = 'desc';
         }
         this.render();
+      }
+
+      getSectors() {
+        const sectors = new Set();
+        this.signals.forEach(s => {
+          if (s.sector && s.sector !== 'Unknown') {
+            sectors.add(s.sector);
+          }
+        });
+        return Array.from(sectors).sort();
       }
 
       renderShortlistPanel() {
@@ -845,6 +861,25 @@
                   }).join('')}
                 </div>
 
+                <!-- Sector Filter Tabs -->
+                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg flex-wrap">
+                  ${[
+                    { key: 'all', label: 'All Sectors' },
+                    ...this.getSectors().map(sector => ({
+                      key: sector,
+                      label: sector
+                    })),
+                  ].map(tab => {
+                    const count = tab.key === 'all'
+                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
+                      : this.signals.filter(s => (s.sector === tab.key || (tab.key === 'all')) && s.confidence >= this.minConfidence).length;
+                    return `<button onclick="dashboard.sectorFilter='${tab.key}';dashboard.render();"
+                      class="px-3 py-2 rounded text-sm font-medium transition ${this.sectorFilter === tab.key ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
+                      ${tab.label} (${count})
+                    </button>`;
+                  }).join('')}
+                </div>
+
                 <!-- Confidence Filter -->
                 <div class="bg-gray-800 p-4 rounded-lg">
                   <div class="flex items-center justify-between mb-2">
@@ -882,6 +917,7 @@
                         <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('confidence');">
                           Confidence ↓
                         </th>
+                        <th class="px-6 py-3 text-left text-sm font-semibold">Sector</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold">Type</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold">Signal Details</th>
                         <th class="px-6 py-3 text-left text-sm font-semibold">Details 2</th>
@@ -928,6 +964,9 @@
                                 </div>
                                 ${color.badge ? `<span class="text-xs bg-blue-700 px-2 py-1 rounded text-white font-semibold">${color.badge}</span>` : ''}
                               </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-300">
+                              <span class="bg-gray-700 px-2 py-1 rounded inline-block">${signal.sector || 'Unknown'}</span>
                             </td>
                             <td class="px-6 py-4 text-2xl">${color.emoji}</td>
                             <td class="px-6 py-4">

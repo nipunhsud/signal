@@ -3,6 +3,7 @@ import { analyzeBreakout, analyzeSetup } from './tools/breakout-logic.js';
 import { sendEmail } from './email.js';
 import { db } from './db.js';
 import { getConfig } from './config.js';
+import { filterDelistedStocks } from './tools/delistings.js';
 
 function getSectorTailwind(sector: string): string {
   const map: Record<string, string> = {
@@ -103,7 +104,9 @@ export class BreakoutAgent {
       const elapsed = Date.now() - startTime;
       console.log(`[FMP] Fetched ${allAssets.length} US assets (${stockSymbols.length} stocks + ${etfSymbols.length} ETFs, market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k) in ${elapsed}ms`);
 
-      return allAssets;
+      // Filter out delisted stocks
+      const activeAssets = await filterDelistedStocks(allAssets, apiKey);
+      return activeAssets;
     } catch (error) {
       console.error('[FMP] Asset fetch failed:', error);
       throw error;
@@ -141,7 +144,20 @@ export class BreakoutAgent {
 
   private async analyzeAsset(asset: string, config: Config): Promise<BreakoutResult | null> {
     try {
-      const data = await fetchMarketData(asset, config.dataSource, config.ibkrBaseUrl);
+      let data;
+      try {
+        data = await fetchMarketData(asset, config.dataSource, config.ibkrBaseUrl);
+      } catch (error: any) {
+        // Check if this is a delisting error
+        const errorMsg = error?.message || '';
+        if (errorMsg.includes('[DELISTED]')) {
+          console.warn(`⊘ ${asset}: ${errorMsg}`);
+          return null;
+        }
+        // Re-throw other errors
+        throw error;
+      }
+
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
 

@@ -47,6 +47,8 @@ app.get('/api/signals', async (req, res) => {
           bs."assetType",
           bs."expenseRatio",
           bs."etfCategory",
+          bs.sector,
+          bs.industry,
           fg."firstGreenAt",
           fg."entryResistance",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
@@ -70,6 +72,8 @@ app.get('/api/signals', async (req, res) => {
         "assetType",
         "expenseRatio",
         "etfCategory",
+        sector,
+        industry,
         "firstGreenAt",
         "entryResistance"
       FROM ranked
@@ -137,6 +141,8 @@ app.get('/api/signals', async (req, res) => {
         assetTypeLabel,
         expenseRatio: s.expenseRatio,
         etfCategory: s.etfCategory,
+        sector: s.sector || 'Unknown',
+        industry: s.industry || 'Unknown',
         confidence: displayConfidence,
         currentPrice: s.currentPrice,
         resistance: s.resistance,
@@ -173,6 +179,8 @@ app.get('/api/signals', async (req, res) => {
         consolidationVolume: meta.setupConsolidationVolumePercent || 0,
         displayType: s.confidence >= 0.95 ? 'green' : s.confidence >= 0.85 ? 'orange' : 'yellow',
         agentDecision: meta.agentDecision || s.agentDecision || '',
+        sector: meta.sector || 'Unknown',
+        industry: meta.industry || 'Unknown',
       };
     };
 
