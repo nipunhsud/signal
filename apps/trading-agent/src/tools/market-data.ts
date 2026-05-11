@@ -1,4 +1,4 @@
-import { IBClient } from './ib-client.js';
+import { IBClient } from "./ib-client.js";
 
 export interface MarketData {
   asset: string;
@@ -13,12 +13,17 @@ export interface MarketData {
   lows: number[];
 }
 
-export async function fetchIBMarketData(symbol: string, client: IBClient): Promise<MarketData> {
+export async function fetchIBMarketData(
+  symbol: string,
+  client: IBClient,
+): Promise<MarketData> {
   const conid = await client.resolveConid(symbol);
   const rawBars = await client.getHistoricalBars(conid);
 
   if (rawBars.length < 2) {
-    throw new Error(`Insufficient bar data for ${symbol}: got ${rawBars.length} bars`);
+    throw new Error(
+      `Insufficient bar data for ${symbol}: got ${rawBars.length} bars`,
+    );
   }
 
   const bars = rawBars.slice(-21);

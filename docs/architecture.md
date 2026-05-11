@@ -85,13 +85,13 @@ signal-forge/
 
 ```typescript
 // apps/breakout-agent/src/agent.ts
-import { TradeAgent } from '@signal-forge/core';
+import { TradeAgent } from "@signal-forge/core";
 
 class BreakoutAgent extends TradeAgent {
   constructor() {
     super({
-      name: 'BreakoutAgent',
-      description: 'Detects bullish breakouts',
+      name: "BreakoutAgent",
+      description: "Detects bullish breakouts",
     });
   }
 
@@ -199,6 +199,7 @@ MAX_POSITION_SIZE=100
 ### **5-Minute Checklist**
 
 1. **Copy template**
+
    ```bash
    cp -r apps/breakout-agent apps/my-agent
    ```
@@ -216,6 +217,7 @@ MAX_POSITION_SIZE=100
 4. **Add config in `.env`** (if new params needed)
 
 5. **Update `prisma/schema.prisma`** (if new signal type)
+
    ```prisma
    model MySignal {
      id String @id
@@ -270,40 +272,44 @@ git push → Railway detects monorepo
 
 ## Tech Stack (Shared Across All Agents)
 
-| Layer | Tech |
-|-------|------|
+| Layer               | Tech                                         |
+| ------------------- | -------------------------------------------- |
 | **Agent Framework** | Gemini 2.5 Flash (via @google/generative-ai) |
-| **Runtime** | Node.js 18+ |
-| **Scheduling** | node-cron (hourly, 4h, daily, etc.) |
-| **Database** | Prisma + Postgres |
-| **Monorepo** | Turborepo (pnpm workspaces) |
-| **Data Sources** | Binance, Alpaca, NewsAPI, custom APIs |
-| **Alerts** | Nodemailer (email, optional: webhooks) |
-| **IaC** | Railway (or Docker for VPS) |
+| **Runtime**         | Node.js 18+                                  |
+| **Scheduling**      | node-cron (hourly, 4h, daily, etc.)          |
+| **Database**        | Prisma + Postgres                            |
+| **Monorepo**        | Turborepo (pnpm workspaces)                  |
+| **Data Sources**    | Binance, Alpaca, NewsAPI, custom APIs        |
+| **Alerts**          | Nodemailer (email, optional: webhooks)       |
+| **IaC**             | Railway (or Docker for VPS)                  |
 
 ---
 
 ## Future Roadmap
 
 ### **Phase 1: Signals Only** ✅ In Progress
+
 - Breakout agent detects signals
 - Email alerts
 - Manual trading based on alerts
 - Test accuracy before automation
 
-### **Phase 2: Paper Trading** 
+### **Phase 2: Paper Trading**
+
 - Add TradingAgent with Alpaca paper mode
 - Execute orders with fake money
 - Validate signals in real market
 - Build logs and P&L tracking
 
 ### **Phase 3: Real Trading**
+
 - Flip `USE_PAPER_TRADING=false`
 - Add risk management: stop losses, position sizing, daily loss limits
 - Add monitoring: watch positions, close on targets
 - Add performance dashboard
 
 ### **Phase 4: Multi-Agent Coordination**
+
 - Sentiment agent feeds into breakout agent
 - Arbitrage agent feeds into trading agent
 - Macro agent provides context for all

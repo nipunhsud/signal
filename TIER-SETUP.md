@@ -45,6 +45,7 @@ cd apps/breakout-agent
 This launches 63 agents in parallel, each scanning ~100 assets/hour.
 
 **Result:**
+
 - 63 tiers × 100 assets = 6,300 assets scanned **per hour**
 - All tiers run simultaneously
 - All signals stored in same PostgreSQL database
@@ -66,11 +67,11 @@ curl http://localhost:3000/api/signals | jq 'length'
 
 ## Coverage
 
-| Tiers | Assets | Time | Assets/Hour |
-|-------|--------|------|-------------|
-| 1 | 100 | Hourly | 100 |
-| 10 | 1,000 | Hourly | 1,000 |
-| 63 | 6,300 | Hourly | 6,300 |
+| Tiers | Assets | Time   | Assets/Hour |
+| ----- | ------ | ------ | ----------- |
+| 1     | 100    | Hourly | 100         |
+| 10    | 1,000  | Hourly | 1,000       |
+| 63    | 6,300  | Hourly | 6,300       |
 
 ## How It Works
 

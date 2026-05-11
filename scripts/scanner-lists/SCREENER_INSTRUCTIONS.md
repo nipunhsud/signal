@@ -28,21 +28,22 @@ Use TradingView's **Pine Screener** to scan your watchlists and find stocks with
 
 Pre-formatted lists for TradingView (format: `EXCHANGE:TICKER`, comma-separated):
 
-| File | Stocks | Use Case |
-|------|--------|----------|
-| `dow30-tradingview-import.txt` | 30 | Dow Jones Industrial Average |
-| `nasdaq100-tradingview-import.txt` | 101 | NASDAQ 100 (tech-heavy, liquid) |
-| `nyse-sp500-tradingview-import.txt` | ~365 | NYSE stocks in S&P 500 (curated) |
-| `nyse-all-tradingview-import.txt` | 1000 | All NYSE stocks, part 1 (TradingView limit) |
-| `nyse-all-tradingview-import-2.txt` | 1000 | All NYSE stocks, part 2 |
-| `nyse-all-tradingview-import-3.txt` | 146 | All NYSE stocks, part 3 |
-| `nasdaq-all-tradingview-import.txt` | 1000 | All NASDAQ stocks, part 1 |
-| `nasdaq-all-tradingview-import-2.txt` | 1000 | All NASDAQ stocks, part 2 |
-| `nasdaq-all-tradingview-import-3.txt` | 1000 | All NASDAQ stocks, part 3 |
-| `nasdaq-all-tradingview-import-4.txt` | 628 | All NASDAQ stocks, part 4 |
-| `sp500-tradingview-import.txt` | ~500 | S&P 500 broad market |
+| File                                  | Stocks | Use Case                                    |
+| ------------------------------------- | ------ | ------------------------------------------- |
+| `dow30-tradingview-import.txt`        | 30     | Dow Jones Industrial Average                |
+| `nasdaq100-tradingview-import.txt`    | 101    | NASDAQ 100 (tech-heavy, liquid)             |
+| `nyse-sp500-tradingview-import.txt`   | ~365   | NYSE stocks in S&P 500 (curated)            |
+| `nyse-all-tradingview-import.txt`     | 1000   | All NYSE stocks, part 1 (TradingView limit) |
+| `nyse-all-tradingview-import-2.txt`   | 1000   | All NYSE stocks, part 2                     |
+| `nyse-all-tradingview-import-3.txt`   | 146    | All NYSE stocks, part 3                     |
+| `nasdaq-all-tradingview-import.txt`   | 1000   | All NASDAQ stocks, part 1                   |
+| `nasdaq-all-tradingview-import-2.txt` | 1000   | All NASDAQ stocks, part 2                   |
+| `nasdaq-all-tradingview-import-3.txt` | 1000   | All NASDAQ stocks, part 3                   |
+| `nasdaq-all-tradingview-import-4.txt` | 628    | All NASDAQ stocks, part 4                   |
+| `sp500-tradingview-import.txt`        | ~500   | S&P 500 broad market                        |
 
 **How to import:**
+
 1. In TradingView, click the **watchlist** dropdown (e.g. "My List") → **Import list…**
 2. Select the `.txt` file (or paste its contents)
 3. Create a new watchlist or replace an existing one
@@ -103,12 +104,12 @@ To get **real-time breakout signals** as the market opens (instead of waiting fo
 
 ## Tips
 
-| Tip | Description |
-|-----|-------------|
-| **Timeframe** | 5m for intraday (9:30 AM), 1D for swing trades, 1W for position trades |
-| **Watchlist size** | Larger lists take longer to scan (500 bars per symbol) |
-| **Rescan** | Click Rescan after changing watchlist, indicator, or filters. For 5m intraday, rescan every 5 min to catch new breakouts |
-| **Sort** | Click column headers to sort by Breakout Signal, Good Structure, etc. |
+| Tip                | Description                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| **Timeframe**      | 5m for intraday (9:30 AM), 1D for swing trades, 1W for position trades                                                   |
+| **Watchlist size** | Larger lists take longer to scan (500 bars per symbol)                                                                   |
+| **Rescan**         | Click Rescan after changing watchlist, indicator, or filters. For 5m intraday, rescan every 5 min to catch new breakouts |
+| **Sort**           | Click column headers to sort by Breakout Signal, Good Structure, etc.                                                    |
 
 ---
 

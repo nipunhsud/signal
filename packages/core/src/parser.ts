@@ -1,4 +1,4 @@
-import { AgentResponse } from './types';
+import { AgentResponse } from "./types";
 
 /**
  * Parse agent response, extracting JSON and text reasoning
@@ -14,7 +14,7 @@ export function parseAgentResponse(text: string): AgentResponse {
     try {
       parsed = JSON.parse(jsonMatch[1]);
     } catch (e) {
-      console.error('Failed to parse JSON from agent response:', e);
+      console.error("Failed to parse JSON from agent response:", e);
     }
   }
 
@@ -31,7 +31,7 @@ export function parseAgentResponse(text: string): AgentResponse {
   return {
     raw: trimmed,
     ...parsed,
-    decision: parsed.decision || 'unable_to_decide',
+    decision: parsed.decision || "unable_to_decide",
   } as AgentResponse;
 }
 
@@ -40,8 +40,8 @@ export function parseAgentResponse(text: string): AgentResponse {
  */
 export function cleanDisplay(text: string): string {
   return text
-    .replace(/```json\s*/g, '')
-    .replace(/```\s*/g, '')
-    .split('{')[0]
+    .replace(/```json\s*/g, "")
+    .replace(/```\s*/g, "")
+    .split("{")[0]
     .trim();
 }

@@ -22,22 +22,22 @@ BSE provides market-cap sorted lists:
 
 NSE uses alphanumeric tickers (RELIANCE, INFY, TCS) which match TradingView. Format: `NSE:TICKER`
 
-1. **NSE Bhav Copy** – Daily equity file with all NSE symbols  
-   - https://www.nseindia.com/all-reports  
+1. **NSE Bhav Copy** – Daily equity file with all NSE symbols
+   - https://www.nseindia.com/all-reports
    - Look for "Bhav Copy" or "Equity" reports
 
-2. **NSE List of Securities** – Full list of NSE stocks  
+2. **NSE List of Securities** – Full list of NSE stocks
    - https://www.nseindia.com/market-data/securities-available-for-trading
 
 ---
 
 ## Option 3: Third-Party Data Sources
 
-| Source | What You Get | Format |
-|--------|--------------|--------|
-| **EODData.com** | NSE/BSE symbol lists | CSV (subscription) |
-| **GitHub: NSE-India-All-Stocks** | NSE tickers | CSV |
-| **IIFL Scrip Master** | BSE+NSE mapping | CSV (free) |
+| Source                           | What You Get         | Format             |
+| -------------------------------- | -------------------- | ------------------ |
+| **EODData.com**                  | NSE/BSE symbol lists | CSV (subscription) |
+| **GitHub: NSE-India-All-Stocks** | NSE tickers          | CSV                |
+| **IIFL Scrip Master**            | BSE+NSE mapping      | CSV (free)         |
 
 ---
 
@@ -63,22 +63,22 @@ BSE uses numeric codes (500325), TradingView uses tickers (RELIANCE). Many stock
 
 If you want the largest 1,000 Indian stocks:
 
-1. Get NSE list from: https://www.nseindia.com/market-data/securities-available-for-trading  
-2. Sort by market cap  
-3. Take top 1,000 tickers  
-4. Format as: `NSE:RELIANCE,NSE:TCS,NSE:INFY,...`  
+1. Get NSE list from: https://www.nseindia.com/market-data/securities-available-for-trading
+2. Sort by market cap
+3. Take top 1,000 tickers
+4. Format as: `NSE:RELIANCE,NSE:TCS,NSE:INFY,...`
 5. Save as `.txt` and import
 
 ---
 
 ## Files in This Folder
 
-| File | Stocks | Exchange |
-|------|--------|----------|
-| `nse-500-tradingview-import.txt` | 1000 | NSE (full list, part 1) |
-| `nse-500-tradingview-import-2.txt` | 617 | NSE (full list, part 2) |
-| `bse-sensex30-tradingview-import.txt` | 30 | BSE |
-| `bse-100-tradingview-import.txt` | ~120 | BSE |
-| `sp500-tradingview-import.txt` | ~500 | US (NYSE/NASDAQ) |
+| File                                  | Stocks | Exchange                |
+| ------------------------------------- | ------ | ----------------------- |
+| `nse-500-tradingview-import.txt`      | 1000   | NSE (full list, part 1) |
+| `nse-500-tradingview-import-2.txt`    | 617    | NSE (full list, part 2) |
+| `bse-sensex30-tradingview-import.txt` | 30     | BSE                     |
+| `bse-100-tradingview-import.txt`      | ~120   | BSE                     |
+| `sp500-tradingview-import.txt`        | ~500   | US (NYSE/NASDAQ)        |
 
 To regenerate the NSE import files from the full symbol list: `python fetch-nse-list.py`

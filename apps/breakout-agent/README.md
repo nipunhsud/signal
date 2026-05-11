@@ -5,6 +5,7 @@ Real-time stock breakout detection system with Type 1 (Fresh), Type 2 (Setup), a
 ## Quick Start
 
 ### Prerequisites
+
 - Node.js v18+
 - PostgreSQL (local or remote)
 - pm2 (process manager)
@@ -22,6 +23,7 @@ npm install -g pm2
 ### Configuration
 
 Create `.env` file with:
+
 ```
 DATABASE_URL=postgresql://user@localhost:5432/signal_forge
 FMP_API_KEY=your_fmp_key
@@ -31,6 +33,7 @@ CRON_SCHEDULE=0 11 * * *  # 11:00 AM ET daily
 ## Running with PM2
 
 ### Start Processes
+
 ```bash
 pm2 start dist/index.js --name "breakout-agent-scheduler"
 pm2 start "npm run dashboard" --name "breakout-dashboard"
@@ -38,6 +41,7 @@ pm2 save
 ```
 
 ### Monitor
+
 ```bash
 pm2 status              # See all processes
 pm2 logs               # View real-time logs
@@ -46,6 +50,7 @@ pm2 delete all         # Stop all processes
 ```
 
 ### Auto-restart on Reboot
+
 ```bash
 pm2 startup
 pm2 save
@@ -53,17 +58,18 @@ pm2 save
 
 ## Signal Types
 
-| Type | Name | Confidence | Description |
-|------|------|-----------|-------------|
-| **Type 1** | Fresh Breakout | 99% | Green cone: true breakout with meaningful consolidation |
-| **Type 2** | Pre-Breakout Setup | 80-99% | Consolidation awaiting breakout (not yet broken out) |
-| **Type 3** | Extension | ≤85% | Yellow dot: re-test of past breakout, still holding gains |
+| Type       | Name               | Confidence | Description                                               |
+| ---------- | ------------------ | ---------- | --------------------------------------------------------- |
+| **Type 1** | Fresh Breakout     | 99%        | Green cone: true breakout with meaningful consolidation   |
+| **Type 2** | Pre-Breakout Setup | 80-99%     | Consolidation awaiting breakout (not yet broken out)      |
+| **Type 3** | Extension          | ≤85%       | Yellow dot: re-test of past breakout, still holding gains |
 
 ## Dashboard
 
 Access at: **http://localhost:3000**
 
 ### Features
+
 - Filter by signal type (Type 1/2/3)
 - Confidence slider (85-99%)
 - Asset search
@@ -72,6 +78,7 @@ Access at: **http://localhost:3000**
 - Live signal updates (5-second refresh)
 
 ### Scheduled Scans
+
 - **Time:** 11:00 AM ET daily (configurable via `CRON_SCHEDULE`)
 - **Assets:** S&P 500 (configurable)
 - **Data Source:** Financial Modeling Prep (FMP API)
@@ -96,6 +103,7 @@ npm run dashboard    # Run dashboard only (dev)
 ## API Endpoints
 
 ### GET `/api/signals`
+
 Returns high/medium confidence signals sorted by confidence.
 
 ```json
@@ -113,29 +121,35 @@ Returns high/medium confidence signals sorted by confidence.
 ```
 
 ### GET `/api/candles/:symbol`
+
 Historical price data (500 bars) for chart rendering.
 
 ### POST `/api/scan`
+
 Trigger on-demand market scan (runs in background).
 
 ### GET/POST `/api/shortlist`
+
 Manage saved assets.
 
 ## Troubleshooting
 
 ### Process Won't Start
+
 ```bash
 pm2 logs breakout-agent-scheduler  # Check error logs
 pm2 restart 0                       # Restart specific process
 ```
 
 ### Database Connection Error
+
 ```bash
 # Verify PostgreSQL is running
 psql -U nipunsud -d signal_forge -c "SELECT 1"
 ```
 
 ### High Memory Usage
+
 - Reduce `TIER_SIZE` in config.ts
 - Check FMP API rate limiting
 

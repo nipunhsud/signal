@@ -14,7 +14,7 @@ export class RateLimiter {
     const elapsed = (now - this.lastTokenRefill) / 1000;
     this.tokens = Math.min(
       this.tokensPerSecond,
-      this.tokens + elapsed * this.tokensPerSecond
+      this.tokens + elapsed * this.tokensPerSecond,
     );
     this.lastTokenRefill = now;
   }
@@ -26,7 +26,7 @@ export class RateLimiter {
         this.tokens -= 1;
         return;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 
@@ -36,5 +36,5 @@ export class RateLimiter {
   }
 }
 
-const callsPerMinute = parseInt(process.env.RATE_LIMIT_PER_MIN || '140');
+const callsPerMinute = parseInt(process.env.RATE_LIMIT_PER_MIN || "140");
 export const globalRateLimiter = new RateLimiter(callsPerMinute);

@@ -27,6 +27,7 @@ This creates `.env.tiers/.env.tier-1` through `.env.tier-N`
 ### 2. Update Generated Env Files
 
 Edit `.env.tiers/.env.tier-*` files to add:
+
 - `GEMINI_API_KEY=your-key`
 - `FMP_API_KEY=your-key` (if using FMP)
 - `EMAIL_USER=` and `EMAIL_PASS=` (for alerts)
@@ -38,6 +39,7 @@ cp .env.example .env.docker
 ```
 
 Edit `.env.docker`:
+
 ```env
 DB_USER=nipunsud
 DB_PASSWORD=your-secure-password
@@ -88,6 +90,7 @@ Or use a script to auto-generate services.
 ## Monitoring
 
 ### Dashboard
+
 - Access at `http://localhost:3000`
 - Shows signals from all tiers in real-time
 
@@ -114,13 +117,13 @@ docker-compose logs -f postgres
 docker-compose exec postgres psql -U nipunsud -d signal_forge
 
 # View signals
-SELECT asset, confidence, signalType FROM "BreakoutSignal" 
+SELECT asset, confidence, signalType FROM "BreakoutSignal"
 ORDER BY "createdAt" DESC LIMIT 20;
 
 # Count signals per hour
-SELECT DATE_TRUNC('hour', "createdAt"), COUNT(*) 
-FROM "BreakoutSignal" 
-GROUP BY DATE_TRUNC('hour', "createdAt") 
+SELECT DATE_TRUNC('hour', "createdAt"), COUNT(*)
+FROM "BreakoutSignal"
+GROUP BY DATE_TRUNC('hour', "createdAt")
 ORDER BY 1 DESC;
 ```
 

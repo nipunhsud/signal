@@ -1,7 +1,11 @@
-import { IBClient } from './ib-client.js';
-import { checkRisk, isAlreadyHeld, RiskCheckResult } from './risk-management.js';
-import { db } from '../db.js';
-import { TradingConfig } from '../config.js';
+import { IBClient } from "./ib-client.js";
+import {
+  checkRisk,
+  isAlreadyHeld,
+  RiskCheckResult,
+} from "./risk-management.js";
+import { db } from "../db.js";
+import { TradingConfig } from "../config.js";
 
 export interface OrderExecutionResult {
   asset: string;
@@ -32,7 +36,11 @@ export async function executeOrder(params: {
     ]);
 
     if (isAlreadyHeld(asset, positions)) {
-      return { asset, success: false, riskReason: `Already holding position in ${asset}` };
+      return {
+        asset,
+        success: false,
+        riskReason: `Already holding position in ${asset}`,
+      };
     }
 
     const risk: RiskCheckResult = checkRisk({
@@ -43,7 +51,9 @@ export async function executeOrder(params: {
     });
 
     if (!risk.approved || !risk.sizing) {
-      console.log(`[ExecuteOrder] Risk check failed for ${asset}: ${risk.reason}`);
+      console.log(
+        `[ExecuteOrder] Risk check failed for ${asset}: ${risk.reason}`,
+      );
       return { asset, success: false, riskReason: risk.reason };
     }
 
@@ -53,13 +63,13 @@ export async function executeOrder(params: {
     const orderResult = await client.placeOrder({
       accountId,
       conid,
-      side: 'BUY',
+      side: "BUY",
       quantity,
-      orderType: 'MKT',
+      orderType: "MKT",
     });
 
     console.log(
-      `[ExecuteOrder] Order placed for ${asset}: orderId=${orderResult.orderId}, qty=${quantity}, ~$${positionValue.toFixed(2)}`
+      `[ExecuteOrder] Order placed for ${asset}: orderId=${orderResult.orderId}, qty=${quantity}, ~$${positionValue.toFixed(2)}`,
     );
 
     await db.trade.create({
@@ -68,13 +78,13 @@ export async function executeOrder(params: {
         asset,
         conid,
         orderId: orderResult.orderId,
-        side: 'BUY',
+        side: "BUY",
         quantity,
         entryPrice: currentPrice,
         stopLossPrice,
         positionValue,
         maxPositionSize: config.maxPositionSize,
-        status: 'submitted',
+        status: "submitted",
         accountId,
         cashBefore: cashBalance,
       },
@@ -95,23 +105,26 @@ export async function executeOrder(params: {
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[ExecuteOrder] Failed to execute order for ${asset}:`, errorMsg);
+    console.error(
+      `[ExecuteOrder] Failed to execute order for ${asset}:`,
+      errorMsg,
+    );
 
     try {
       await db.trade.create({
         data: {
           breakoutSignalId: signalId,
           asset,
-          conid: '',
-          side: 'BUY',
+          conid: "",
+          side: "BUY",
           quantity: 0,
           entryPrice: currentPrice,
           stopLossPrice: 0,
           positionValue: 0,
           maxPositionSize: config.maxPositionSize,
-          status: 'error',
+          status: "error",
           errorMessage: errorMsg,
-          accountId: 'unknown',
+          accountId: "unknown",
           cashBefore: 0,
         },
       });

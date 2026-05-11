@@ -14,6 +14,7 @@ cp -r apps/breakout-agent apps/sentiment-agent
 ```
 
 This gives you the full structure:
+
 - `src/agent.ts` — Agent class
 - `src/tools/` — Agent tools
 - `src/config.ts` — Configuration
@@ -25,7 +26,7 @@ This gives you the full structure:
 ```json
 {
   "name": "sentiment-agent",
-  "description": "News sentiment analysis agent",
+  "description": "News sentiment analysis agent"
   // ... rest stays same
 }
 ```
@@ -36,11 +37,11 @@ Replace `src/agent.ts`:
 
 ```typescript
 // apps/sentiment-agent/src/agent.ts
-import { TradeAgent } from '@signal-forge/core';
-import { fetchNews } from './tools/fetch-news';
-import { analyzeSentiment } from './tools/analyze-sentiment';
-import { sendEmail } from './email';
-import { db } from './db';
+import { TradeAgent } from "@signal-forge/core";
+import { fetchNews } from "./tools/fetch-news";
+import { analyzeSentiment } from "./tools/analyze-sentiment";
+import { sendEmail } from "./email";
+import { db } from "./db";
 
 export interface SentimentResult {
   asset: string;
@@ -53,8 +54,8 @@ export interface SentimentResult {
 export class SentimentAgent extends TradeAgent {
   constructor() {
     super({
-      name: 'SentimentAgent',
-      description: 'Analyzes news sentiment for trading signals',
+      name: "SentimentAgent",
+      description: "Analyzes news sentiment for trading signals",
     });
   }
 
@@ -89,7 +90,8 @@ Analyze this news for trading bias. Respond with JSON:
             headline: article.headline,
             sentiment: analysis.sentiment,
             confidence: analysis.confidence,
-            shouldAlert: Math.abs(analysis.sentiment) > 0.7 && analysis.confidence > 0.75,
+            shouldAlert:
+              Math.abs(analysis.sentiment) > 0.7 && analysis.confidence > 0.75,
           };
 
           results.push(result);
@@ -119,7 +121,7 @@ Analyze this news for trading bias. Respond with JSON:
   }
 
   async sendAlert(result: SentimentResult): Promise<void> {
-    const bias = result.sentiment > 0 ? 'BULLISH' : 'BEARISH';
+    const bias = result.sentiment > 0 ? "BULLISH" : "BEARISH";
     const subject = `📰 ${bias} Sentiment: ${result.asset}`;
     const body = `
 Headline: ${result.headline}
@@ -140,7 +142,7 @@ Create tool files in `src/tools/`:
 
 ```typescript
 // apps/sentiment-agent/src/tools/fetch-news.ts
-import axios from 'axios';
+import axios from "axios";
 
 export interface Article {
   headline: string;
@@ -152,13 +154,13 @@ export interface Article {
 
 export async function fetchNews(asset: string): Promise<Article[]> {
   const apiKey = process.env.NEWSAPI_KEY;
-  
+
   // Use NewsAPI, RSS feeds, or custom source
-  const response = await axios.get('https://newsapi.org/v2/everything', {
+  const response = await axios.get("https://newsapi.org/v2/everything", {
     params: {
       q: asset,
-      sortBy: 'publishedAt',
-      language: 'en',
+      sortBy: "publishedAt",
+      language: "en",
       pageSize: 10,
       apiKey,
     },
@@ -181,17 +183,17 @@ Edit `src/config.ts`:
 ```typescript
 export interface Config {
   assets: string[];
-  newsSource: 'newsapi' | 'custom';
+  newsSource: "newsapi" | "custom";
   sentimentThreshold: number; // alert threshold
   cronSchedule: string;
 }
 
 export function getConfig(): Config {
   return {
-    assets: (process.env.SCAN_ASSETS || 'BTC,ETH').split(','),
-    newsSource: (process.env.NEWS_SOURCE || 'newsapi') as 'newsapi' | 'custom',
-    sentimentThreshold: parseFloat(process.env.SENTIMENT_THRESHOLD || '0.7'),
-    cronSchedule: process.env.CRON_SCHEDULE || '*/30 * * * *', // every 30min
+    assets: (process.env.SCAN_ASSETS || "BTC,ETH").split(","),
+    newsSource: (process.env.NEWS_SOURCE || "newsapi") as "newsapi" | "custom",
+    sentimentThreshold: parseFloat(process.env.SENTIMENT_THRESHOLD || "0.7"),
+    cronSchedule: process.env.CRON_SCHEDULE || "*/30 * * * *", // every 30min
   };
 }
 ```
@@ -201,10 +203,10 @@ export function getConfig(): Config {
 Edit `src/index.ts`:
 
 ```typescript
-import 'dotenv/config';
-import cron from 'node-cron';
-import { SentimentAgent } from './agent';
-import { getConfig } from './config';
+import "dotenv/config";
+import cron from "node-cron";
+import { SentimentAgent } from "./agent";
+import { getConfig } from "./config";
 
 const config = getConfig();
 const agent = new SentimentAgent();
@@ -215,7 +217,7 @@ async function scan() {
     const results = await agent.analyzeNews(config.assets);
     console.log(`Analyzed ${results.length} articles`);
   } catch (error) {
-    console.error('Scan failed:', error);
+    console.error("Scan failed:", error);
   }
 }
 
@@ -231,16 +233,16 @@ Update `prisma/schema.prisma`:
 ```prisma
 model SentimentSignal {
   id String @id @default(cuid())
-  
+
   asset String
   headline String
   sentiment Float    // -1 to +1
   confidence Float
   source String
-  
+
   shouldAlert Boolean @default(false)
   createdAt DateTime @default(now())
-  
+
   @@index([asset, createdAt])
   @@index([sentiment])
 }
@@ -286,9 +288,9 @@ All agents should extend `TradeAgent` from `@signal-forge/core`:
 class MyAgent extends TradeAgent {
   constructor() {
     super({
-      name: 'MyAgent',
-      description: 'Does X',
-      model: 'gemini-2.5-flash', // or other models
+      name: "MyAgent",
+      description: "Does X",
+      model: "gemini-2.5-flash", // or other models
     });
   }
 }
@@ -299,7 +301,7 @@ class MyAgent extends TradeAgent {
 Gemini responses are parsed by core utility:
 
 ```typescript
-import { parseAgentResponse } from '@signal-forge/core';
+import { parseAgentResponse } from "@signal-forge/core";
 
 const response = await this.run(prompt);
 const parsed = parseAgentResponse(response.raw);
@@ -323,9 +325,9 @@ await db.signal.create({ ... }); // generic table
 Reuse email infrastructure:
 
 ```typescript
-import { sendEmail } from './email';
+import { sendEmail } from "./email";
 
-await sendEmail('Subject', 'Body text');
+await sendEmail("Subject", "Body text");
 ```
 
 ---
@@ -374,20 +376,20 @@ async function poll() {
 ### **Rate Limiting**
 
 ```typescript
-import pLimit from 'p-limit';
+import pLimit from "p-limit";
 const limit = pLimit(3); // 3 concurrent requests
 
-const promises = assets.map(a => limit(() => analyze(a)));
+const promises = assets.map((a) => limit(() => analyze(a)));
 await Promise.all(promises);
 ```
 
 ### **Conditional Alerts**
 
 ```typescript
-const shouldAlert = 
+const shouldAlert =
   result.confidence > 0.7 &&
-  result.recentTrend !== 'noise' &&
-  !lastAlertWas(asset, '1h');
+  result.recentTrend !== "noise" &&
+  !lastAlertWas(asset, "1h");
 ```
 
 ---

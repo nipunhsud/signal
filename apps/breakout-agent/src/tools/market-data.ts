@@ -1,8 +1,8 @@
-import axios from 'axios';
-import https from 'https';
-import { globalRateLimiter } from './rate-limiter.js';
-import { marketDataCache } from './cache.js';
-import { isDelisted } from './delistings.js';
+import axios from "axios";
+import https from "https";
+import { globalRateLimiter } from "./rate-limiter.js";
+import { marketDataCache } from "./cache.js";
+import { isDelisted } from "./delistings.js";
 
 const ibAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -14,7 +14,7 @@ function calculateMA(prices: number[], period: number): number {
 
 export interface MarketData {
   asset: string;
-  assetType: 'stock' | 'etf'; // Indicator for stock vs ETF
+  assetType: "stock" | "etf"; // Indicator for stock vs ETF
   open: number;
   high: number;
   low: number;
@@ -65,33 +65,30 @@ export interface MarketData {
  */
 export async function fetchMarketData(
   asset: string,
-  source: 'binance' | 'alpaca' | 'ibkr' | 'fmp' = 'binance',
-  ibkrBaseUrl?: string
+  source: "binance" | "alpaca" | "ibkr" | "fmp" = "binance",
+  ibkrBaseUrl?: string,
 ): Promise<MarketData> {
-  if (source === 'binance') {
+  if (source === "binance") {
     return fetchBinanceData(asset);
-  } else if (source === 'alpaca') {
+  } else if (source === "alpaca") {
     return fetchAlpacaData(asset);
-  } else if (source === 'fmp') {
+  } else if (source === "fmp") {
     return fetchFMPData(asset);
   } else {
-    return fetchIBKRData(asset, ibkrBaseUrl || 'https://localhost:5000');
+    return fetchIBKRData(asset, ibkrBaseUrl || "https://localhost:5000");
   }
 }
 
 async function fetchBinanceData(symbol: string): Promise<MarketData> {
   try {
     // Fetch 1h candles (last 21 for 20-period analysis + current)
-    const response = await axios.get(
-      `https://api.binance.com/api/v3/klines`,
-      {
-        params: {
-          symbol: symbol.includes('USDT') ? symbol : `${symbol}USDT`,
-          interval: '1h',
-          limit: 21,
-        },
-      }
-    );
+    const response = await axios.get(`https://api.binance.com/api/v3/klines`, {
+      params: {
+        symbol: symbol.includes("USDT") ? symbol : `${symbol}USDT`,
+        interval: "1h",
+        limit: 21,
+      },
+    });
 
     const candles = response.data.map((k: any[]) => ({
       open: parseFloat(k[1]),
@@ -105,11 +102,12 @@ async function fetchBinanceData(symbol: string): Promise<MarketData> {
     const highs = candles.slice(0, 20).map((c: any) => c.high);
     const lows = candles.slice(0, 20).map((c: any) => c.low);
     const avgVolume =
-      candles.slice(0, 20).reduce((sum: number, c: any) => sum + c.volume, 0) / 20;
+      candles.slice(0, 20).reduce((sum: number, c: any) => sum + c.volume, 0) /
+      20;
 
     return {
       asset: symbol,
-      assetType: 'stock',
+      assetType: "stock",
       open: latest.open,
       high: latest.high,
       low: latest.low,
@@ -132,39 +130,38 @@ async function fetchBinanceData(symbol: string): Promise<MarketData> {
 
 async function fetchAlpacaData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.ALPACA_API_KEY;
-  const baseUrl = process.env.ALPACA_BASE_URL || 'https://data.alpaca.markets';
+  const baseUrl = process.env.ALPACA_BASE_URL || "https://data.alpaca.markets";
 
   try {
     const response = await axios.get(`${baseUrl}/v2/stocks/${symbol}/bars`, {
       params: {
-        timeframe: '1h',
+        timeframe: "1h",
         limit: 21,
-        sort: 'desc',
+        sort: "desc",
       },
       headers: {
-        'APCA-API-KEY-ID': apiKey,
+        "APCA-API-KEY-ID": apiKey,
       },
     });
 
-    const candles = response.data.bars
-      .reverse()
-      .map((b: any) => ({
-        open: b.o,
-        high: b.h,
-        low: b.l,
-        close: b.c,
-        volume: b.v,
-      }));
+    const candles = response.data.bars.reverse().map((b: any) => ({
+      open: b.o,
+      high: b.h,
+      low: b.l,
+      close: b.c,
+      volume: b.v,
+    }));
 
     const latest = candles[candles.length - 1];
     const highs = candles.slice(0, 20).map((c: any) => c.high);
     const lows = candles.slice(0, 20).map((c: any) => c.low);
     const avgVolume =
-      candles.slice(0, 20).reduce((sum: number, c: any) => sum + c.volume, 0) / 20;
+      candles.slice(0, 20).reduce((sum: number, c: any) => sum + c.volume, 0) /
+      20;
 
     return {
       asset: symbol,
-      assetType: 'stock',
+      assetType: "stock",
       open: latest.open,
       high: latest.high,
       low: latest.low,
@@ -201,39 +198,63 @@ interface PriorBreakoutResult {
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
-  if (allBars.length < 6) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  if (allBars.length < 6)
+    return {
+      barsInRange: 0,
+      consolidationRangePercent: 0,
+      consolidationVolumePercent: 0,
+    };
 
   const currentBar = allBars[allBars.length - 1];
   const prev5Bars = allBars.slice(-6, -1); // Previous 5 bars before current
 
-  if (prev5Bars.length < 3) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  if (prev5Bars.length < 3)
+    return {
+      barsInRange: 0,
+      consolidationRangePercent: 0,
+      consolidationVolumePercent: 0,
+    };
 
   // Calculate average volume from last 20 bars for reference
-  const avgVolume = allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
+  const avgVolume =
+    allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
 
   // Check if previous bars form consolidation (allow up to 15% range with sliding scale)
   const consolidationHigh = Math.max(...prev5Bars.map((b: any) => b.high));
   const consolidationLow = Math.min(...prev5Bars.map((b: any) => b.low));
   const consolidationRange = consolidationHigh - consolidationLow;
-  const consolidationRangePercent = (consolidationRange / consolidationLow) * 100;
+  const consolidationRangePercent =
+    (consolidationRange / consolidationLow) * 100;
 
   // Calculate consolidation volume as % of 20-bar average (lower is better, penalty applied in breakout-logic.ts)
-  const consolidationAvgVolume = prev5Bars.reduce((sum: number, b: any) => sum + b.volume, 0) / prev5Bars.length;
+  const consolidationAvgVolume =
+    prev5Bars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+    prev5Bars.length;
   const consolidationVolumePercent = (consolidationAvgVolume / avgVolume) * 100;
 
   // Current bar must break above consolidation
   const breaksAboveConsolidation = currentBar.close > consolidationHigh;
-  if (!breaksAboveConsolidation) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  if (!breaksAboveConsolidation)
+    return {
+      barsInRange: 0,
+      consolidationRangePercent: 0,
+      consolidationVolumePercent: 0,
+    };
 
   // Current bar must have high volume (>= 1.2x average)
   const highVolume = currentBar.volume >= avgVolume * 1.2;
-  if (!highVolume) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  if (!highVolume)
+    return {
+      barsInRange: 0,
+      consolidationRangePercent: 0,
+      consolidationVolumePercent: 0,
+    };
 
   // All conditions met: return count, range %, and volume % (penalties applied in breakout-logic.ts)
   return {
     barsInRange: prev5Bars.length,
     consolidationRangePercent,
-    consolidationVolumePercent
+    consolidationVolumePercent,
   };
 }
 
@@ -243,11 +264,17 @@ function calculateBarsInRange(allBars: any[]): ConsolidationResult {
  * Allows consolidations up to ~10% range with low volume (< 80%)
  */
 function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
-  if (allBars.length < 10) return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  if (allBars.length < 10)
+    return {
+      barsInRange: 0,
+      consolidationRangePercent: 0,
+      consolidationVolumePercent: 0,
+    };
 
   // Look at the last 10 bars to find consolidation
   const recentBars = allBars.slice(-10);
-  const avgVolume = allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
+  const avgVolume =
+    allBars.slice(-20).reduce((sum: number, b: any) => sum + b.volume, 0) / 20;
 
   // Find the longest consecutive consolidation in these 10 bars
   let maxConsolidationBars = 0;
@@ -262,11 +289,19 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
       const high = Math.max(...windowBars.map((b: any) => b.high));
       const low = Math.min(...windowBars.map((b: any) => b.low));
       const rangePercent = ((high - low) / low) * 100;
-      const volPercent = windowBars.reduce((sum: number, b: any) => sum + b.volume, 0) / windowBars.length / avgVolume * 100;
+      const volPercent =
+        (windowBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+          windowBars.length /
+          avgVolume) *
+        100;
 
       // Allow consolidation (< 12% range) with low volume (< 80%)
       // This captures handles and loose setups
-      if (rangePercent < 12 && volPercent < 80 && winSize > maxConsolidationBars) {
+      if (
+        rangePercent < 12 &&
+        volPercent < 80 &&
+        winSize > maxConsolidationBars
+      ) {
         maxConsolidationBars = winSize;
         bestConsolidationHigh = high;
         bestConsolidationLow = low;
@@ -281,12 +316,19 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
   if (maxConsolidationBars >= 3) {
     return {
       barsInRange: maxConsolidationBars,
-      consolidationRangePercent: ((bestConsolidationHigh - bestConsolidationLow) / bestConsolidationLow) * 100,
-      consolidationVolumePercent: bestConsolidationVolume
+      consolidationRangePercent:
+        ((bestConsolidationHigh - bestConsolidationLow) /
+          bestConsolidationLow) *
+        100,
+      consolidationVolumePercent: bestConsolidationVolume,
     };
   }
 
-  return { barsInRange: 0, consolidationRangePercent: 0, consolidationVolumePercent: 0 };
+  return {
+    barsInRange: 0,
+    consolidationRangePercent: 0,
+    consolidationVolumePercent: 0,
+  };
 }
 
 /**
@@ -294,12 +336,14 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
  * For Type 1 validation: needs a real 12+ day base before the recent breakout
  */
 function detectPriorBase(allBars: any[]): PriorBaseResult {
-  if (allBars.length < 100) return { priorBaseDays: 0, priorBaseRangePercent: 0 };
+  if (allBars.length < 100)
+    return { priorBaseDays: 0, priorBaseRangePercent: 0 };
 
   // Scan a broader window: up to 80 bars back to capture consolidations
   const maxLookback = Math.min(100, allBars.length - 6);
   const priorWindow = allBars.slice(-maxLookback, -6);
-  if (priorWindow.length < 12) return { priorBaseDays: 0, priorBaseRangePercent: 0 };
+  if (priorWindow.length < 12)
+    return { priorBaseDays: 0, priorBaseRangePercent: 0 };
 
   // Find longest consecutive consolidation (min 12 bars) within 20% band
   let maxBaseBars = 0;
@@ -349,7 +393,9 @@ function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
     const bar = priorWindow[i];
     const historyBars = priorWindow.slice(Math.max(0, i - 20), i);
     const rollingHigh = Math.max(...historyBars.map((b: any) => b.high));
-    const rollingAvgVol = historyBars.reduce((sum: number, b: any) => sum + b.volume, 0) / historyBars.length;
+    const rollingAvgVol =
+      historyBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+      historyBars.length;
 
     if (bar.close > rollingHigh && bar.volume >= rollingAvgVol * 1.5) {
       // Found a prior breakout; record how many bars ago
@@ -360,7 +406,15 @@ function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
   return { priorBreakoutBarsAgo: mostRecentBreakoutBarsAgo };
 }
 
-async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expenseRatio?: number; aum?: number; category?: string; isETF?: boolean }> {
+async function fetchETFProfile(
+  symbol: string,
+  apiKey: string,
+): Promise<{
+  expenseRatio?: number;
+  aum?: number;
+  category?: string;
+  isETF?: boolean;
+}> {
   try {
     const etfData = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
@@ -368,7 +422,7 @@ async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expens
         {
           params: { apikey: apiKey },
           timeout: 10000,
-        }
+        },
       );
       return res.data;
     });
@@ -376,7 +430,9 @@ async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expens
     if (etfData && Array.isArray(etfData) && etfData[0]) {
       const profile = etfData[0];
       return {
-        expenseRatio: profile.expenseRatio ? parseFloat(profile.expenseRatio) : undefined,
+        expenseRatio: profile.expenseRatio
+          ? parseFloat(profile.expenseRatio)
+          : undefined,
         aum: profile.aum ? profile.aum : undefined,
         category: profile.etfCategory || profile.category,
         isETF: true,
@@ -388,7 +444,10 @@ async function fetchETFProfile(symbol: string, apiKey: string): Promise<{ expens
   return {};
 }
 
-async function detectAssetTypeFromProfile(symbol: string, apiKey: string): Promise<'stock' | 'etf'> {
+async function detectAssetTypeFromProfile(
+  symbol: string,
+  apiKey: string,
+): Promise<"stock" | "etf"> {
   try {
     const profileData = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
@@ -396,7 +455,7 @@ async function detectAssetTypeFromProfile(symbol: string, apiKey: string): Promi
         {
           params: { apikey: apiKey },
           timeout: 10000,
-        }
+        },
       );
       return res.data;
     });
@@ -404,14 +463,20 @@ async function detectAssetTypeFromProfile(symbol: string, apiKey: string): Promi
     if (profileData && Array.isArray(profileData) && profileData[0]) {
       const profile = profileData[0];
       // Check if profile indicates it's an ETF
-      if (profile.isEtf || profile.type === 'etf' || symbol.match(/^(SPY|QQQ|IVV|VOO|VTI|EEM|TLT|GLD|IWM|EFA|VEA|VGK|VWO|AGG|BND|SCHB|SPLG|ITOT|SCHX|RPV|RSP|EUSA|IUSV|IYLD|VB|VBK|VBR|VO|VOT|VOX|VTV|VUG|VV|VXF|IGTR)$/i)) {
-        return 'etf';
+      if (
+        profile.isEtf ||
+        profile.type === "etf" ||
+        symbol.match(
+          /^(SPY|QQQ|IVV|VOO|VTI|EEM|TLT|GLD|IWM|EFA|VEA|VGK|VWO|AGG|BND|SCHB|SPLG|ITOT|SCHX|RPV|RSP|EUSA|IUSV|IYLD|VB|VBK|VBR|VO|VOT|VOX|VTV|VUG|VV|VXF|IGTR)$/i,
+        )
+      ) {
+        return "etf";
       }
     }
   } catch {
     // Profile fetch failed, will default to stock
   }
-  return 'stock';
+  return "stock";
 }
 
 let cachedFedRate: number | null = null;
@@ -430,7 +495,7 @@ async function getFedRate(apiKey: string): Promise<number> {
         {
           params: { apikey: apiKey },
           timeout: 10000,
-        }
+        },
       );
       return res.data;
     });
@@ -441,19 +506,21 @@ async function getFedRate(apiKey: string): Promise<number> {
       return cachedFedRate;
     }
   } catch (error) {
-    console.warn('Failed to fetch Fed rate, using fallback');
+    console.warn("Failed to fetch Fed rate, using fallback");
   }
   return 5.25;
 }
 
 async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
-  if (!apiKey) throw new Error('FMP_API_KEY not set');
+  if (!apiKey) throw new Error("FMP_API_KEY not set");
 
   // Dynamic delisting check before fetching data
   const delistingStatus = await isDelisted(symbol, apiKey);
   if (delistingStatus.delisted) {
-    throw new Error(`[DELISTED] ${symbol}: ${delistingStatus.reason || 'Stock is delisted'}`);
+    throw new Error(
+      `[DELISTED] ${symbol}: ${delistingStatus.reason || "Stock is delisted"}`,
+    );
   }
 
   const cacheKey = `market:${symbol}`;
@@ -474,7 +541,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
           {
             params: { apikey: apiKey, limit: 250 },
             timeout: 10000,
-          }
+          },
         );
         return priceResponse.data;
       });
@@ -484,15 +551,13 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         throw new Error(`No data found for ${symbol}`);
       }
 
-      const allBars = historicalData
-        .reverse()
-        .map((d: any) => ({
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
-          volume: d.volume,
-        }));
+      const allBars = historicalData.reverse().map((d: any) => ({
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+        volume: d.volume,
+      }));
 
       const closes = allBars.map((b: any) => b.close);
       const ma20 = calculateMA(closes, 20);
@@ -506,7 +571,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
 
       const highs = history.map((b: any) => b.high);
       const lows = history.map((b: any) => b.low);
-      const avgVolume = history.reduce((sum: number, b: any) => sum + b.volume, 0) / history.length;
+      const avgVolume =
+        history.reduce((sum: number, b: any) => sum + b.volume, 0) /
+        history.length;
 
       // Calculate barsInRange: count consecutive bars in consolidation before breakout (Type 1)
       const consolidationResult = calculateBarsInRange(allBars);
@@ -537,7 +604,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             {
               params: { apikey: apiKey, limit: 2 },
               timeout: 10000,
-            }
+            },
           );
           return earningsRes.data;
         });
@@ -558,7 +625,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             {
               params: { apikey: apiKey, limit: 5 },
               timeout: 10000,
-            }
+            },
           );
           return qtrRes.data;
         });
@@ -566,11 +633,13 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         if (qtrEarningsData && qtrEarningsData.length >= 2) {
           const currentEps = qtrEarningsData[0].eps || 0;
           const previousEps = qtrEarningsData[1].eps || 0.01;
-          epsGrowthPct = ((currentEps - previousEps) / Math.abs(previousEps)) * 100;
+          epsGrowthPct =
+            ((currentEps - previousEps) / Math.abs(previousEps)) * 100;
 
           const currentRev = qtrEarningsData[0].revenue || 0;
           const previousRev = qtrEarningsData[1].revenue || 1;
-          revenueGrowthPct = ((currentRev - previousRev) / Math.abs(previousRev)) * 100;
+          revenueGrowthPct =
+            ((currentRev - previousRev) / Math.abs(previousRev)) * 100;
         }
       } catch {
         // optional
@@ -583,7 +652,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             {
               params: { apikey: apiKey, limit: 1 },
               timeout: 10000,
-            }
+            },
           );
           return surpriseRes.data;
         });
@@ -598,46 +667,97 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         // optional
       }
 
-      let assetType: 'stock' | 'etf' = 'stock';
+      let assetType: "stock" | "etf" = "stock";
       let expenseRatio: number | undefined;
       let assetUnderManagement: number | undefined;
       let etfCategory: string | undefined;
 
       // Try to fetch ETF profile first to detect if it's an ETF
       const etfProfile = await fetchETFProfile(symbol, apiKey);
-      if (etfProfile.isETF || etfProfile.aum !== undefined || etfProfile.expenseRatio !== undefined) {
-        assetType = 'etf';
+      if (
+        etfProfile.isETF ||
+        etfProfile.aum !== undefined ||
+        etfProfile.expenseRatio !== undefined
+      ) {
+        assetType = "etf";
         expenseRatio = etfProfile.expenseRatio;
         assetUnderManagement = etfProfile.aum;
         etfCategory = etfProfile.category;
       } else {
         // If ETF endpoint didn't confirm it's an ETF, try profile-based detection
         const detectedType = await detectAssetTypeFromProfile(symbol, apiKey);
-        if (detectedType === 'etf') {
-          assetType = 'etf';
+        if (detectedType === "etf") {
+          assetType = "etf";
         }
       }
 
-      // Fetch sector/industry for both stocks and ETFs (they may have sector classification)
-      try {
-        const profileData = await globalRateLimiter.execute(async () => {
-          const profileRes = await axios.get(
-            `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
-            {
-              params: { apikey: apiKey },
-              timeout: 10000,
-            }
-          );
-          return profileRes.data;
-        });
+      // Map popular ETFs to sectors
+      const etfSectorMap: Record<string, { sector: string; industry: string }> =
+        {
+          // Semiconductor/Chip ETFs
+          SOX: {
+            sector: "Semiconductors",
+            industry: "Semiconductor Equipment & Materials",
+          },
+          XSD: {
+            sector: "Semiconductors",
+            industry: "Semiconductor Equipment & Materials",
+          },
+          SOXL: {
+            sector: "Semiconductors",
+            industry: "Semiconductor Equipment & Materials",
+          },
+          // AI & Technology ETFs
+          QQQ: { sector: "Technology", industry: "Software & Tech Services" },
+          XLK: { sector: "Technology", industry: "Software & Tech Services" },
+          XSLV: { sector: "Technology", industry: "Software & Tech Services" },
+          CIBR: { sector: "Technology", industry: "Software & Tech Services" },
+          SOXX: {
+            sector: "Semiconductors",
+            industry: "Semiconductor Equipment & Materials",
+          },
+          // Other popular sector ETFs
+          XLV: { sector: "Healthcare", industry: "Healthcare Services" },
+          XLY: { sector: "Consumer Cyclical", industry: "Consumer Services" },
+          XLE: { sector: "Energy", industry: "Oil & Gas" },
+          XLI: { sector: "Industrials", industry: "Industrial Services" },
+          XLF: { sector: "Financial Services", industry: "Financial" },
+          XLRE: { sector: "Real Estate", industry: "Real Estate" },
+          XLP: { sector: "Consumer Defensive", industry: "Consumer Staples" },
+          XLU: { sector: "Utilities", industry: "Utilities" },
+          SPY: { sector: "Broad Market", industry: "S&P 500" },
+          IVV: { sector: "Broad Market", industry: "S&P 500" },
+          VOO: { sector: "Broad Market", industry: "S&P 500" },
+          VTI: { sector: "Broad Market", industry: "US Total Market" },
+          SPTM: { sector: "Broad Market", industry: "US Total Market" },
+          THRO: { sector: "Broad Market", industry: "US Total Market" },
+        };
 
-        if (profileData && profileData.length > 0) {
-          sector = profileData[0].sector;
-          industry = profileData[0].industry;
-          beta = profileData[0].beta;
+      if (assetType === "etf" && etfSectorMap[symbol]) {
+        sector = etfSectorMap[symbol].sector;
+        industry = etfSectorMap[symbol].industry;
+      } else {
+        // Fetch sector/industry for stocks (FMP doesn't return sector for ETFs)
+        try {
+          const profileData = await globalRateLimiter.execute(async () => {
+            const profileRes = await axios.get(
+              `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+              {
+                params: { apikey: apiKey },
+                timeout: 10000,
+              },
+            );
+            return profileRes.data;
+          });
+
+          if (profileData && profileData.length > 0) {
+            sector = profileData[0].sector;
+            industry = profileData[0].industry;
+            beta = profileData[0].beta;
+          }
+        } catch {
+          // sector/industry optional
         }
-      } catch {
-        // sector/industry optional
       }
 
       const fedFundsRate = await getFedRate(apiKey);
@@ -659,11 +779,15 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         ma150,
         ma200,
         barsInRange: consolidationResult.barsInRange,
-        consolidationRangePercent: consolidationResult.consolidationRangePercent,
-        consolidationVolumePercent: consolidationResult.consolidationVolumePercent,
+        consolidationRangePercent:
+          consolidationResult.consolidationRangePercent,
+        consolidationVolumePercent:
+          consolidationResult.consolidationVolumePercent,
         setupBarsInRange: setupConsolidationResult.barsInRange,
-        setupConsolidationRangePercent: setupConsolidationResult.consolidationRangePercent,
-        setupConsolidationVolumePercent: setupConsolidationResult.consolidationVolumePercent,
+        setupConsolidationRangePercent:
+          setupConsolidationResult.consolidationRangePercent,
+        setupConsolidationVolumePercent:
+          setupConsolidationResult.consolidationVolumePercent,
         high52w,
         earningsGrowth,
         epsGrowthPct,
@@ -690,7 +814,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         retries--;
         if (retries > 0) {
           const delay = Math.pow(2, 3 - retries) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
       }
@@ -698,32 +822,47 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
     }
   }
 
-  console.error(`Failed to fetch FMP data for ${symbol} after retries:`, lastError);
+  console.error(
+    `Failed to fetch FMP data for ${symbol} after retries:`,
+    lastError,
+  );
   throw lastError;
 }
 
-async function fetchIBKRData(symbol: string, baseUrl: string): Promise<MarketData> {
+async function fetchIBKRData(
+  symbol: string,
+  baseUrl: string,
+): Promise<MarketData> {
   try {
     const config = {
       timeout: 10000,
-      ...(baseUrl.startsWith('https') && { httpsAgent: ibAgent }),
+      ...(baseUrl.startsWith("https") && { httpsAgent: ibAgent }),
     };
 
     // Step 1: resolve symbol → conid
-    const searchResp = await axios.get(`${baseUrl}/v1/api/iserver/secdef/search`, {
-      ...config,
-      params: { symbol, secType: 'STK', name: false },
-    });
+    const searchResp = await axios.get(
+      `${baseUrl}/v1/api/iserver/secdef/search`,
+      {
+        ...config,
+        params: { symbol, secType: "STK", name: false },
+      },
+    );
 
-    const contracts = searchResp.data as Array<{ conid: string; companyName: string }>;
+    const contracts = searchResp.data as Array<{
+      conid: string;
+      companyName: string;
+    }>;
     if (!contracts.length) throw new Error(`No contracts found for ${symbol}`);
     const conid = contracts[0].conid;
 
     // Step 2: fetch historical bars (5d of 1h bars gives ~32 bars on trading days)
-    const histResp = await axios.get(`${baseUrl}/v1/api/iserver/marketdata/history`, {
-      ...config,
-      params: { conid, period: '5d', bar: '1h', outsideRth: false },
-    });
+    const histResp = await axios.get(
+      `${baseUrl}/v1/api/iserver/marketdata/history`,
+      {
+        ...config,
+        params: { conid, period: "5d", bar: "1h", outsideRth: false },
+      },
+    );
 
     const rawBars = (histResp.data.data || []) as Array<{
       t: number;
@@ -734,7 +873,8 @@ async function fetchIBKRData(symbol: string, baseUrl: string): Promise<MarketDat
       v: number;
     }>;
 
-    if (rawBars.length < 2) throw new Error(`Insufficient bar data for ${symbol}`);
+    if (rawBars.length < 2)
+      throw new Error(`Insufficient bar data for ${symbol}`);
 
     // Take last 21 bars (current + 20 history)
     const bars = rawBars.slice(-21);
@@ -747,7 +887,7 @@ async function fetchIBKRData(symbol: string, baseUrl: string): Promise<MarketDat
 
     return {
       asset: symbol,
-      assetType: 'stock',
+      assetType: "stock",
       open: latest.o,
       high: latest.h,
       low: latest.l,

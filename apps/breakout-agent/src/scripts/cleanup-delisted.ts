@@ -2,34 +2,36 @@
  * Removes delisted stocks from database
  * Run: npx ts-node --esm src/scripts/cleanup-delisted.ts [--dry-run]
  */
-import { db } from '../db.js';
-import { isDelisted, isKnownDelisted } from '../tools/delistings.js';
+import { db } from "../db";
+import { isDelisted, isKnownDelisted } from "../tools/delistings";
 
 async function cleanupDelistedStocks(dryRun: boolean = false) {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) {
-    console.error('FMP_API_KEY not set');
+    console.error("FMP_API_KEY not set");
     process.exit(1);
   }
 
-  const mode = dryRun ? 'DRY RUN' : 'LIVE';
+  const mode = dryRun ? "DRY RUN" : "LIVE";
   console.log(`\n[${mode}] Cleaning up delisted stocks...\n`);
 
   // Get all unique assets
   const breakoutSignals = await db.breakoutSignal.findMany({
     select: { asset: true },
-    distinct: ['asset'],
+    distinct: ["asset"],
   });
 
   const signals = await db.signal.findMany({
     select: { asset: true },
-    distinct: ['asset'],
+    distinct: ["asset"],
   });
 
-  const allAssets = [...new Set([
-    ...breakoutSignals.map(s => s.asset),
-    ...signals.map(s => s.asset),
-  ])];
+  const allAssets = [
+    ...new Set([
+      ...breakoutSignals.map((s) => s.asset),
+      ...signals.map((s) => s.asset),
+    ]),
+  ];
 
   console.log(`Scanning ${allAssets.length} unique assets...\n`);
 
@@ -54,12 +56,12 @@ async function cleanupDelistedStocks(dryRun: boolean = false) {
   console.log(`\nFound ${delistedAssets.length} delisted stocks\n`);
 
   if (delistedAssets.length === 0) {
-    console.log('No delisted stocks found!');
+    console.log("No delisted stocks found!");
     process.exit(0);
   }
 
   // Show what will be deleted
-  console.log('RECORDS TO DELETE:');
+  console.log("RECORDS TO DELETE:");
   for (const asset of delistedAssets) {
     const breakoutCount = await db.breakoutSignal.count({
       where: { asset },
@@ -68,23 +70,27 @@ async function cleanupDelistedStocks(dryRun: boolean = false) {
       where: { asset },
     });
 
-    console.log(`  ${asset}: ${breakoutCount} breakout signals, ${signalCount} setup signals`);
+    console.log(
+      `  ${asset}: ${breakoutCount} breakout signals, ${signalCount} setup signals`,
+    );
   }
 
   if (dryRun) {
-    console.log('\n[DRY RUN] No changes made. Run without --dry-run to delete.');
+    console.log(
+      "\n[DRY RUN] No changes made. Run without --dry-run to delete.",
+    );
     process.exit(0);
   }
 
   // Ask for confirmation
-  console.log('\n⚠️  WARNING: This will permanently delete the above records.');
+  console.log("\n⚠️  WARNING: This will permanently delete the above records.");
   console.log('Type "DELETE" to confirm (case-sensitive):');
 
   // For CLI confirmation, we'll just proceed (you can add readline if needed)
-  const confirmed = process.argv.includes('--confirm');
+  const confirmed = process.argv.includes("--confirm");
 
   if (!confirmed) {
-    console.log('\nCancelled. Run with --confirm to proceed.');
+    console.log("\nCancelled. Run with --confirm to proceed.");
     process.exit(1);
   }
 
@@ -99,7 +105,7 @@ async function cleanupDelistedStocks(dryRun: boolean = false) {
       ]);
 
       console.log(
-        `✓ ${asset}: Deleted ${breakoutDeleted.count} breakout + ${signalDeleted.count} signal records`
+        `✓ ${asset}: Deleted ${breakoutDeleted.count} breakout + ${signalDeleted.count} signal records`,
       );
     } catch (error) {
       console.error(`✗ ${asset}: Failed to delete - ${error}`);
@@ -110,8 +116,8 @@ async function cleanupDelistedStocks(dryRun: boolean = false) {
   process.exit(0);
 }
 
-const dryRun = process.argv.includes('--dry-run');
-cleanupDelistedStocks(dryRun).catch(error => {
-  console.error('Error cleaning up delisted stocks:', error);
+const dryRun = process.argv.includes("--dry-run");
+cleanupDelistedStocks(dryRun).catch((error) => {
+  console.error("Error cleaning up delisted stocks:", error);
   process.exit(1);
 });

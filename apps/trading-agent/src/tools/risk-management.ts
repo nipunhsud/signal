@@ -18,7 +18,8 @@ export function checkRisk(params: {
   maxPositionSize: number;
   stopLossPercent: number;
 }): RiskCheckResult {
-  const { currentPrice, cashBalance, maxPositionSize, stopLossPercent } = params;
+  const { currentPrice, cashBalance, maxPositionSize, stopLossPercent } =
+    params;
 
   if (currentPrice > maxPositionSize) {
     return {
@@ -36,7 +37,9 @@ export function checkRisk(params: {
   }
 
   const positionValue = quantity * currentPrice;
-  const stopLossPrice = parseFloat((currentPrice * (1 - stopLossPercent)).toFixed(4));
+  const stopLossPrice = parseFloat(
+    (currentPrice * (1 - stopLossPercent)).toFixed(4),
+  );
   const maxLoss = positionValue - quantity * stopLossPrice;
   const canAfford = cashBalance >= positionValue;
 
@@ -56,16 +59,18 @@ export function checkRisk(params: {
 
   return {
     approved: true,
-    reason: 'Risk check passed',
+    reason: "Risk check passed",
     sizing: { quantity, positionValue, stopLossPrice, maxLoss, canAfford },
   };
 }
 
 export function isAlreadyHeld(
   symbol: string,
-  positions: Array<{ contractDesc: string; position: number }>
+  positions: Array<{ contractDesc: string; position: number }>,
 ): boolean {
   return positions.some(
-    (p) => p.position > 0 && p.contractDesc.toUpperCase().includes(symbol.toUpperCase())
+    (p) =>
+      p.position > 0 &&
+      p.contractDesc.toUpperCase().includes(symbol.toUpperCase()),
   );
 }

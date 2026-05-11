@@ -19,7 +19,7 @@ export interface AgentResponse {
 
 export interface Signal {
   asset: string;
-  type: 'breakout' | 'reversal' | 'divergence' | 'other';
+  type: "breakout" | "reversal" | "divergence" | "other";
   confidence: number;
   timestamp: Date;
   details: Record<string, unknown>;

@@ -9,28 +9,34 @@
 ## What Was Implemented
 
 ### 1. **Source-Level Filtering** (Prevent from start)
+
 **File:** `apps/breakout-agent/src/tools/delistings.ts` (NEW)
 
 A new delistings utility module that:
+
 - **`isDelisted(symbol, apiKey)`** - Checks if a stock is delisted via FMP profile endpoint
 - **`filterDelistedStocks(symbols, apiKey)`** - Batch filters asset list, removing delistings
 - **`isKnownDelisted(symbol)`** - Quick check against known delistings registry
 - **`clearDelistingCache()`** - Manual cache management
 
 **Key features:**
+
 - 24-hour TTL cache to avoid redundant API calls
 - Batch processing (20 symbols at a time) for rate-limit efficiency
 - Pre-registered known delistings (WNS, etc.)
 - Detailed logging of delistings found
 
 **Modified files:**
+
 - `agent.ts` - Added import and call to `filterDelistedStocks()` in `fetchAssetsFromFMP()`
 - `market-data.ts` - Added dynamic delisting check in `fetchFMPData()` before analysis
 
 ### 2. **Dynamic Checking** (Catch edge cases)
+
 **File:** `src/tools/market-data.ts` (MODIFIED)
 
 Added runtime validation in `fetchFMPData()`:
+
 - Checks if symbol is delisted BEFORE fetching market data
 - Throws `[DELISTED]` error if stock is no longer trading
 - Gracefully handled in agent's error catch block (skip without crashing)
@@ -38,20 +44,25 @@ Added runtime validation in `fetchFMPData()`:
 **Handles the case:** Stock gets delisted between asset list generation and analysis
 
 ### 3. **Existing Data Cleanup** (Clean up current database)
-**Files:** 
+
+**Files:**
+
 - `src/scripts/scan-delisted-stocks.ts` (NEW)
 - `src/scripts/cleanup-delisted.ts` (NEW)
 
 **Scan Script:**
+
 ```bash
 npx ts-node --esm src/scripts/scan-delisted-stocks.ts
 ```
+
 - Audits all unique assets in database (both breakoutSignal and signal tables)
 - Reports active vs delisted stocks
 - Shows count of records to be cleaned
 - No database modifications
 
 **Cleanup Script:**
+
 ```bash
 # Dry run (show what would be deleted)
 npx ts-node --esm src/scripts/cleanup-delisted.ts --dry-run
@@ -59,15 +70,18 @@ npx ts-node --esm src/scripts/cleanup-delisted.ts --dry-run
 # Actually delete (requires --confirm flag)
 npx ts-node --esm src/scripts/cleanup-delisted.ts --confirm
 ```
+
 - Identifies all delisted stocks in database
 - Lists all records that would be deleted (by table, by asset)
 - Deletes breakoutSignal and signal records for delisted stocks
 - Requires explicit `--confirm` flag for safety
 
 ### 4. **Documentation**
+
 **File:** `apps/breakout-agent/DELISTINGS.md` (NEW)
 
 Complete guide including:
+
 - Problem statement
 - Solution architecture (4-tier approach)
 - Flow diagram
@@ -80,14 +94,14 @@ Complete guide including:
 
 ## Files Changed Summary
 
-| File | Type | Change |
-|------|------|--------|
-| `src/tools/delistings.ts` | NEW | Delistings utility module (156 lines) |
-| `src/tools/market-data.ts` | MODIFIED | Add dynamic delisting check in `fetchFMPData()` |
-| `src/agent.ts` | MODIFIED | Import delistings, call filter in `fetchAssetsFromFMP()`, catch delisting errors |
-| `src/scripts/scan-delisted-stocks.ts` | NEW | Database audit script |
-| `src/scripts/cleanup-delisted.ts` | NEW | Database cleanup script |
-| `DELISTINGS.md` | NEW | User documentation |
+| File                                  | Type     | Change                                                                           |
+| ------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `src/tools/delistings.ts`             | NEW      | Delistings utility module (156 lines)                                            |
+| `src/tools/market-data.ts`            | MODIFIED | Add dynamic delisting check in `fetchFMPData()`                                  |
+| `src/agent.ts`                        | MODIFIED | Import delistings, call filter in `fetchAssetsFromFMP()`, catch delisting errors |
+| `src/scripts/scan-delisted-stocks.ts` | NEW      | Database audit script                                                            |
+| `src/scripts/cleanup-delisted.ts`     | NEW      | Database cleanup script                                                          |
+| `DELISTINGS.md`                       | NEW      | User documentation                                                               |
 
 ---
 
@@ -117,13 +131,15 @@ Complete guide including:
 ## Known Delistings Registry
 
 Currently tracked in `src/tools/delistings.ts`:
+
 ```typescript
 const knownDelistings = new Set([
-  'WNS', // Acquired by Capgemini, Oct 2025
+  "WNS", // Acquired by Capgemini, Oct 2025
 ]);
 ```
 
 **Process to add new delistings:**
+
 1. Add symbol to `knownDelistings` Set
 2. Update the `Known Delistings` table in `DELISTINGS.md`
 3. Run cleanup script to remove from database
@@ -138,6 +154,7 @@ const knownDelistings = new Set([
 - **Overall overhead:** <5% increase in total analysis time
 
 **Cost savings:**
+
 - Eliminated API calls for known delistings (instant check)
 - Reduced computation time by not analyzing delisted stocks
 - Improved signal quality (no stale data)
@@ -147,6 +164,7 @@ const knownDelistings = new Set([
 ## Testing the Implementation
 
 ### 1. Run Asset Fetch with Delisting Filter
+
 ```bash
 # Add WNS to known delistings in src/tools/delistings.ts
 # Run breakout agent normally
@@ -154,12 +172,14 @@ const knownDelistings = new Set([
 ```
 
 ### 2. Scan Current Database
+
 ```bash
 npx ts-node --esm src/scripts/scan-delisted-stocks.ts
 # Output: Count of active/delisted, list of delisted symbols
 ```
 
 ### 3. Dry-run Cleanup
+
 ```bash
 npx ts-node --esm src/scripts/cleanup-delisted.ts --dry-run
 # Output: Shows what would be deleted without making changes
@@ -180,6 +200,7 @@ npx ts-node --esm src/scripts/cleanup-delisted.ts --dry-run
 ## Integration Summary
 
 The implementation is **non-breaking** and **production-ready**:
+
 - ✅ Backward compatible (no schema changes needed)
 - ✅ Graceful error handling (skips delisted stocks without crashing)
 - ✅ Optimized performance (caching, batching)

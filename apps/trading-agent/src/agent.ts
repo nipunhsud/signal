@@ -1,7 +1,7 @@
-import { IBClient } from './tools/ib-client.js';
-import { executeOrder, OrderExecutionResult } from './tools/execute-order.js';
-import { db } from './db.js';
-import { TradingConfig } from './config.js';
+import { IBClient } from "./tools/ib-client.js";
+import { executeOrder, OrderExecutionResult } from "./tools/execute-order.js";
+import { db } from "./db.js";
+import { TradingConfig } from "./config.js";
 
 export class TradingAgent {
   private ibClient: IBClient;
@@ -15,7 +15,7 @@ export class TradingAgent {
   async initialize(): Promise<void> {
     await this.ibClient.checkAuth();
     this.ibClient.startKeepalive();
-    console.log('[TradingAgent] IB gateway authenticated. Keepalive started.');
+    console.log("[TradingAgent] IB gateway authenticated. Keepalive started.");
   }
 
   async executePendingSignals(): Promise<OrderExecutionResult[]> {
@@ -24,31 +24,41 @@ export class TradingAgent {
         shouldAlert: true,
         executedAt: null,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
       take: 10,
     });
 
     if (!pendingSignals.length) {
-      console.log('[TradingAgent] No pending signals.');
+      console.log("[TradingAgent] No pending signals.");
       return [];
     }
 
-    console.log(`[TradingAgent] Found ${pendingSignals.length} pending signal(s).`);
+    console.log(
+      `[TradingAgent] Found ${pendingSignals.length} pending signal(s).`,
+    );
     const results: OrderExecutionResult[] = [];
 
     for (const signal of pendingSignals) {
-      console.log(`[TradingAgent] Processing signal for ${signal.asset} (id=${signal.id})`);
+      console.log(
+        `[TradingAgent] Processing signal for ${signal.asset} (id=${signal.id})`,
+      );
 
       const ageMs = Date.now() - signal.createdAt.getTime();
       const ageHours = ageMs / (1000 * 60 * 60);
 
       if (ageHours > 4) {
-        console.log(`[TradingAgent] Signal for ${signal.asset} is ${ageHours.toFixed(1)}h old, skipping.`);
+        console.log(
+          `[TradingAgent] Signal for ${signal.asset} is ${ageHours.toFixed(1)}h old, skipping.`,
+        );
         await db.breakoutSignal.update({
           where: { id: signal.id },
           data: { executedAt: new Date() },
         });
-        results.push({ asset: signal.asset, success: false, riskReason: 'Signal too old (>4h)' });
+        results.push({
+          asset: signal.asset,
+          success: false,
+          riskReason: "Signal too old (>4h)",
+        });
         continue;
       }
 
@@ -62,7 +72,10 @@ export class TradingAgent {
         });
         results.push(result);
       } catch (err) {
-        console.error(`[TradingAgent] Unexpected error for ${signal.asset}:`, err);
+        console.error(
+          `[TradingAgent] Unexpected error for ${signal.asset}:`,
+          err,
+        );
         results.push({
           asset: signal.asset,
           success: false,

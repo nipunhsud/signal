@@ -1,5 +1,5 @@
-import axios, { AxiosInstance } from 'axios';
-import https from 'https';
+import axios, { AxiosInstance } from "axios";
+import https from "https";
 
 export interface IBPosition {
   conid: number;
@@ -34,9 +34,12 @@ export class IBClient {
     if (this.keepaliveTimer) return;
     this.keepaliveTimer = setInterval(async () => {
       try {
-        await this.http.post('/v1/api/tickle');
+        await this.http.post("/v1/api/tickle");
       } catch (err) {
-        console.warn('[IBClient] Tickle failed:', err instanceof Error ? err.message : err);
+        console.warn(
+          "[IBClient] Tickle failed:",
+          err instanceof Error ? err.message : err,
+        );
       }
     }, 60_000);
     this.keepaliveTimer.unref();
@@ -50,18 +53,20 @@ export class IBClient {
   }
 
   async checkAuth(): Promise<void> {
-    const resp = await this.http.get('/v1/api/iserver/auth/status');
+    const resp = await this.http.get("/v1/api/iserver/auth/status");
     const data = resp.data as { authenticated: boolean; connected: boolean };
     if (!data.authenticated) {
-      throw new Error('IB gateway is not authenticated. Log in via the gateway UI.');
+      throw new Error(
+        "IB gateway is not authenticated. Log in via the gateway UI.",
+      );
     }
   }
 
   async getAccountId(): Promise<string> {
     if (this.accountId) return this.accountId;
-    const resp = await this.http.get('/v1/api/iserver/accounts');
+    const resp = await this.http.get("/v1/api/iserver/accounts");
     const accounts = resp.data.accounts as string[];
-    if (!accounts.length) throw new Error('No IB accounts found');
+    if (!accounts.length) throw new Error("No IB accounts found");
     this.accountId = accounts[0];
     return this.accountId;
   }
@@ -70,12 +75,16 @@ export class IBClient {
     const cached = this.conidCache.get(symbol);
     if (cached) return cached;
 
-    const resp = await this.http.get('/v1/api/iserver/secdef/search', {
-      params: { symbol, secType: 'STK', name: false },
+    const resp = await this.http.get("/v1/api/iserver/secdef/search", {
+      params: { symbol, secType: "STK", name: false },
     });
 
-    const contracts = resp.data as Array<{ conid: string; companyName: string }>;
-    if (!contracts.length) throw new Error(`No contracts found for symbol: ${symbol}`);
+    const contracts = resp.data as Array<{
+      conid: string;
+      companyName: string;
+    }>;
+    if (!contracts.length)
+      throw new Error(`No contracts found for symbol: ${symbol}`);
 
     const conid = contracts[0].conid;
     this.conidCache.set(symbol, conid);
@@ -84,16 +93,27 @@ export class IBClient {
 
   async getHistoricalBars(
     conid: string,
-    period = '5d'
-  ): Promise<Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>> {
-    const resp = await this.http.get('/v1/api/iserver/marketdata/history', {
-      params: { conid, period, bar: '1h', outsideRth: false },
+    period = "5d",
+  ): Promise<
+    Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>
+  > {
+    const resp = await this.http.get("/v1/api/iserver/marketdata/history", {
+      params: { conid, period, bar: "1h", outsideRth: false },
     });
-    return (resp.data.data || []) as Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>;
+    return (resp.data.data || []) as Array<{
+      t: number;
+      o: number;
+      h: number;
+      l: number;
+      c: number;
+      v: number;
+    }>;
   }
 
   async getPositions(accountId: string): Promise<IBPosition[]> {
-    const resp = await this.http.get(`/v1/api/portfolio/${accountId}/positions/0`);
+    const resp = await this.http.get(
+      `/v1/api/portfolio/${accountId}/positions/0`,
+    );
     return resp.data as IBPosition[];
   }
 
@@ -101,24 +121,24 @@ export class IBClient {
     const resp = await this.http.get(`/v1/api/portfolio/${accountId}/summary`);
     const summary = resp.data as Record<string, any>;
 
-    const cashField = summary['cashbalance'] as any;
+    const cashField = summary["cashbalance"] as any;
     if (cashField?.USD?.amount !== undefined) return cashField.USD.amount;
     if (cashField?.amount !== undefined) return cashField.amount;
-    if (typeof cashField === 'object') {
+    if (typeof cashField === "object") {
       for (const key of Object.keys(cashField)) {
         const entry = cashField[key];
-        if (entry && typeof entry.amount === 'number') return entry.amount;
+        if (entry && typeof entry.amount === "number") return entry.amount;
       }
     }
-    throw new Error('Could not parse cash balance from account summary');
+    throw new Error("Could not parse cash balance from account summary");
   }
 
   async placeOrder(params: {
     accountId: string;
     conid: string;
-    side: 'BUY' | 'SELL';
+    side: "BUY" | "SELL";
     quantity: number;
-    orderType?: 'MKT' | 'LMT';
+    orderType?: "MKT" | "LMT";
     price?: number;
     outsideRth?: boolean;
   }): Promise<IBOrderResult> {
@@ -127,20 +147,26 @@ export class IBClient {
         {
           conid: parseInt(params.conid, 10),
           secType: `${params.conid}:STK`,
-          orderType: params.orderType || 'MKT',
+          orderType: params.orderType || "MKT",
           side: params.side,
           quantity: params.quantity,
-          tif: 'DAY',
+          tif: "DAY",
           price: params.price,
           outsideRth: params.outsideRth ?? false,
         },
       ],
     };
 
-    const resp = await this.http.post(`/v1/api/iserver/account/${params.accountId}/orders`, orderBody);
+    const resp = await this.http.post(
+      `/v1/api/iserver/account/${params.accountId}/orders`,
+      orderBody,
+    );
 
-    const results = resp.data as Array<{ orderId: string; order_status: string }>;
-    if (!results.length) throw new Error('No order result returned from IB');
+    const results = resp.data as Array<{
+      orderId: string;
+      order_status: string;
+    }>;
+    if (!results.length) throw new Error("No order result returned from IB");
 
     return {
       orderId: results[0].orderId,

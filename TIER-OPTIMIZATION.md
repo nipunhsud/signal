@@ -1,11 +1,13 @@
 # Tier Optimization: 100 Tiers → 10 Tiers + Rate Limiting
 
 ## Problem
+
 - **100 parallel tiers** × ~63 assets/tier × 2-3 FMP calls/asset = ~15,750 concurrent calls
 - FMP limit: **750 calls/min** — you're exceeding it **20x over**
 - Result: Rate limit errors, failed scans, wasted API calls
 
 ## Solution Implemented
+
 ✅ **Rate limiter** (750 calls/min, globally enforced)
 ✅ **Market data cache** (5-min TTL, ~60-70% fewer API calls)
 ✅ **Increased per-tier concurrency** (CONCURRENCY=5, safe with rate limiting)
@@ -42,12 +44,14 @@ docker-compose up -d
 ## Expected Results
 
 ### Before (100 Tiers)
+
 - Full scan: ~6,270 assets in parallel
 - Peak FMP calls: ~15,750 concurrent (rate-limited to hell)
 - Time to scan all assets: ~30-60 seconds (blocked by rate limits)
 - Error rate: ~20-40% due to 429 errors
 
 ### After (10 Tiers + Optimizations)
+
 - Full scan: 10 sequential tiers, each ~627 assets with 5 concurrency
 - Peak FMP calls: ~25-30 actual requests (rate-limited at 12/sec = 720/min)
 - Time to scan all assets: ~15 minutes total (6270 assets ÷ 10 tiers ÷ (2-3 calls/asset with caching))
@@ -70,6 +74,7 @@ Result: Smooth 720 calls/min, cache reduces actual API calls by 60-70%
 ## Monitoring
 
 Check cache hit rate:
+
 ```bash
 # In agent logs, look for "Cache hit" messages
 docker logs signal-forge-breakout-agent-tier-1 | grep "Cache hit" | wc -l
@@ -78,6 +83,7 @@ docker logs signal-forge-breakout-agent-tier-1 | grep "Cache hit" | wc -l
 ## Rollback
 
 If you need to go back to 100 tiers (not recommended):
+
 ```bash
 git checkout docker-compose.yml
 git checkout .env.tiers/

@@ -1,6 +1,7 @@
 # FMP API Rate Limit Optimization — Implementation Checklist
 
 ## ✅ Done
+
 - [x] **Rate Limiter**: Global 750 calls/min enforcer across all tier instances
 - [x] **Cache Layer**: 5-min TTL on market data (60-70% reduction in actual API calls)
 - [x] **Increased Per-Tier Concurrency**: CONCURRENCY=5 (safe with rate limiting)
@@ -9,6 +10,7 @@
 ## 🚀 Next: Reduce Tier Count
 
 ### Quick Start (Recommended)
+
 ```bash
 # Backup current config (optional)
 cp docker-compose.yml docker-compose.yml.backup
@@ -26,24 +28,26 @@ docker-compose up -d
 ```
 
 ### Manual Alternative (if script not available)
+
 1. Edit `docker-compose.yml` — keep only `agent-tier-1` through `agent-tier-10`
 2. Generate `.env.tier-1` through `.env.tier-10` with 627 assets each
 3. `docker-compose restart`
 
 ## Results Preview
 
-| Metric | Before (100 Tiers) | After (10 Tiers) |
-|--------|-------------------|-----------------|
-| Parallel instances | 100 | 10 |
-| Peak concurrent FMP calls | ~15,750 | ~25-30 |
-| Actual API calls (w/ cache) | N/A | ~2,000-2,500/min |
-| Rate limit violations | 20-40% | <1% |
-| Time to full scan | 30-60s (blocked) | ~15 min (smooth) |
-| Cache hit rate | N/A | 60-70% |
+| Metric                      | Before (100 Tiers) | After (10 Tiers) |
+| --------------------------- | ------------------ | ---------------- |
+| Parallel instances          | 100                | 10               |
+| Peak concurrent FMP calls   | ~15,750            | ~25-30           |
+| Actual API calls (w/ cache) | N/A                | ~2,000-2,500/min |
+| Rate limit violations       | 20-40%             | <1%              |
+| Time to full scan           | 30-60s (blocked)   | ~15 min (smooth) |
+| Cache hit rate              | N/A                | 60-70%           |
 
 ## Monitoring
 
 ### In Real-Time
+
 ```bash
 # Watch cache hits
 docker logs signal-forge-breakout-agent-tier-1 -f | grep "Cache hit"
@@ -53,6 +57,7 @@ docker logs signal-forge-breakout-agent-tier-1 -f | grep "FMP\|Error"
 ```
 
 ### Expected Log Output
+
 ```
 Cache hit for AAPL
 Cache hit for MSFT
@@ -76,6 +81,7 @@ Rate limiter: queued fetchMarketData(GOOG)... (waiting 83ms)
 ## Advanced: Adjust Rate Limit
 
 If you have FMP Pro plan with higher limits:
+
 ```typescript
 // In rate-limiter.ts
 export const globalRateLimiter = new RateLimiter(1500); // 1500/min for Pro
@@ -84,6 +90,7 @@ export const globalRateLimiter = new RateLimiter(1500); // 1500/min for Pro
 ## Rollback
 
 If you need to revert:
+
 ```bash
 git checkout docker-compose.yml .env.tiers/
 docker-compose up -d

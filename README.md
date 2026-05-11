@@ -26,6 +26,7 @@ cp .env.example .env
 ```
 
 Edit `.env`:
+
 - `GEMINI_API_KEY` — Get from [Google AI Studio](https://aistudio.google.com)
 - `DATABASE_URL` — Postgres connection (Railway, Supabase, local)
 - `EMAIL_*` — Gmail app password or SendGrid key
@@ -61,16 +62,19 @@ Scans assets every hour (or per `CRON_SCHEDULE`), stores signals in DB, sends em
 See `.env.example` for full reference.
 
 **Key configs:**
+
 - `DATA_SOURCE` — `fmp` (Financial Modeling Prep), `binance` (crypto), or `alpaca` (stocks)
 - `CRON_SCHEDULE` — Standard cron format (default: hourly)
 - `SCAN_ASSETS` — Which symbols to monitor (CSV list)
 
 **FMP Screener filtering (parallel Docker tier setup):**
+
 - `MIN_MARKET_CAP` — Minimum market cap in dollars (default: `300000000` = $300M)
 - `MIN_VOLUME` — Minimum average daily volume in shares (default: `100000`)
 - `DYNAMIC_ASSETS` — Set to `true` to fetch filtered universe from FMP
 
 **Sharding & rate limiting (for 5-tier parallel scan):**
+
 - `SHARD_INDEX` — Which tier this is (0-4, set per `.env.tiers/.env.tier-N`)
 - `SHARD_TOTAL` — Total number of tiers (default: `5`)
 - `RATE_LIMIT_PER_MIN` — API calls per minute for this container (default: `140`)
@@ -78,16 +82,19 @@ See `.env.example` for full reference.
 ## Docker Troubleshooting
 
 **Docker not running:**
+
 ```bash
 # Start Docker Desktop
 open /Applications/Docker.app
 ```
 
 **Build fails with "Module '@prisma/client' not found":**
+
 - Dockerfile runs `prisma generate` before TypeScript compilation
 - If still failing: rebuild with `docker-compose down && docker-compose up -d --build`
 
 **Build fails with "Command 'build' not found":**
+
 - Dockerfile copies full monorepo structure (pnpm-workspace.yaml, packages/, prisma/)
 - Uses `pnpm -F breakout-agent build` to build only the agent app
 
@@ -106,6 +113,7 @@ Agent runs 24/7, sends alerts as signals fire.
 ### Docker (Local/VPS)
 
 **Single agent:**
+
 ```bash
 docker build -t signal-forge .
 docker run -d --env-file .env signal-forge
@@ -123,11 +131,13 @@ pm2 save
 ```
 
 Or run directly without PM2:
+
 ```bash
 docker-compose up --build agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
 ```
 
 **How it works:**
+
 - **FMP Screener filters** assets to: market cap >$300M + avg volume >100k shares
 - **Universe reduced**: ~15,908 → ~3,000 liquid stocks (80% fewer API calls)
 - **5 Docker containers** process shards in parallel (modulo sharding for even distribution)
@@ -136,11 +146,13 @@ docker-compose up --build agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 ag
 - **Cache layer**: 5-min TTL reduces actual API calls by 60-70%
 
 **Access dashboard:**
+
 ```bash
 # http://localhost:3000
 ```
 
 **View logs:**
+
 ```bash
 # With PM2
 pm2 logs signal-forge-scan -f
@@ -151,12 +163,14 @@ docker-compose logs -f agent-tier-1
 
 **Customize filters:**
 Edit `.env.tiers/.env.tier-{1..5}`:
+
 ```bash
 MIN_MARKET_CAP=500000000  # $500M instead of $300M
 MIN_VOLUME=200000         # 200k instead of 100k
 ```
 
 Then restart:
+
 ```bash
 pm2 restart signal-forge-scan
 ```
@@ -164,6 +178,7 @@ pm2 restart signal-forge-scan
 **Rescan with fresh database:**
 
 When asked to rescan, always rebuild Docker images to clear the Prisma client cache:
+
 ```bash
 pm2 stop signal-forge-scan
 docker-compose down

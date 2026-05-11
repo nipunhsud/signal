@@ -28,6 +28,7 @@ git push -u origin main
 ```
 
 Then on [railway.app](https://railway.app):
+
 1. Click **New Project**
 2. Select **Deploy from GitHub**
 3. Authorize GitHub, select `signal-forge` repo
@@ -36,6 +37,7 @@ Then on [railway.app](https://railway.app):
 ### **2. Add Postgres Database**
 
 In Railway dashboard:
+
 1. Click **+ Add Service**
 2. Select **Postgres**
 3. Railway creates `DATABASE_URL` automatically
@@ -69,10 +71,12 @@ USE_PAPER_TRADING=true
 ### **4. Configure Build & Start**
 
 Railway should auto-detect:
+
 - **Build**: `npm install && npm run build`
 - **Start**: `npm run dev`
 
 If not, set manually:
+
 - **Build Command**: `npm run build`
 - **Start Command**: `npm run dev`
 
@@ -125,7 +129,7 @@ CMD ["npm", "run", "dev"]
 ### **docker-compose.yml**
 
 ```yaml
-version: '3.8'
+version: "3.8"
 
 services:
   app:
@@ -239,6 +243,7 @@ git push
 ### **Railway Logs**
 
 In Railway dashboard:
+
 1. Click **Deployments**
 2. Select latest deployment
 3. **Logs** tab shows all agent output
@@ -269,9 +274,9 @@ Or query via script:
 
 ```sql
 -- Total signals by agent
-SELECT 
-  agent_name, 
-  COUNT(*) as count, 
+SELECT
+  agent_name,
+  COUNT(*) as count,
   AVG(confidence) as avg_confidence
 FROM signals
 WHERE created_at > NOW() - INTERVAL '24 hours'
@@ -315,7 +320,7 @@ If you need independent scaling:
 # Deploy only breakout-agent
 railway deploy --service breakout-agent
 
-# Deploy only trading-agent  
+# Deploy only trading-agent
 railway deploy --service trading-agent
 ```
 
@@ -368,8 +373,8 @@ Agents default to 1000ms output tokens. If truncated:
 ```typescript
 // apps/breakout-agent/src/agent.ts
 super({
-  maxTokens: 2000  // Increase if needed
-})
+  maxTokens: 2000, // Increase if needed
+});
 ```
 
 ### **High Memory Usage**
@@ -382,13 +387,13 @@ super({
 
 ## Cost Estimate
 
-| Service | Cost | Notes |
-|---------|------|-------|
-| Railway | $5-20/mo | Includes Postgres, always-on |
-| Gemini API | Free | 15 RPM for free tier, or ~$0.075/1M tokens |
-| Email | Free | Gmail, SendGrid, Resend all have free tiers |
-| Binance/Alpaca | Free | Real-time market data |
-| **Total** | **~$10-30/mo** | Production-ready |
+| Service        | Cost           | Notes                                       |
+| -------------- | -------------- | ------------------------------------------- |
+| Railway        | $5-20/mo       | Includes Postgres, always-on                |
+| Gemini API     | Free           | 15 RPM for free tier, or ~$0.075/1M tokens  |
+| Email          | Free           | Gmail, SendGrid, Resend all have free tiers |
+| Binance/Alpaca | Free           | Real-time market data                       |
+| **Total**      | **~$10-30/mo** | Production-ready                            |
 
 ---
 
@@ -412,7 +417,7 @@ jobs:
       - uses: actions/setup-node@v2
       - run: npm ci
       - run: npm run build
-      - run: npm run test  # if tests exist
+      - run: npm run test # if tests exist
 ```
 
 ---

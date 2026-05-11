@@ -1,5 +1,5 @@
-import { globalRateLimiter } from './rate-limiter.js';
-import axios from 'axios';
+import { globalRateLimiter } from "./rate-limiter.js";
+import axios from "axios";
 
 interface DelistingCache {
   [symbol: string]: { isDelisted: boolean; checkedAt: number; reason?: string };
@@ -14,7 +14,10 @@ const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
  * 1. Profile endpoint returns no data
  * 2. The symbol is known to be acquired/delisted
  */
-export async function isDelisted(symbol: string, apiKey: string): Promise<{ delisted: boolean; reason?: string }> {
+export async function isDelisted(
+  symbol: string,
+  apiKey: string,
+): Promise<{ delisted: boolean; reason?: string }> {
   // Check cache first
   const cached = delistingCache[symbol];
   if (cached && Date.now() - cached.checkedAt < CACHE_TTL) {
@@ -31,18 +34,21 @@ export async function isDelisted(symbol: string, apiKey: string): Promise<{ deli
         {
           params: { apikey: apiKey },
           timeout: 10000,
-        }
+        },
       );
       return res.data;
     });
 
     // If profile returns empty array or no data, stock is likely delisted
-    if (!profileData || (Array.isArray(profileData) && profileData.length === 0)) {
-      const result = { delisted: true, reason: 'No profile data available' };
+    if (
+      !profileData ||
+      (Array.isArray(profileData) && profileData.length === 0)
+    ) {
+      const result = { delisted: true, reason: "No profile data available" };
       delistingCache[symbol] = {
         isDelisted: true,
         checkedAt: Date.now(),
-        reason: 'No profile data available',
+        reason: "No profile data available",
       };
       return result;
     }
@@ -53,22 +59,22 @@ export async function isDelisted(symbol: string, apiKey: string): Promise<{ deli
 
       // Some APIs return isActive or similar field
       if (profile.isActive === false) {
-        const result = { delisted: true, reason: 'Marked as inactive' };
+        const result = { delisted: true, reason: "Marked as inactive" };
         delistingCache[symbol] = {
           isDelisted: true,
           checkedAt: Date.now(),
-          reason: 'Marked as inactive',
+          reason: "Marked as inactive",
         };
         return result;
       }
 
       // Check if exchange field exists (delisted stocks may not have it)
       if (!profile.exchange && !profile.exchangeShortName) {
-        const result = { delisted: true, reason: 'No exchange information' };
+        const result = { delisted: true, reason: "No exchange information" };
         delistingCache[symbol] = {
           isDelisted: true,
           checkedAt: Date.now(),
-          reason: 'No exchange information',
+          reason: "No exchange information",
         };
         return result;
       }
@@ -100,7 +106,7 @@ export async function isDelisted(symbol: string, apiKey: string): Promise<{ deli
 export function isKnownDelisted(symbol: string): boolean {
   // Known delistings (add to this list as they occur)
   const knownDelistings = new Set([
-    'WNS', // Acquired by Capgemini in October 2025
+    "WNS", // Acquired by Capgemini in October 2025
   ]);
 
   return knownDelistings.has(symbol.toUpperCase());
@@ -109,14 +115,19 @@ export function isKnownDelisted(symbol: string): boolean {
 /**
  * Filter out delisted stocks from a list
  */
-export async function filterDelistedStocks(symbols: string[], apiKey: string): Promise<string[]> {
-  console.log(`[Delistings] Checking ${symbols.length} symbols for delisting status...`);
+export async function filterDelistedStocks(
+  symbols: string[],
+  apiKey: string,
+): Promise<string[]> {
+  console.log(
+    `[Delistings] Checking ${symbols.length} symbols for delisting status...`,
+  );
 
   const active: string[] = [];
   const delisted: string[] = [];
 
   // Quick check for known delistings first
-  const unknownSymbols = symbols.filter(symbol => {
+  const unknownSymbols = symbols.filter((symbol) => {
     if (isKnownDelisted(symbol)) {
       delisted.push(symbol);
       return false;
@@ -124,14 +135,16 @@ export async function filterDelistedStocks(symbols: string[], apiKey: string): P
     return true;
   });
 
-  console.log(`[Delistings] Found ${delisted.length} known delistings: ${delisted.join(', ')}`);
+  console.log(
+    `[Delistings] Found ${delisted.length} known delistings: ${delisted.join(", ")}`,
+  );
 
   // Check remaining symbols with API (in smaller batches to respect rate limits)
   const BATCH_SIZE = 20; // Check 20 at a time
   for (let i = 0; i < unknownSymbols.length; i += BATCH_SIZE) {
     const batch = unknownSymbols.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(
-      batch.map(symbol => isDelisted(symbol, apiKey))
+      batch.map((symbol) => isDelisted(symbol, apiKey)),
     );
 
     for (let j = 0; j < batch.length; j++) {
@@ -156,6 +169,6 @@ export async function filterDelistedStocks(symbols: string[], apiKey: string): P
  * Clear delistings cache (useful for testing or manual refresh)
  */
 export function clearDelistingCache(): void {
-  Object.keys(delistingCache).forEach(key => delete delistingCache[key]);
-  console.log('[Delistings] Cache cleared');
+  Object.keys(delistingCache).forEach((key) => delete delistingCache[key]);
+  console.log("[Delistings] Cache cleared");
 }
