@@ -1,9 +1,9 @@
 /**
  * Removes delisted stocks from database
- * Run: npx ts-node --esm src/scripts/cleanup-delisted.ts [--dry-run]
+ * Run: cd apps/breakout-agent && npm run build && node dist/scripts/cleanup-delisted.js [--dry-run]
  */
-import { db } from "../db";
-import { isDelisted, isKnownDelisted } from "../tools/delistings";
+import { db } from "../db.js";
+import { isDelisted, isKnownDelisted } from "../tools/delistings.js";
 
 async function cleanupDelistedStocks(dryRun: boolean = false) {
   const apiKey = process.env.FMP_API_KEY;

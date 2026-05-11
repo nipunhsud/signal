@@ -1,9 +1,9 @@
 /**
  * Scans the database for delisted stocks and identifies them
- * Run: npx ts-node --esm src/scripts/scan-delisted-stocks.ts
+ * Run: cd apps/breakout-agent && npm run build && node dist/scripts/scan-delisted-stocks.js
  */
-import { db } from "../db";
-import { isDelisted, isKnownDelisted } from "../tools/delistings";
+import { db } from "../db.js";
+import { isDelisted, isKnownDelisted } from "../tools/delistings.js";
 
 async function scanDelistedStocks() {
   const apiKey = process.env.FMP_API_KEY;
