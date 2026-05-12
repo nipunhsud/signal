@@ -231,7 +231,7 @@
                   <span class="text-sm font-semibold px-2 py-1 rounded ${signal.assetType === 'etf' ? 'bg-yellow-900 text-yellow-300' : 'bg-green-900 text-green-300'}">
                     ${signal.assetType === 'etf' ? '📊 ETF' : '📈 STOCK'}
                   </span>
-                  <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">📈</a>
+                  <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView (set to Daily timeframe)">📈</a>
                 </div>
                 <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
               </div>
@@ -243,7 +243,13 @@
 
             <div class="p-6 space-y-6">
               <!-- Chart -->
-              <div id="chart-container" style="height:240px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
+              <div>
+                <div class="text-sm text-gray-400 mb-2 flex justify-between">
+                  <span>📊 3-Month Daily Chart</span>
+                  <span class="text-xs text-gray-500">Daily | ${signal.asset}</span>
+                </div>
+                <div id="chart-container" style="height:240px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
+              </div>
 
               <!-- Quick Stats -->
               <div class="space-y-3">
@@ -520,9 +526,9 @@
               wickDownColor: '#ef4444',
             });
             series.setData(bars);
-            // Set chart to show ~30 days of data (or less if fewer bars available)
+            // Set chart to show ~3 months of daily data (60-65 trading days)
             if (bars.length > 0) {
-              const barsToShow = Math.min(30, bars.length);
+              const barsToShow = Math.min(65, bars.length);
               const startIdx = Math.max(0, bars.length - barsToShow);
               const firstBar = bars[startIdx];
               const lastBar = bars[bars.length - 1];

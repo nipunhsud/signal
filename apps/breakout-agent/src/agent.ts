@@ -438,6 +438,19 @@ export class BreakoutAgent {
       return;
     }
 
+    // Verify the record was persisted to database before sending alert
+    const latestRecord = await db.breakoutSignal.findFirst({
+      where: { asset: result.asset },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!latestRecord) {
+      console.error(
+        `❌ CRITICAL: Cannot send alert for ${result.asset} — record not found in database. DB write may have failed.`,
+      );
+      return;
+    }
+
     // Check if we already sent an alert for this asset
     const existingAlert = await db.breakoutSignal.findFirst({
       where: { asset: result.asset, alertSentAt: { not: null } },
