@@ -166,9 +166,12 @@ export class BreakoutAgent {
       try {
         data = await fetchMarketData(asset);
       } catch (error: any) {
-        // Check if this is a delisting error
         const errorMsg = error?.message || "";
-        if (errorMsg.includes("[DELISTED]")) {
+        // Skip delisted stocks or stocks with no data available
+        if (
+          errorMsg.includes("[DELISTED]") ||
+          errorMsg.includes("No data found")
+        ) {
           console.warn(`⊘ ${asset}: ${errorMsg}`);
           return null;
         }
