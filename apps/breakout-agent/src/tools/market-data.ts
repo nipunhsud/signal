@@ -1,7 +1,6 @@
 import axios from "axios";
 import { globalRateLimiter } from "./rate-limiter.js";
 import { marketDataCache } from "./cache.js";
-import { isDelisted } from "./delistings.js";
 
 function calculateMA(prices: number[], period: number): number {
   if (prices.length < period) return prices[prices.length - 1];
@@ -365,13 +364,8 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error("FMP_API_KEY not set");
 
-  // Dynamic delisting check before fetching data
-  const delistingStatus = await isDelisted(symbol, apiKey);
-  if (delistingStatus.delisted) {
-    throw new Error(
-      `[DELISTED] ${symbol}: ${delistingStatus.reason || "Stock is delisted"}`,
-    );
-  }
+  // Delisting already filtered at universe level in agent.ts via filterDelistedStocks
+  // Skip per-stock check to avoid rate limit exhaustion
 
   const cacheKey = `market:${symbol}`;
   const cached = marketDataCache.get<MarketData>(cacheKey);
