@@ -114,20 +114,19 @@ export function isKnownDelisted(symbol: string): boolean {
 
 /**
  * Filter out delisted stocks from a list
+ * Uses known delistings only (API verification is too slow for full universe)
  */
 export async function filterDelistedStocks(
   symbols: string[],
-  apiKey: string,
 ): Promise<string[]> {
   console.log(
     `[Delistings] Checking ${symbols.length} symbols for delisting status...`,
   );
 
-  const active: string[] = [];
   const delisted: string[] = [];
 
-  // Quick check for known delistings first
-  const unknownSymbols = symbols.filter((symbol) => {
+  // Quick check for known delistings
+  const active = symbols.filter((symbol) => {
     if (isKnownDelisted(symbol)) {
       delisted.push(symbol);
       return false;
@@ -135,31 +134,12 @@ export async function filterDelistedStocks(
     return true;
   });
 
-  console.log(
-    `[Delistings] Found ${delisted.length} known delistings: ${delisted.join(", ")}`,
-  );
-
-  // Check remaining symbols with API (in smaller batches to respect rate limits)
-  const BATCH_SIZE = 20; // Check 20 at a time
-  for (let i = 0; i < unknownSymbols.length; i += BATCH_SIZE) {
-    const batch = unknownSymbols.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(
-      batch.map((symbol) => isDelisted(symbol, apiKey)),
-    );
-
-    for (let j = 0; j < batch.length; j++) {
-      if (results[j].delisted) {
-        delisted.push(batch[j]);
-        console.log(`  ⚠ ${batch[j]}: Delisted (${results[j].reason})`);
-      } else {
-        active.push(batch[j]);
-      }
-    }
-  }
-
   if (delisted.length > 0) {
-    console.log(`[Delistings] Filtered out ${delisted.length} delisted stocks`);
-    console.log(`[Delistings] Proceeding with ${active.length} active stocks`);
+    console.log(
+      `[Delistings] Found ${delisted.length} known delistings: ${delisted.join(", ")}`,
+    );
+  } else {
+    console.log(`[Delistings] No known delistings found`);
   }
 
   return active;

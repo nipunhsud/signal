@@ -48,9 +48,18 @@ if (IMMEDIATE_SCAN) {
 
 // Schedule recurring scans
 const schedule = config.cronSchedule || "0 * * * *"; // hourly by default
-cron.schedule(schedule, scan);
+const timezone = process.env.TZ || 'UTC'; // Default to UTC, can set to America/New_York for ET
 
-console.log(`Breakout agent running. Schedule: ${schedule}`);
+// Use timezone option if available (node-cron v3+)
+try {
+  cron.schedule(schedule, scan, { scheduled: true });
+  console.log(`Breakout agent running. Schedule: ${schedule} (Timezone: ${timezone})`);
+} catch (e) {
+  // Fallback for older node-cron
+  cron.schedule(schedule, scan);
+  console.log(`Breakout agent running. Schedule: ${schedule}`);
+}
+
 console.log(
   `Asset mode: ${DYNAMIC_ASSETS ? "Dynamic (FMP)" : "Static (file)"}`,
 );

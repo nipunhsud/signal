@@ -2,7 +2,6 @@ import { fetchMarketData } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { sendEmail } from "./email.js";
 import { db } from "./db.js";
-import { getConfig } from "./config.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 
 function getSectorTailwind(sector: string): string {
@@ -33,8 +32,6 @@ export interface BreakoutResult {
   reasoning: string;
   shouldAlert: boolean;
 }
-
-type Config = ReturnType<typeof getConfig>;
 
 export class BreakoutAgent {
   constructor() {}
@@ -85,9 +82,11 @@ export class BreakoutAgent {
 
       interface ScreenerResult {
         symbol: string;
+        exchangeShortName?: string;
       }
       const screenerData = (await screenerRes.json()) as ScreenerResult[];
       const stockSymbols = (Array.isArray(screenerData) ? screenerData : [])
+        .filter((s) => US_EXCHANGES.has(s.exchangeShortName || ""))
         .map((s) => s.symbol)
         .filter(Boolean);
 
@@ -95,19 +94,18 @@ export class BreakoutAgent {
       const etfsRes = await fetch(
         `https://financialmodelingprep.com/api/v3/etf/list?apikey=${apiKey}`,
       );
-      const etfSymbols = !etfsRes.ok
-        ? []
-        : (() => {
-            interface FMPAsset {
-              symbol: string;
-              exchangeShortName?: string;
-            }
-            const etfsData = [] as FMPAsset[];
-            return (Array.isArray(etfsData) ? etfsData : [])
-              .filter((e) => US_EXCHANGES.has(e.exchangeShortName || ""))
-              .map((e) => e.symbol)
-              .filter(Boolean);
-          })();
+      interface FMPAsset {
+        symbol: string;
+        exchangeShortName?: string;
+      }
+      let etfSymbols: string[] = [];
+      if (etfsRes.ok) {
+        const etfsData = (await etfsRes.json()) as FMPAsset[];
+        etfSymbols = (Array.isArray(etfsData) ? etfsData : [])
+          .filter((e) => US_EXCHANGES.has(e.exchangeShortName || ""))
+          .map((e) => e.symbol)
+          .filter(Boolean);
+      }
 
       const allAssets = [...new Set([...stockSymbols, ...etfSymbols])];
 
@@ -117,7 +115,7 @@ export class BreakoutAgent {
       );
 
       // Filter out delisted stocks
-      const activeAssets = await filterDelistedStocks(allAssets, apiKey);
+      const activeAssets = await filterDelistedStocks(allAssets);
       return activeAssets;
     } catch (error) {
       console.error("[FMP] Asset fetch failed:", error);
@@ -129,13 +127,15 @@ export class BreakoutAgent {
   // Rate limiter (per-container from env, sum across tiers < 750/min) queues FMP calls fairly
   // Cache reduces actual API calls by 60-70%, so even safer
   async analyzeMarkets(assets: string[]): Promise<BreakoutResult[]> {
-    const config = getConfig();
-    const CONCURRENCY = 3;
+    const CONCURRENCY = 20;
+
+    // Sort assets for consistent order across all tiers (fixes sharding when FMP returns different order)
+    const sortedAssets = [...assets].sort();
 
     // Sharding: divide work across containers
     const SHARD_INDEX = parseInt(process.env.SHARD_INDEX || "0");
     const SHARD_TOTAL = parseInt(process.env.SHARD_TOTAL || "1");
-    const shardedAssets = assets.filter(
+    const shardedAssets = sortedAssets.filter(
       (_, i) => i % SHARD_TOTAL === SHARD_INDEX,
     );
 
@@ -148,7 +148,7 @@ export class BreakoutAgent {
     for (let i = 0; i < shardedAssets.length; i += CONCURRENCY) {
       const batch = shardedAssets.slice(i, i + CONCURRENCY);
       const settled = await Promise.allSettled(
-        batch.map((asset) => this.analyzeAsset(asset, config)),
+        batch.map((asset) => this.analyzeAsset(asset)),
       );
       for (const r of settled) {
         if (r.status === "fulfilled" && r.value) results.push(r.value);
@@ -160,16 +160,11 @@ export class BreakoutAgent {
 
   private async analyzeAsset(
     asset: string,
-    config: Config,
   ): Promise<BreakoutResult | null> {
     try {
       let data;
       try {
-        data = await fetchMarketData(
-          asset,
-          config.dataSource,
-          config.ibkrBaseUrl,
-        );
+        data = await fetchMarketData(asset);
       } catch (error: any) {
         // Check if this is a delisting error
         const errorMsg = error?.message || "";
@@ -416,6 +411,8 @@ export class BreakoutAgent {
                 data.setupConsolidationRangePercent,
               setupConsolidationVolumePercent:
                 data.setupConsolidationVolumePercent,
+              sector: breakoutAnalysis.sector || 'Unclassified',
+              industry: breakoutAnalysis.industry || 'Unclassified',
               agentDecision: setupReasoning,
             },
           },
