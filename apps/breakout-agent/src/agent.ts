@@ -53,10 +53,10 @@ export class BreakoutAgent {
         exchangeShortName?: string;
       }
 
-      // Query stocks with isEtf=false filter and country=US for US-listed only
-      console.log(`  [FMP] Querying US stocks with isEtf=false filter...`);
+      // Query stocks with isEtf=false filter (no country filter to catch NASDAQ/NYSE listed companies like NBIS)
+      console.log(`  [FMP] Querying actively-traded stocks with isEtf=false filter...`);
       const stocksRes = await fetch(
-        `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&country=US&isEtf=false&isFund=false&limit=10000&apikey=${apiKey}`,
+        `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
       );
 
       let stockSymbols: string[] = [];
@@ -77,11 +77,12 @@ export class BreakoutAgent {
         console.log(`[FMP AUDIT] Megacaps IN screener: ${megacapsInScreener.join(", ")}`);
       }
       if (megacapsMissing.length > 0) {
-        console.log(`[FMP AUDIT] Megacaps MISSING from screener: ${megacapsMissing.join(", ")}`);
+        console.log(`[FMP AUDIT] Megacaps MISSING from screener: ${megacapsMissing.join(", ")} — adding manually`);
       }
 
-      const allAssets = [...new Set(stockSymbols)];
-      console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} stocks`);
+      // Add missing megacaps manually (they exist but screener may not return them due to newness, data lags, etc.)
+      const allAssets = [...new Set([...stockSymbols, ...megacapsMissing])];
+      console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} stocks (added ${megacapsMissing.length} missing megacaps)`);
 
       const elapsed = Date.now() - startTime;
       console.log(
