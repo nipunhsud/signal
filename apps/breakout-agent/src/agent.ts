@@ -42,80 +42,66 @@ export class BreakoutAgent {
 
     const MIN_MARKET_CAP = parseInt(process.env.MIN_MARKET_CAP || "300000000"); // $300M default
     const MIN_VOLUME = parseInt(process.env.MIN_VOLUME || "100000"); // 100k shares default
-    const US_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX"]);
+    const MEGACAP_WATCH = ["NVDA", "MSFT", "ASML", "AMAT", "OPEN", "NBIS"];
 
     try {
-      console.log("[FMP] Fetching filtered US asset list...");
+      console.log("[FMP] Fetching filtered US assets by exchange + type (split queries for manageability)...");
       const startTime = Date.now();
-
-      // Use stock screener for pre-filtered universe (market cap + volume)
-      const screenerRes = await fetch(
-        `https://financialmodelingprep.com/api/v3/stock-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&exchange=NYSE,NASDAQ,AMEX&limit=10000&apikey=${apiKey}`,
-      );
-
-      if (!screenerRes.ok) {
-        console.warn(
-          `[FMP] Screener returned ${screenerRes.status}, falling back to available-traded/list`,
-        );
-        // Fallback to available-traded/list if screener fails
-        const fallbackRes = await fetch(
-          `https://financialmodelingprep.com/api/v3/available-traded/list?apikey=${apiKey}`,
-        );
-        if (!fallbackRes.ok) {
-          throw new Error(`FMP API error: ${fallbackRes.status}`);
-        }
-        interface FMPAsset {
-          symbol: string;
-          exchangeShortName?: string;
-        }
-        const assetsData = (await fallbackRes.json()) as FMPAsset[];
-        const allAssets = (Array.isArray(assetsData) ? assetsData : [])
-          .filter((s) => US_EXCHANGES.has(s.exchangeShortName || ""))
-          .map((s) => s.symbol)
-          .filter(Boolean);
-        const elapsed = Date.now() - startTime;
-        console.log(
-          `[FMP] Fell back to ${allAssets.length} US assets in ${elapsed}ms`,
-        );
-        return allAssets;
-      }
 
       interface ScreenerResult {
         symbol: string;
         exchangeShortName?: string;
       }
-      const screenerData = (await screenerRes.json()) as ScreenerResult[];
-      const stockSymbols = (Array.isArray(screenerData) ? screenerData : [])
-        .filter((s) => US_EXCHANGES.has(s.exchangeShortName || ""))
-        .map((s) => s.symbol)
-        .filter(Boolean);
 
-      // Fetch ETFs separately (screener doesn't include ETFs)
-      const etfsRes = await fetch(
-        `https://financialmodelingprep.com/api/v3/etf/list?apikey=${apiKey}`,
+      // Query stocks with isEtf=false filter and country=US for US-listed only
+      console.log(`  [FMP] Querying US stocks with isEtf=false filter...`);
+      const stocksRes = await fetch(
+        `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&country=US&isEtf=false&isFund=false&limit=10000&apikey=${apiKey}`,
       );
-      interface FMPAsset {
-        symbol: string;
-        exchangeShortName?: string;
-      }
-      let etfSymbols: string[] = [];
-      if (etfsRes.ok) {
-        const etfsData = (await etfsRes.json()) as FMPAsset[];
-        etfSymbols = (Array.isArray(etfsData) ? etfsData : [])
-          .filter((e) => US_EXCHANGES.has(e.exchangeShortName || ""))
-          .map((e) => e.symbol)
+
+      let stockSymbols: string[] = [];
+      if (stocksRes.ok) {
+        const stocksData = (await stocksRes.json()) as ScreenerResult[];
+        stockSymbols = (Array.isArray(stocksData) ? stocksData : [])
+          .map((s) => s.symbol)
           .filter(Boolean);
+        console.log(`    ✓ Stocks: ${stocksData.length} records → ${stockSymbols.length} unique symbols`);
+      } else {
+        console.warn(`  [FMP] Stocks query failed (${stocksRes.status}), skipping stocks`);
       }
 
-      const allAssets = [...new Set([...stockSymbols, ...etfSymbols])];
+      // Check if megacaps are in stock results
+      const megacapsInScreener = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m));
+      const megacapsMissing = MEGACAP_WATCH.filter((m) => !stockSymbols.includes(m));
+      if (megacapsInScreener.length > 0) {
+        console.log(`[FMP AUDIT] Megacaps IN screener: ${megacapsInScreener.join(", ")}`);
+      }
+      if (megacapsMissing.length > 0) {
+        console.log(`[FMP AUDIT] Megacaps MISSING from screener: ${megacapsMissing.join(", ")}`);
+      }
+
+      const allAssets = [...new Set(stockSymbols)];
+      console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} stocks`);
 
       const elapsed = Date.now() - startTime;
       console.log(
-        `[FMP] Fetched ${allAssets.length} US assets (${stockSymbols.length} stocks + ${etfSymbols.length} ETFs, market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k) in ${elapsed}ms`,
+        `[FMP] Fetched ${allAssets.length} US stocks (market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k) in ${elapsed}ms`,
       );
 
       // Filter out delisted stocks
       const activeAssets = await filterDelistedStocks(allAssets);
+      console.log(`[FMP AUDIT] After delisting filter: ${activeAssets.length} assets (removed ${allAssets.length - activeAssets.length})`);
+
+      // Check if any megacaps were filtered by delisting
+      const megacapsAfterFilter = MEGACAP_WATCH.filter((m) => activeAssets.includes(m));
+      const megacapsFilteredOut = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m) && !activeAssets.includes(m));
+      if (megacapsFilteredOut.length > 0) {
+        console.log(`[FMP AUDIT] Megacaps FILTERED OUT by delisting check: ${megacapsFilteredOut.join(", ")}`);
+      }
+      if (megacapsAfterFilter.length > 0) {
+        console.log(`[FMP AUDIT] Megacaps IN final asset list: ${megacapsAfterFilter.join(", ")}`);
+      }
+
       return activeAssets;
     } catch (error) {
       console.error("[FMP] Asset fetch failed:", error);
@@ -123,11 +109,11 @@ export class BreakoutAgent {
     }
   }
 
-  // 5 parallel tiers × 3 concurrency = 15 assets in flight
+  // 5 parallel tiers × 5 concurrency = 25 assets in flight (reduced from 20 to avoid FMP rate limiting)
   // Rate limiter (per-container from env, sum across tiers < 750/min) queues FMP calls fairly
   // Cache reduces actual API calls by 60-70%, so even safer
   async analyzeMarkets(assets: string[]): Promise<BreakoutResult[]> {
-    const CONCURRENCY = 20;
+    const CONCURRENCY = 5;
 
     // Sort assets for consistent order across all tiers (fixes sharding when FMP returns different order)
     const sortedAssets = [...assets].sort();
@@ -167,9 +153,10 @@ export class BreakoutAgent {
         data = await fetchMarketData(asset);
       } catch (error: any) {
         const errorMsg = error?.message || "";
-        // Skip delisted stocks or stocks with no data available
+        // Skip delisted stocks, stale data, or stocks with no data available
         if (
           errorMsg.includes("[DELISTED]") ||
+          errorMsg.includes("[STALE]") ||
           errorMsg.includes("No data found")
         ) {
           console.warn(`⊘ ${asset}: ${errorMsg}`);
