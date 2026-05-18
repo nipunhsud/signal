@@ -185,8 +185,13 @@ export class BreakoutAgent {
         throw error;
       }
 
-      // Override assetType based on scan mode (most reliable source)
-      data.assetType = mode === "etfs" ? "etf" : "stock";
+      // Set assetType: FMP profile detection first (catches ETFs/funds), mode as fallback
+      // This allows closed-end funds (FDM, FDLS) from stocks screener to be reclassified as ETFs
+      if (data.assetType !== "etf") {
+        // Only override if FMP didn't detect as ETF
+        data.assetType = mode === "etfs" ? "etf" : "stock";
+      }
+      // else: keep FMP's ETF detection (higher confidence)
 
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
