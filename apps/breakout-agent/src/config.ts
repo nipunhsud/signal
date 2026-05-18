@@ -4,7 +4,6 @@ export interface Config {
   assets: string[];
   dataSource: "binance" | "alpaca" | "ibkr" | "fmp";
   cronSchedule: string;
-  geminiApiKey: string;
   emailService: string;
   ibkrBaseUrl: string;
 }
@@ -71,7 +70,6 @@ export function getConfig(): Config {
       | "ibkr"
       | "fmp",
     cronSchedule: process.env.CRON_SCHEDULE || "0 * * * *", // hourly
-    geminiApiKey: process.env.GEMINI_API_KEY || "",
     emailService: process.env.EMAIL_SERVICE || "gmail",
     ibkrBaseUrl: process.env.IBKR_BASE_URL || "https://localhost:5000",
   };
