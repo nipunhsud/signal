@@ -12,7 +12,9 @@ app.use(express.json());
 app.use(express.static('public'));
 
 app.get('/api/signals', async (req, res) => {
-  console.log('[/api/signals] Handler called');
+  console.log('[/api/signals] Handler called with query:', req.query);
+  const assetTypeFilter = req.query.type || 'all'; // 'stocks', 'etfs', or 'all'
+
   try {
     // Get removed assets
     const removedAssets = await db.removedAsset.findMany({
@@ -184,12 +186,19 @@ app.get('/api/signals', async (req, res) => {
       };
     };
 
-    // Combine and format, filtering out removed assets
+    // Apply asset type filter
+    const filterByAssetType = (signal) => {
+      if (assetTypeFilter === 'stocks') return signal.assetType === 'stock';
+      if (assetTypeFilter === 'etfs') return signal.assetType === 'etf';
+      return true; // 'all'
+    };
+
+    // Combine and format, filtering out removed assets and applying type filter
     const formattedBreakouts = breakoutSignals
-      .filter(s => !removedAssetSet.has(s.asset))
+      .filter(s => !removedAssetSet.has(s.asset) && filterByAssetType(s))
       .map(formatBreakout);
     const formattedSetups = setupSignals
-      .filter(s => !removedAssetSet.has(s.asset))
+      .filter(s => !removedAssetSet.has(s.asset) && filterByAssetType(s))
       .map(formatSetup);
 
     const allSignals = [...formattedBreakouts, ...formattedSetups];
@@ -307,10 +316,12 @@ app.get('/api/candles/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const apiKey = process.env.FMP_API_KEY;
-    const url = `https://financialmodelingprep.com/api/v3/historical-price-full/${encodeURIComponent(symbol)}?limit=500&apikey=${apiKey}`;
+    const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`;
     const response = await fetch(url);
     const data = await response.json();
-    const bars = (data.historical || [])
+    // Response is direct array, not wrapped in {historical: [...]}
+    const historicalData = Array.isArray(data) ? data : (data.historical || []);
+    const bars = historicalData
       .reverse()
       .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
     res.json(bars);

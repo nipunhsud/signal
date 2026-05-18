@@ -302,9 +302,9 @@ async function fetchETFProfile(
   try {
     const etfData = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
-        `https://financialmodelingprep.com/api/v3/etf/${symbol}`,
+        `https://financialmodelingprep.com/stable/etf-info`,
         {
-          params: { apikey: apiKey },
+          params: { symbol, apikey: apiKey },
           timeout: 10000,
         },
       );
@@ -340,9 +340,9 @@ async function getFedRate(apiKey: string): Promise<number> {
   try {
     const data = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
-        `https://financialmodelingprep.com/api/v4/economic?name=FEDFUNDS`,
+        `https://financialmodelingprep.com/stable/economics-indicators`,
         {
-          params: { apikey: apiKey },
+          params: { name: 'FEDFUNDS', apikey: apiKey },
           timeout: 10000,
         },
       );
@@ -381,27 +381,36 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
     try {
       const data = await globalRateLimiter.execute(async () => {
         const priceResponse = await axios.get(
-          `https://financialmodelingprep.com/api/v3/historical-price-full/${symbol}`,
+          `https://financialmodelingprep.com/stable/historical-price-eod/full`,
           {
-            params: { apikey: apiKey, limit: 250 },
+            params: { symbol, apikey: apiKey, limit: 250 },
             timeout: 10000,
           },
         );
         return priceResponse.data;
       });
 
-      const historicalData = data.historical;
+      // Response is directly an array, not wrapped in {historical: [...]}
+      const historicalData = Array.isArray(data) ? data : data.historical;
       if (!historicalData || historicalData.length === 0) {
         throw new Error(`No data found for ${symbol}`);
       }
 
       const allBars = historicalData.reverse().map((d: any) => ({
+        date: d.date,
         open: d.open,
         high: d.high,
         low: d.low,
         close: d.close,
         volume: d.volume,
       }));
+
+      // Skip if latest data is > 5 days old
+      const latestDate = new Date(allBars[allBars.length - 1].date);
+      const daysSinceLastData = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastData > 5) {
+        throw new Error(`[STALE] ${symbol}: last data from ${latestDate.toISOString().split('T')[0]} (${daysSinceLastData.toFixed(1)} days ago)`);
+      }
 
       const closes = allBars.map((b: any) => b.close);
       const ma20 = calculateMA(closes, 20);
@@ -444,9 +453,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       try {
         const earningsData = await globalRateLimiter.execute(async () => {
           const earningsRes = await axios.get(
-            `https://financialmodelingprep.com/api/v3/income-statement/${symbol}`,
+            `https://financialmodelingprep.com/stable/income-statement`,
             {
-              params: { apikey: apiKey, limit: 2 },
+              params: { symbol, apikey: apiKey, limit: 2 },
               timeout: 10000,
             },
           );
@@ -465,9 +474,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       try {
         const qtrEarningsData = await globalRateLimiter.execute(async () => {
           const qtrRes = await axios.get(
-            `https://financialmodelingprep.com/api/v3/income-statement/${symbol}?period=quarter`,
+            `https://financialmodelingprep.com/stable/income-statement`,
             {
-              params: { apikey: apiKey, limit: 5 },
+              params: { symbol, period: 'quarter', apikey: apiKey, limit: 5 },
               timeout: 10000,
             },
           );
@@ -554,9 +563,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         try {
           const profileData = await globalRateLimiter.execute(async () => {
             const profileRes = await axios.get(
-              `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+              `https://financialmodelingprep.com/stable/profile`,
               {
-                params: { apikey: apiKey },
+                params: { symbol, apikey: apiKey },
                 timeout: 10000,
               },
             );

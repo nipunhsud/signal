@@ -30,9 +30,9 @@ export async function isDelisted(
   try {
     const profileData = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
-        `https://financialmodelingprep.com/api/v3/profile/${symbol}`,
+        `https://financialmodelingprep.com/stable/profile`,
         {
-          params: { apikey: apiKey },
+          params: { symbol, apikey: apiKey },
           timeout: 10000,
         },
       );
@@ -107,6 +107,8 @@ export function isKnownDelisted(symbol: string): boolean {
   // Known delistings (add to this list as they occur)
   const knownDelistings = new Set([
     "WNS", // Acquired by Capgemini in October 2025
+    "AZPN", // Acquired by Emerson Electric, delisted
+    "CVT", // Delisted June 15, 2023
   ]);
 
   return knownDelistings.has(symbol.toUpperCase());

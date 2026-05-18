@@ -36,7 +36,7 @@ export interface BreakoutResult {
 export class BreakoutAgent {
   constructor() {}
 
-  async fetchAssetsFromFMP(): Promise<string[]> {
+  async fetchAssetsFromFMP(mode: "stocks" | "etfs" = "stocks"): Promise<string[]> {
     const apiKey = process.env.FMP_API_KEY;
     if (!apiKey) throw new Error("FMP_API_KEY not set");
 
@@ -45,7 +45,7 @@ export class BreakoutAgent {
     const MEGACAP_WATCH = ["NVDA", "MSFT", "ASML", "AMAT", "OPEN", "NBIS"];
 
     try {
-      console.log("[FMP] Fetching filtered US assets by exchange + type (split queries for manageability)...");
+      console.log(`[FMP] Fetching filtered US ${mode} (split queries for manageability)...`);
       const startTime = Date.now();
 
       interface ScreenerResult {
@@ -53,54 +53,71 @@ export class BreakoutAgent {
         exchangeShortName?: string;
       }
 
-      // Query stocks with isEtf=false filter (no country filter to catch NASDAQ/NYSE listed companies like NBIS)
-      console.log(`  [FMP] Querying actively-traded stocks with isEtf=false filter...`);
-      const stocksRes = await fetch(
-        `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
-      );
+      // Query stocks or ETFs based on mode
+      const isEtf = mode === "etfs";
+      const assetType = isEtf ? "ETFs" : "stocks";
+      console.log(`  [FMP] Querying actively-traded ${assetType} with isEtf=${isEtf} filter...`);
+
+      let assetsRes;
+      if (isEtf) {
+        // ETFs: lower volume requirements, no market cap min
+        assetsRes = await fetch(
+          `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
+        );
+      } else {
+        // Stocks: standard requirements
+        assetsRes = await fetch(
+          `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
+        );
+      }
 
       let stockSymbols: string[] = [];
-      if (stocksRes.ok) {
-        const stocksData = (await stocksRes.json()) as ScreenerResult[];
-        stockSymbols = (Array.isArray(stocksData) ? stocksData : [])
+      if (assetsRes.ok) {
+        const assetsData = (await assetsRes.json()) as ScreenerResult[];
+        stockSymbols = (Array.isArray(assetsData) ? assetsData : [])
           .map((s) => s.symbol)
           .filter(Boolean);
-        console.log(`    ✓ Stocks: ${stocksData.length} records → ${stockSymbols.length} unique symbols`);
+        console.log(`    ✓ ${assetType}: ${assetsData.length} records → ${stockSymbols.length} unique symbols`);
       } else {
-        console.warn(`  [FMP] Stocks query failed (${stocksRes.status}), skipping stocks`);
+        console.warn(`  [FMP] ${assetType} query failed (${assetsRes.status}), skipping`);
       }
 
-      // Check if megacaps are in stock results
-      const megacapsInScreener = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m));
-      const megacapsMissing = MEGACAP_WATCH.filter((m) => !stockSymbols.includes(m));
-      if (megacapsInScreener.length > 0) {
-        console.log(`[FMP AUDIT] Megacaps IN screener: ${megacapsInScreener.join(", ")}`);
-      }
-      if (megacapsMissing.length > 0) {
-        console.log(`[FMP AUDIT] Megacaps MISSING from screener: ${megacapsMissing.join(", ")} — adding manually`);
+      // Only add megacap watch for stocks mode
+      let allAssets = [...new Set(stockSymbols)];
+      if (mode === "stocks") {
+        const megacapsInScreener = MEGACAP_WATCH.filter((m) => allAssets.includes(m));
+        const megacapsMissing = MEGACAP_WATCH.filter((m) => !allAssets.includes(m));
+        if (megacapsInScreener.length > 0) {
+          console.log(`[FMP AUDIT] Megacaps IN screener: ${megacapsInScreener.join(", ")}`);
+        }
+        if (megacapsMissing.length > 0) {
+          console.log(`[FMP AUDIT] Megacaps MISSING from screener: ${megacapsMissing.join(", ")} — adding manually`);
+          allAssets = [...new Set([...allAssets, ...megacapsMissing])];
+        }
       }
 
-      // Add missing megacaps manually (they exist but screener may not return them due to newness, data lags, etc.)
-      const allAssets = [...new Set([...stockSymbols, ...megacapsMissing])];
-      console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} stocks (added ${megacapsMissing.length} missing megacaps)`);
+      console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} ${assetType} (${mode === "stocks" ? "added " + (MEGACAP_WATCH.filter(m => !stockSymbols.includes(m)).length || 0) + " missing megacaps" : "no filtering"})`);
 
       const elapsed = Date.now() - startTime;
+      const filterDesc = mode === "etfs" ? "vol >10k" : `market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k`;
       console.log(
-        `[FMP] Fetched ${allAssets.length} US stocks (market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k) in ${elapsed}ms`,
+        `[FMP] Fetched ${allAssets.length} US ${assetType} (${filterDesc}) in ${elapsed}ms`,
       );
 
       // Filter out delisted stocks
       const activeAssets = await filterDelistedStocks(allAssets);
-      console.log(`[FMP AUDIT] After delisting filter: ${activeAssets.length} assets (removed ${allAssets.length - activeAssets.length})`);
+      console.log(`[FMP AUDIT] After delisting filter: ${activeAssets.length} ${assetType} (removed ${allAssets.length - activeAssets.length})`);
 
-      // Check if any megacaps were filtered by delisting
-      const megacapsAfterFilter = MEGACAP_WATCH.filter((m) => activeAssets.includes(m));
-      const megacapsFilteredOut = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m) && !activeAssets.includes(m));
-      if (megacapsFilteredOut.length > 0) {
-        console.log(`[FMP AUDIT] Megacaps FILTERED OUT by delisting check: ${megacapsFilteredOut.join(", ")}`);
-      }
-      if (megacapsAfterFilter.length > 0) {
-        console.log(`[FMP AUDIT] Megacaps IN final asset list: ${megacapsAfterFilter.join(", ")}`);
+      // Check if any megacaps were filtered by delisting (stocks only)
+      if (mode === "stocks") {
+        const megacapsAfterFilter = MEGACAP_WATCH.filter((m) => activeAssets.includes(m));
+        const megacapsFilteredOut = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m) && !activeAssets.includes(m));
+        if (megacapsFilteredOut.length > 0) {
+          console.log(`[FMP AUDIT] Megacaps FILTERED OUT by delisting check: ${megacapsFilteredOut.join(", ")}`);
+        }
+        if (megacapsAfterFilter.length > 0) {
+          console.log(`[FMP AUDIT] Megacaps IN final asset list: ${megacapsAfterFilter.join(", ")}`);
+        }
       }
 
       return activeAssets;

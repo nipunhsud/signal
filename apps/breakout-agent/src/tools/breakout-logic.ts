@@ -237,6 +237,7 @@ export function analyzeSetup(
 ): SetupAnalysis {
   const {
     ma20,
+    ma50,
     close,
     setupBarsInRange = 0,
     setupConsolidationVolumePercent = 0,
@@ -252,11 +253,16 @@ export function analyzeSetup(
   // Low volume during consolidation (< 80% of average)
   const lowVolumeConsolidation = (setupConsolidationVolumePercent || 0) < 80;
 
+  // Price must be above 50MA: consolidation in uptrend, not downtrend
+  const priceAboveMA50 = close > ma50;
+  const priceAboveMA20 = close > ma20;
+
   const isSetup =
     hasSetupConsolidation &&
     notBreakingOut &&
     bullishMAs &&
-    lowVolumeConsolidation;
+    lowVolumeConsolidation &&
+    priceAboveMA50;
 
   if (!isSetup) {
     return {
@@ -271,25 +277,33 @@ export function analyzeSetup(
   // Calculate distance from 20 MA
   const distanceFromMA20 = (Math.abs(close - ma20) / ma20) * 100;
 
-  // Penalty for distance from 20 MA:
-  // <= 5% away = no penalty
-  // 5-10% away = -1% per 1% over 5%
-  // > 10% away = steeper penalty (lose more points)
+  // Determine setup type and apply confidence
+  const isHandle = distanceFromMA20 < 3; // Tight pullback close to 20MA
+  let confidence: number;
   let distancePenalty = 0;
-  if (distanceFromMA20 > 5) {
-    if (distanceFromMA20 <= 10) {
-      distancePenalty = distanceFromMA20 - 5; // -1% per 1% over 5%
-    } else {
-      // Steeper penalty for >10% away (e.g., 12% away = 2 + (2*1.5) = 5% penalty)
-      distancePenalty = 10 - 5 + (distanceFromMA20 - 10) * 1.5;
-    }
-  }
 
-  const confidence = Math.max(0.8, 0.99 - distancePenalty / 100);
+  if (priceAboveMA20) {
+    // Above 20MA: distinguish handle vs tight base
+    if (isHandle) {
+      confidence = 0.87; // Handle (tight pullback): moderate-high confidence
+    } else {
+      confidence = 0.95; // Tight consolidation above 20MA: very high confidence
+    }
+  } else {
+    // Between 50MA and 20MA: penalize for distance from 20MA
+    if (distanceFromMA20 > 5) {
+      if (distanceFromMA20 <= 10) {
+        distancePenalty = distanceFromMA20 - 5;
+      } else {
+        distancePenalty = 10 - 5 + (distanceFromMA20 - 10) * 1.5;
+      }
+    }
+    confidence = Math.max(0.8, 0.95 - distancePenalty / 100);
+  }
 
   return {
     isSetup: true,
-    setupType: distanceFromMA20 < 3 ? "handle" : "base",
+    setupType: isHandle ? "handle" : "base",
     distanceFromMA20,
     distancePenalty,
     confidence,
