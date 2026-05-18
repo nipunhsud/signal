@@ -197,17 +197,24 @@ app.get('/api/signals', async (req, res) => {
 
     // Apply asset type filter
     const filterByAssetType = (signal) => {
-      if (assetTypeFilter === 'stocks') return signal.assetType === 'stock';
-      if (assetTypeFilter === 'etfs') return signal.assetType === 'etf';
+      // For raw DB signals, assetType is in metadata; for formatted signals, it's a direct property
+      const assetType = signal.assetType || signal.metadata?.assetType;
+      if (assetTypeFilter === 'stocks') return assetType === 'stock';
+      if (assetTypeFilter === 'etfs') return assetType === 'etf';
       return true; // 'all'
     };
 
     // Combine and format, filtering out removed assets and applying type filter
+    console.log(`[DEBUG] assetTypeFilter="${assetTypeFilter}", breakoutSignals=${breakoutSignals.length}, setupSignals=${setupSignals.length}`);
     const formattedBreakouts = breakoutSignals
       .filter(s => !removedAssetSet.has(s.asset) && filterByAssetType(s))
       .map(formatBreakout);
     const formattedSetups = setupSignals
-      .filter(s => !removedAssetSet.has(s.asset) && filterByAssetType(s))
+      .filter(s => {
+        const passes = !removedAssetSet.has(s.asset) && filterByAssetType(s);
+        if (!passes && s.asset === 'ALKS') console.log(`[DEBUG] ALKS filtered out: removed=${removedAssetSet.has(s.asset)}, filterByAssetType=${filterByAssetType(s)}, assetType=${s.metadata?.assetType}`);
+        return passes;
+      })
       .map(formatSetup);
 
     const allSignals = [...formattedBreakouts, ...formattedSetups];

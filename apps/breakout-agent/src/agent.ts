@@ -62,7 +62,7 @@ export class BreakoutAgent {
       if (isEtf) {
         // ETFs: lower volume requirements, no market cap min
         assetsRes = await fetch(
-          `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
+          `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=true&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
         );
       } else {
         // Stocks: standard requirements
@@ -185,13 +185,11 @@ export class BreakoutAgent {
         throw error;
       }
 
-      // Set assetType: FMP profile detection first (catches ETFs/funds), mode as fallback
-      // This allows closed-end funds (FDM, FDLS) from stocks screener to be reclassified as ETFs
-      if (data.assetType !== "etf") {
-        // Only override if FMP didn't detect as ETF
-        data.assetType = mode === "etfs" ? "etf" : "stock";
-      }
-      // else: keep FMP's ETF detection (higher confidence)
+      // Set assetType based on scan mode (source of truth from FMP screener)
+      // Stocks screener (isEtf=false) → all are stocks
+      // ETFs screener (isEtf=true) → all are ETFs
+      // Don't override with profile detection - trust the screener classification
+      data.assetType = mode === "etfs" ? "etf" : "stock";
 
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
@@ -418,7 +416,7 @@ export class BreakoutAgent {
             confidence: setupAnalysis.confidence,
             shouldAlert: setupAnalysis.confidence > 0.85,
             metadata: {
-              assetType: data.assetType,
+              assetType: data.assetType || (mode === "etfs" ? "etf" : "stock"),
               expenseRatio: data.expenseRatio,
               etfCategory: data.etfCategory,
               setupType: setupAnalysis.setupType,
