@@ -67,6 +67,7 @@
         this._isResizing = false;
         this.signalTypeFilter = 'all';
         this.sectorFilter = 'all';
+        this.assetTypeFilter = 'all'; // stocks, etfs, or all
         this._searchDebounceTimer = null;
         this.showShortlist = false;
         this.init();
@@ -127,7 +128,8 @@
 
       async fetchSignals() {
         try {
-          const res = await fetch('/api/signals');
+          const url = `/api/signals?type=${this.assetTypeFilter}`;
+          const res = await fetch(url);
           const data = await res.json();
 
           if (data.highConfidence && data.mediumConfidence) {
@@ -632,6 +634,11 @@
       getFilteredSignals() {
         let filtered = this.signals.filter(s => s.confidence >= this.minConfidence);
 
+        // Asset type filter (stocks, etfs, all)
+        if (this.assetTypeFilter !== 'all') {
+          filtered = filtered.filter(s => s.assetType === this.assetTypeFilter);
+        }
+
         // Signal type filter
         if (this.signalTypeFilter !== 'all') {
           filtered = filtered.filter(s => s.signalType === this.signalTypeFilter);
@@ -847,6 +854,23 @@
                   >
                     ${this.scanning ? '🔄 Scanning...' : '▶️ Run Scan Now'}
                   </button>
+                </div>
+
+                <!-- Asset Type Filter Tabs -->
+                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg w-fit">
+                  ${[
+                    { key: 'all', label: 'All Assets' },
+                    { key: 'stock', label: '📈 Stocks' },
+                    { key: 'etf', label: '📊 ETFs' },
+                  ].map(tab => {
+                    const count = tab.key === 'all'
+                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
+                      : this.signals.filter(s => s.assetType === tab.key && s.confidence >= this.minConfidence).length;
+                    return `<button onclick="dashboard.assetTypeFilter='${tab.key}';dashboard.fetchSignals();"
+                      class="px-4 py-2 rounded text-sm font-medium transition ${this.assetTypeFilter === tab.key ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
+                      ${tab.label} (${count})
+                    </button>`;
+                  }).join('')}
                 </div>
 
                 <!-- Signal Type Filter Tabs -->

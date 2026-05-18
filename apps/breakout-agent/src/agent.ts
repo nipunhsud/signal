@@ -127,11 +127,11 @@ export class BreakoutAgent {
     }
   }
 
-  // 5 parallel tiers × 5 concurrency = 25 assets in flight (reduced from 20 to avoid FMP rate limiting)
+  // 5 parallel tiers × 15 concurrency = 75 assets in flight (with sequential stocks/etfs scans)
   // Rate limiter (per-container from env, sum across tiers < 750/min) queues FMP calls fairly
   // Cache reduces actual API calls by 60-70%, so even safer
-  async analyzeMarkets(assets: string[]): Promise<BreakoutResult[]> {
-    const CONCURRENCY = 5;
+  async analyzeMarkets(assets: string[], mode: "stocks" | "etfs" = "stocks"): Promise<BreakoutResult[]> {
+    const CONCURRENCY = 15;
 
     // Sort assets for consistent order across all tiers (fixes sharding when FMP returns different order)
     const sortedAssets = [...assets].sort();
@@ -152,7 +152,7 @@ export class BreakoutAgent {
     for (let i = 0; i < shardedAssets.length; i += CONCURRENCY) {
       const batch = shardedAssets.slice(i, i + CONCURRENCY);
       const settled = await Promise.allSettled(
-        batch.map((asset) => this.analyzeAsset(asset)),
+        batch.map((asset) => this.analyzeAsset(asset, mode)),
       );
       for (const r of settled) {
         if (r.status === "fulfilled" && r.value) results.push(r.value);
@@ -164,6 +164,7 @@ export class BreakoutAgent {
 
   private async analyzeAsset(
     asset: string,
+    mode: "stocks" | "etfs" = "stocks",
   ): Promise<BreakoutResult | null> {
     try {
       let data;
@@ -183,6 +184,9 @@ export class BreakoutAgent {
         // Re-throw other errors
         throw error;
       }
+
+      // Override assetType based on scan mode (most reliable source)
+      data.assetType = mode === "etfs" ? "etf" : "stock";
 
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
@@ -409,6 +413,9 @@ export class BreakoutAgent {
             confidence: setupAnalysis.confidence,
             shouldAlert: setupAnalysis.confidence > 0.85,
             metadata: {
+              assetType: data.assetType,
+              expenseRatio: data.expenseRatio,
+              etfCategory: data.etfCategory,
               setupType: setupAnalysis.setupType,
               distanceFromMA20: setupAnalysis.distanceFromMA20,
               distancePenalty: setupAnalysis.distancePenalty,

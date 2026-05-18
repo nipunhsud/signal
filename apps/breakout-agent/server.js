@@ -168,8 +168,16 @@ app.get('/api/signals', async (req, res) => {
     // Format Type 2 response
     const formatSetup = (s) => {
       const meta = s.metadata || {};
+      const assetType = meta.assetType || 'stock';
+      const assetTypeLabel = assetType === 'etf' ? '📊 ETF' : '📈 STOCK';
+      const etfNote = assetType === 'etf' && meta.expenseRatio ? ` (${meta.expenseRatio}% expense)` : '';
+
       return {
         asset: s.asset,
+        assetType,
+        assetTypeLabel,
+        expenseRatio: meta.expenseRatio,
+        etfCategory: meta.etfCategory,
         confidence: Math.round(s.confidence * 100),
         currentPrice: meta.currentPrice || 0,
         ma20: meta.ma20 || 0,
@@ -183,6 +191,7 @@ app.get('/api/signals', async (req, res) => {
         agentDecision: meta.agentDecision || s.agentDecision || '',
         sector: meta.sector || 'Unknown',
         industry: meta.industry || 'Unknown',
+        displayAsset: `${s.asset} ${assetTypeLabel}${etfNote}`,
       };
     };
 
@@ -240,14 +249,18 @@ app.post('/api/scan', async (req, res) => {
     res.json({ status: 'scanning', assetsCount: config.assets.length, message: 'Scan started in background' });
 
     // Run scan in background (don't wait for it)
-    agent.analyzeMarkets(config.assets)
-      .then((results) => {
-        const alerts = results.filter((r) => r.shouldAlert).length;
-        console.log(`✅ On-demand scan completed: ${results.length} signals, ${alerts} alerts`);
-      })
-      .catch((error) => {
+    // Run both stocks and ETFs scans sequentially to respect FMP 750rpm limit
+    (async () => {
+      try {
+        const stocksResults = await agent.analyzeMarkets(config.assets, "stocks");
+        const etfsResults = await agent.analyzeMarkets(config.assets, "etfs");
+        const allResults = [...stocksResults, ...etfsResults];
+        const alerts = allResults.filter((r) => r.shouldAlert).length;
+        console.log(`✅ On-demand scan completed: ${allResults.length} signals, ${alerts} alerts`);
+      } catch (error) {
         console.error('❌ On-demand scan failed:', error);
-      });
+      }
+    })();
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

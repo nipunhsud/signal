@@ -25,7 +25,7 @@ async function scan(mode: "stocks" | "etfs" = "stocks") {
       }
     }
 
-    const results = await agent.analyzeMarkets(assets);
+    const results = await agent.analyzeMarkets(assets, mode);
     console.log(`Found ${results.length} ${mode} signals`);
 
     for (const result of results) {
@@ -43,32 +43,42 @@ async function scan(mode: "stocks" | "etfs" = "stocks") {
 
 // Run immediately on start if IMMEDIATE_SCAN=true
 if (IMMEDIATE_SCAN) {
-  Promise.all([scan("stocks"), scan("etfs")]).then(() => {
-    console.log("[EXIT] Immediate scans complete, exiting process");
-    process.exit(0);
-  }).catch((err) => {
-    console.error("[EXIT] Scans failed:", err);
-    process.exit(1);
-  });
+  (async () => {
+    try {
+      await scan("stocks");
+      await scan("etfs");
+      console.log("[EXIT] Immediate scans complete, exiting process");
+      process.exit(0);
+    } catch (err) {
+      console.error("[EXIT] Scans failed:", err);
+      process.exit(1);
+    }
+  })();
 } else {
-  // Schedule recurring scans (both stocks and ETFs)
+  // Schedule recurring scans (both stocks and ETFs, run sequentially to respect FMP rate limit)
   const schedule = config.cronSchedule || "0 10-15 * * *"; // 10am-3pm ET by default (cron runs at top of hour)
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
   // Use timezone option if available (node-cron v3+)
   try {
-    cron.schedule(schedule, () => {
-      Promise.all([scan("stocks"), scan("etfs")]).catch(err =>
-        console.error("Scheduled scans failed:", err)
-      );
+    cron.schedule(schedule, async () => {
+      try {
+        await scan("stocks");
+        await scan("etfs");
+      } catch (err) {
+        console.error("Scheduled scans failed:", err);
+      }
     }, { scheduled: true });
     console.log(`Breakout agent running. Schedule: ${schedule} (Timezone: ${timezone})`);
   } catch (e) {
     // Fallback for older node-cron
-    cron.schedule(schedule, () => {
-      Promise.all([scan("stocks"), scan("etfs")]).catch(err =>
-        console.error("Scheduled scans failed:", err)
-      );
+    cron.schedule(schedule, async () => {
+      try {
+        await scan("stocks");
+        await scan("etfs");
+      } catch (err) {
+        console.error("Scheduled scans failed:", err);
+      }
     });
     console.log(`Breakout agent running. Schedule: ${schedule}`);
   }
@@ -77,5 +87,5 @@ if (IMMEDIATE_SCAN) {
     `Asset mode: ${DYNAMIC_ASSETS ? "Dynamic (FMP)" : "Static (file)"}`,
   );
   console.log(`Immediate scan: ${IMMEDIATE_SCAN ? "enabled" : "disabled"}`);
-  console.log(`Running both stocks and ETF scans per schedule`);
+  console.log(`Running stocks and ETF scans sequentially per schedule (respecting FMP 750rpm limit)`);
 }
