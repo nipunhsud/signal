@@ -309,14 +309,12 @@ export class BreakoutAgent {
         .filter(Boolean)
         .join(" | ");
 
-      // Only Type 1 fresh breakouts trigger alerts
+      // Type 1 fresh breakouts (>90% confidence) OR Type 3 extensions (≥95% confidence)
       const isType1Breakout = breakoutAnalysis.breakoutType === "Type1";
+      const isType3Extension = breakoutAnalysis.breakoutType === "Type3";
       const shouldAlert =
-        isType1Breakout &&
-        isValid &&
-        confidence > 0.9 &&
-        breakoutAnalysis.maStack &&
-        breakoutAnalysis.breakoutSignal;
+        (isType1Breakout && isValid && confidence > 0.9 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal) ||
+        (isType3Extension && confidence >= 0.95);
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -445,14 +443,6 @@ export class BreakoutAgent {
   }
 
   async sendAlert(result: BreakoutResult): Promise<void> {
-    // Only send email alerts if confidence is above 90%
-    if (result.confidence <= 0.9) {
-      console.log(
-        `⊘ Skip alert ${result.asset}: Confidence ${(result.confidence * 100).toFixed(0)}% <= 90% threshold`,
-      );
-      return;
-    }
-
     // Verify the record was persisted to database before sending alert
     const latestRecord = await db.breakoutSignal.findFirst({
       where: { asset: result.asset },
@@ -474,18 +464,20 @@ export class BreakoutAgent {
 
     const now = new Date();
 
-    // If alert was already sent, only re-alert if price moved ±2% or more
+    // If alert was already sent, only re-alert if price moved ±2% or more (for extensions, check gained ≥3%)
     if (existingAlert && existingAlert.lastAlertPrice) {
       const priceChange =
         Math.abs(
           (result.currentPrice - existingAlert.lastAlertPrice) /
             existingAlert.lastAlertPrice,
         ) * 100;
-      const shouldRealert = priceChange >= 2;
+      const isExtension = latestRecord.breakoutType === "Type3";
+      const threshold = isExtension ? 3 : 2; // Extensions require 3% movement
+      const shouldRealert = priceChange >= threshold;
 
       if (!shouldRealert) {
         console.log(
-          `⊘ Skip re-alert ${result.asset}: Price change ${priceChange.toFixed(2)}% < 2% threshold`,
+          `⊘ Skip re-alert ${result.asset}: Price change ${priceChange.toFixed(2)}% < ${threshold}% threshold`,
         );
         return;
       }
@@ -495,22 +487,20 @@ export class BreakoutAgent {
       );
     }
 
-    // Get asset type from database record for indicator
-    const record = await db.breakoutSignal.findFirst({
-      where: { asset: result.asset },
-      orderBy: { createdAt: "desc" },
-    });
+    // Get asset type and breakout type from database record
     const assetTypeIndicator =
-      record?.assetType === "etf" ? "📊 ETF" : "📈 STOCK";
+      latestRecord.assetType === "etf" ? "📊 ETF" : "📈 STOCK";
     const etfInfo =
-      record?.assetType === "etf" && record?.expenseRatio
-        ? `\nExpense Ratio: ${record.expenseRatio}%`
+      latestRecord.assetType === "etf" && latestRecord.expenseRatio
+        ? `\nExpense Ratio: ${latestRecord.expenseRatio}%`
         : "";
 
-    const subject = `🚀 Breakout Alert: ${result.asset} [${assetTypeIndicator}]`;
+    const breakoutLabel = latestRecord.breakoutType === "Type1" ? "Fresh Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
+    const subject = `🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${result.asset}`;
     const body = `
 Asset: ${result.asset} ${assetTypeIndicator}
+Type: ${breakoutLabel}
 Price: $${result.currentPrice}
 Resistance: $${result.resistance}
 Confidence: ${(result.confidence * 100).toFixed(0)}%${etfInfo}
