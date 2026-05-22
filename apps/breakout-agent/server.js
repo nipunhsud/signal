@@ -51,6 +51,7 @@ app.get('/api/signals', async (req, res) => {
           bs."etfCategory",
           bs.sector,
           bs.industry,
+          bs."breakoutType",
           fg."firstGreenAt",
           fg."entryResistance",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
@@ -76,6 +77,7 @@ app.get('/api/signals', async (req, res) => {
         "etfCategory",
         sector,
         industry,
+        "breakoutType",
         "firstGreenAt",
         "entryResistance"
       FROM ranked
@@ -102,14 +104,10 @@ app.get('/api/signals', async (req, res) => {
       const daysSinceBreakout = hoursSinceFirstGreen !== null ? hoursSinceFirstGreen / 24 : null;
       const entryResistance = s.entryResistance ? parseFloat(s.entryResistance) : null;
 
-      // Type 3: Green cone conditions met, but first green was before today (yellow dot re-test/extension)
-      // Type 1: Green cone conditions met for first time today (true green cone breakout)
-      const isExtension = (
-        s.pineScriptGreen &&
-        firstGreenAt !== null &&
-        daysSinceBreakout !== null &&
-        daysSinceBreakout > 0
-      );
+      // Use actual breakoutType from database: Type1 (fresh) vs Type3 (extension)
+      const isType1 = s.breakoutType === 'Type1';
+      const isType3 = s.breakoutType === 'Type3';
+      const isExtension = isType3;
 
       const signalType = isExtension ? 'extension' : (s.pineScriptGreen ? 'breakout' : 'breakout');
       const pctGainFromEntry = (isExtension && entryResistance > 0)

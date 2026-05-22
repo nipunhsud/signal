@@ -4,6 +4,41 @@ import { sendEmail } from "./email.js";
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 
+function isMarketOpen(date: Date = new Date()): boolean {
+  // Create a date in America/New_York timezone
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  };
+  const formatter = new Intl.DateTimeFormat("en-US", options);
+  const parts = formatter.formatToParts(date);
+  const partsMap = Object.fromEntries(
+    parts.map((p) => [p.type, p.value])
+  ) as Record<string, string>;
+
+  const weekday = partsMap.weekday;
+  const hour = parseInt(partsMap.hour, 10);
+  const minute = parseInt(partsMap.minute, 10);
+  const second = parseInt(partsMap.second, 10);
+
+  // Check if trading day (Mon-Fri)
+  const tradingDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  if (!tradingDays.includes(weekday)) {
+    return false;
+  }
+
+  // Check if within market hours: 9:30 AM - 4:00 PM EDT
+  const timeInMinutes = hour * 60 + minute;
+  const marketOpenTime = 9 * 60 + 30; // 9:30 AM
+  const marketCloseTime = 16 * 60; // 4:00 PM
+
+  return timeInMinutes >= marketOpenTime && timeInMinutes < marketCloseTime;
+}
+
 function getSectorTailwind(sector: string): string {
   const map: Record<string, string> = {
     Technology: "AI adoption & cloud expansion",
@@ -452,6 +487,14 @@ export class BreakoutAgent {
     if (!latestRecord) {
       console.error(
         `❌ CRITICAL: Cannot send alert for ${result.asset} — record not found in database. DB write may have failed.`,
+      );
+      return;
+    }
+
+    // Type 1 & Type 3 only alert during market hours (9:30am-4pm EDT, Mon-Fri)
+    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type3") && !isMarketOpen()) {
+      console.log(
+        `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
       return;
     }

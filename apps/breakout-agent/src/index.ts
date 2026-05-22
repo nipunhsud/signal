@@ -56,32 +56,19 @@ if (IMMEDIATE_SCAN) {
   })();
 } else {
   // Schedule recurring scans (both stocks and ETFs, run sequentially to respect FMP rate limit)
-  const schedule = config.cronSchedule || "0 10-15 * * *"; // 10am-3pm ET by default (cron runs at top of hour)
+  const schedule = config.cronSchedule || "0 10-16 * * 1-5"; // 10am-4pm EDT weekdays (covers market hours 9:30am-4pm)
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
-  // Use timezone option if available (node-cron v3+)
-  try {
-    cron.schedule(schedule, async () => {
-      try {
-        await scan("stocks");
-        await scan("etfs");
-      } catch (err) {
-        console.error("Scheduled scans failed:", err);
-      }
-    }, { scheduled: true });
-    console.log(`Breakout agent running. Schedule: ${schedule} (Timezone: ${timezone})`);
-  } catch (e) {
-    // Fallback for older node-cron
-    cron.schedule(schedule, async () => {
-      try {
-        await scan("stocks");
-        await scan("etfs");
-      } catch (err) {
-        console.error("Scheduled scans failed:", err);
-      }
-    });
-    console.log(`Breakout agent running. Schedule: ${schedule}`);
-  }
+  // Schedule with explicit timezone enforcement (node-cron v3+)
+  cron.schedule(schedule, async () => {
+    try {
+      await scan("stocks");
+      await scan("etfs");
+    } catch (err) {
+      console.error("Scheduled scans failed:", err);
+    }
+  }, { timezone });
+  console.log(`Breakout agent running. Schedule: ${schedule} (Timezone: ${timezone})`);
 
   console.log(
     `Asset mode: ${DYNAMIC_ASSETS ? "Dynamic (FMP)" : "Static (file)"}`,
