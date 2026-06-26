@@ -52,6 +52,7 @@ model BreakoutSignal {
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout
+  extensionPriorBreakoutBarsAgo Int @default(0) // 1-5: bars ago a recent (last 5 bars) breakout fired — used by Type 3 extensions
   liquidityOk Boolean @default(false) // >= 100k avg volume
 
   // Email alert tracking (deduplication)

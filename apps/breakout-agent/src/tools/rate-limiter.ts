@@ -1,11 +1,13 @@
 export class RateLimiter {
   private tokensPerSecond: number;
+  private burstCapacity: number;
   private lastTokenRefill: number;
   private tokens: number;
 
-  constructor(callsPerMinute: number = 750) {
+  constructor(callsPerMinute: number = 3000) {
     this.tokensPerSecond = callsPerMinute / 60;
-    this.tokens = this.tokensPerSecond;
+    this.burstCapacity = callsPerMinute;
+    this.tokens = this.burstCapacity;
     this.lastTokenRefill = Date.now();
   }
 
@@ -13,7 +15,7 @@ export class RateLimiter {
     const now = Date.now();
     const elapsed = (now - this.lastTokenRefill) / 1000;
     this.tokens = Math.min(
-      this.tokensPerSecond,
+      this.burstCapacity,
       this.tokens + elapsed * this.tokensPerSecond,
     );
     this.lastTokenRefill = now;
@@ -36,5 +38,5 @@ export class RateLimiter {
   }
 }
 
-const callsPerMinute = parseInt(process.env.RATE_LIMIT_PER_MIN || "140");
+const callsPerMinute = parseInt(process.env.RATE_LIMIT_PER_MIN || "3000");
 export const globalRateLimiter = new RateLimiter(callsPerMinute);

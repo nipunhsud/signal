@@ -240,10 +240,14 @@ export class BreakoutAgent {
       });
 
       if (priorAlert) {
-        // Force signal to be Type 3 (extension) by zeroing out the prior base detection
-        // This ensures the breakout type logic treats it as a continuation
+        // Force signal to be Type 3 extension so it inherits Type 1 confidence.
+        // extensionPriorBreakoutBarsAgo > 0 routes through the extension branch in
+        // analyzeBreakout, which uses the Type 1 formula (not the degraded continuation).
         data.priorBaseDays = 0;
-        data.priorBreakoutBarsAgo = 1; // < 45, so triggers Type 3
+        data.priorBreakoutBarsAgo = 1;
+        if (!data.extensionPriorBreakoutBarsAgo) {
+          data.extensionPriorBreakoutBarsAgo = 1;
+        }
       }
 
       const breakoutAnalysis = analyzeBreakout(data);
@@ -364,12 +368,14 @@ export class BreakoutAgent {
         .filter(Boolean)
         .join(" | ");
 
-      // Type 1 fresh breakouts (>90% confidence) OR Type 3 extensions (≥95% confidence)
+      // Alerts: Type 1 fresh breakouts only (>90% confidence). Type 3 extensions are tracked but not emailed.
       const isType1Breakout = breakoutAnalysis.breakoutType === "Type1";
-      const isType3Extension = breakoutAnalysis.breakoutType === "Type3";
       const shouldAlert =
-        (isType1Breakout && isValid && confidence > 0.9 && breakoutAnalysis.maStack && breakoutAnalysis.breakoutSignal) ||
-        (isType3Extension && confidence >= 0.95);
+        isType1Breakout &&
+        isValid &&
+        confidence > 0.9 &&
+        breakoutAnalysis.maStack &&
+        breakoutAnalysis.breakoutSignal;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -418,42 +424,67 @@ export class BreakoutAgent {
         shouldAlert,
       };
 
-      await db.breakoutSignal.create({
-        data: {
-          asset,
-          assetType: data.assetType,
-          confidence,
-          agentDecision: localReasoning,
-          shouldAlert,
-          resistance: result.resistance,
-          support: result.support,
-          currentPrice: result.currentPrice,
-          pineScriptGreen: breakoutAnalysis.pineScriptGreen,
-          barsInRange: breakoutAnalysis.barsInRange || 0,
-          bullishCandle: breakoutAnalysis.bullishCandle,
-          epsGrowthPct: breakoutAnalysis.epsGrowthPct,
-          revenueGrowthPct: breakoutAnalysis.revenueGrowthPct,
-          epsBeat: breakoutAnalysis.epsBeat,
-          epsSurprisePct: breakoutAnalysis.epsSurprisePct,
-          sector: breakoutAnalysis.sector,
-          industry: breakoutAnalysis.industry,
-          fedFundsRate: breakoutAnalysis.fedFundsRate,
-          volumeRatio,
-          expenseRatio: data.expenseRatio,
-          assetUnderManagement: data.assetUnderManagement,
-          etfCategory: data.etfCategory,
-          breakoutType: breakoutAnalysis.breakoutType,
-          priorBaseDays: breakoutAnalysis.priorBaseDays,
-          priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
-          priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
-          liquidityOk: breakoutAnalysis.liquidityOk,
-          signalDate: data.timestamp,
-        },
-      });
+      const isMeaningfulBreakout =
+        breakoutAnalysis.breakoutType !== "unknown" ||
+        breakoutAnalysis.pineScriptGreen;
 
-      // Earnings transcript analysis for high-confidence stock signals (≥90%).
-      // Cached by (asset, quarter, year) so same transcript is never re-analyzed.
-      if (shouldAlert && confidence >= 0.9 && data.assetType === "stock") {
+      if (isMeaningfulBreakout) {
+        const latestBreakout = await db.breakoutSignal.findFirst({
+          where: { asset, breakoutType: breakoutAnalysis.breakoutType },
+          orderBy: { createdAt: "desc" },
+        });
+
+        const isUnchanged =
+          latestBreakout &&
+          Math.abs(latestBreakout.currentPrice - result.currentPrice) < 0.01 &&
+          Math.abs(latestBreakout.resistance - result.resistance) < 0.01 &&
+          Math.abs(latestBreakout.support - result.support) < 0.01 &&
+          latestBreakout.shouldAlert === shouldAlert;
+
+        if (!isUnchanged) {
+          await db.breakoutSignal.create({
+            data: {
+              asset,
+              assetType: mode === "etfs" ? "etf" : "stock",
+              confidence,
+              agentDecision: localReasoning,
+              shouldAlert,
+              resistance: result.resistance,
+              support: result.support,
+              currentPrice: result.currentPrice,
+              pineScriptGreen: breakoutAnalysis.pineScriptGreen,
+              barsInRange: breakoutAnalysis.barsInRange || 0,
+              bullishCandle: breakoutAnalysis.bullishCandle,
+              epsGrowthPct: breakoutAnalysis.epsGrowthPct,
+              revenueGrowthPct: breakoutAnalysis.revenueGrowthPct,
+              epsBeat: breakoutAnalysis.epsBeat,
+              epsSurprisePct: breakoutAnalysis.epsSurprisePct,
+              sector: breakoutAnalysis.sector,
+              industry: breakoutAnalysis.industry,
+              fedFundsRate: breakoutAnalysis.fedFundsRate,
+              volumeRatio,
+              expenseRatio: data.expenseRatio,
+              assetUnderManagement: data.assetUnderManagement,
+              etfCategory: data.etfCategory,
+              breakoutType: breakoutAnalysis.breakoutType,
+              priorBaseDays: breakoutAnalysis.priorBaseDays,
+              priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
+              priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
+              extensionPriorBreakoutBarsAgo: data.extensionPriorBreakoutBarsAgo || 0,
+              liquidityOk: breakoutAnalysis.liquidityOk,
+              signalDate: data.timestamp,
+            },
+          });
+        }
+      }
+
+      // Earnings transcript analysis for Type 1 (fresh) stock breakouts.
+      // ETFs are skipped — they hold underlying stocks and have no earnings call of their own.
+      // Cached by (asset, quarter, year) so the same transcript is never re-analyzed.
+      if (
+        breakoutAnalysis.breakoutType === "Type1" &&
+        data.assetType === "stock"
+      ) {
         try {
           await getOrAnalyzeTranscript(asset);
         } catch (err: any) {
@@ -472,33 +503,63 @@ export class BreakoutAgent {
           `Volume: ${data.setupConsolidationVolumePercent || 0}% of avg`,
         ].join(" | ");
 
-        await db.signal.create({
-          data: {
-            agentName: "BreakoutAgent",
-            asset,
-            signalType: `setup-${setupAnalysis.setupType}`,
-            confidence: setupAnalysis.confidence,
-            shouldAlert: setupAnalysis.confidence > 0.85,
-            metadata: {
-              assetType: data.assetType || (mode === "etfs" ? "etf" : "stock"),
-              expenseRatio: data.expenseRatio,
-              etfCategory: data.etfCategory,
-              setupType: setupAnalysis.setupType,
-              distanceFromMA20: setupAnalysis.distanceFromMA20,
-              distancePenalty: setupAnalysis.distancePenalty,
-              ma20: data.ma20,
-              currentPrice: data.close,
-              barsInRange: data.setupBarsInRange,
-              setupConsolidationRangePercent:
-                data.setupConsolidationRangePercent,
-              setupConsolidationVolumePercent:
-                data.setupConsolidationVolumePercent,
-              sector: breakoutAnalysis.sector || 'Unclassified',
-              industry: breakoutAnalysis.industry || 'Unclassified',
-              agentDecision: setupReasoning,
-            },
-          },
+        const setupSignalType = `setup-${setupAnalysis.setupType}`;
+        const latestSetup = await db.signal.findFirst({
+          where: { asset, signalType: setupSignalType },
+          orderBy: { createdAt: "desc" },
         });
+
+        const latestSetupMeta = (latestSetup?.metadata ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const latestCurrentPrice =
+          typeof latestSetupMeta.currentPrice === "number"
+            ? (latestSetupMeta.currentPrice as number)
+            : null;
+        const latestMa20 =
+          typeof latestSetupMeta.ma20 === "number"
+            ? (latestSetupMeta.ma20 as number)
+            : null;
+
+        const isSetupUnchanged =
+          latestSetup &&
+          Math.abs((latestSetup.confidence || 0) - setupAnalysis.confidence) <
+            0.001 &&
+          latestCurrentPrice !== null &&
+          Math.abs(latestCurrentPrice - data.close) < 0.01 &&
+          latestMa20 !== null &&
+          Math.abs(latestMa20 - (data.ma20 || 0)) < 0.01;
+
+        if (!isSetupUnchanged) {
+          await db.signal.create({
+            data: {
+              agentName: "BreakoutAgent",
+              asset,
+              signalType: setupSignalType,
+              confidence: setupAnalysis.confidence,
+              shouldAlert: setupAnalysis.confidence > 0.85,
+              metadata: {
+                assetType: mode === "etfs" ? "etf" : "stock",
+                expenseRatio: data.expenseRatio,
+                etfCategory: data.etfCategory,
+                setupType: setupAnalysis.setupType,
+                distanceFromMA20: setupAnalysis.distanceFromMA20,
+                distancePenalty: setupAnalysis.distancePenalty,
+                ma20: data.ma20,
+                currentPrice: data.close,
+                barsInRange: data.setupBarsInRange,
+                setupConsolidationRangePercent:
+                  data.setupConsolidationRangePercent,
+                setupConsolidationVolumePercent:
+                  data.setupConsolidationVolumePercent,
+                sector: breakoutAnalysis.sector || 'Unclassified',
+                industry: breakoutAnalysis.industry || 'Unclassified',
+                agentDecision: setupReasoning,
+              },
+            },
+          });
+        }
       }
 
       return result;
@@ -509,10 +570,10 @@ export class BreakoutAgent {
   }
 
   async sendAlert(result: BreakoutResult): Promise<void> {
-    // Email only for 98%+ confidence
-    if (result.confidence < 0.98) {
+    // Email Type 1 breakouts in the 90s+ confidence band (includes earnings transcript)
+    if (result.confidence < 0.9) {
       console.log(
-        `⊘ Skip email for ${result.asset}: ${(result.confidence * 100).toFixed(0)}% < 98% threshold`,
+        `⊘ Skip email for ${result.asset}: ${(result.confidence * 100).toFixed(0)}% < 90% threshold`,
       );
       return;
     }

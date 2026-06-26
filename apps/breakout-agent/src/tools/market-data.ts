@@ -55,6 +55,10 @@ export interface MarketData {
   priorBaseDays?: number; // # of days in prior consolidation (bars[-60..-6])
   priorBaseRangePercent?: number; // % range of that base
   priorBreakoutBarsAgo?: number; // bars ago since a prior high-volume breakout was detected (0 = none found)
+  // Extension detection: breakout within last 5 bars (today is a continuation, not a fresh breakout)
+  extensionPriorBreakoutBarsAgo?: number; // 1-5 if recent breakout found, 0 otherwise
+  extensionConsolidationRangePercent?: number; // % range of the consolidation that preceded the recent breakout
+  extensionConsolidationVolumePercent?: number; // vol % of that consolidation
 }
 
 /**
@@ -81,6 +85,12 @@ interface PriorBaseResult {
 
 interface PriorBreakoutResult {
   priorBreakoutBarsAgo: number;
+}
+
+interface ExtensionBreakoutResult {
+  extensionPriorBreakoutBarsAgo: number; // 1-5 (1 = breakout 1 bar ago, 5 = 5 bars ago)
+  extensionConsolidationRangePercent: number;
+  extensionConsolidationVolumePercent: number;
 }
 
 function countInflections(bars: any[]): number {
@@ -316,6 +326,66 @@ function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
   return { priorBreakoutBarsAgo: mostRecentBreakoutBarsAgo };
 }
 
+/**
+ * Detect a breakout in the LAST 5 bars (excluding current bar).
+ * If found, today's signal is a Type 3 extension, not a fresh Type 1 breakout.
+ *
+ * "Breakout" here = close above prior 10-bar resistance. Volume confirmation
+ * is *not* required because real breakouts often occur on average volume —
+ * gating on 1.2x would miss them. Returns the EARLIEST recent breakout (the
+ * actual Type 1 day), so today is correctly identified as the extension of it.
+ */
+function detectExtensionBreakout(allBars: any[]): ExtensionBreakoutResult {
+  const empty: ExtensionBreakoutResult = {
+    extensionPriorBreakoutBarsAgo: 0,
+    extensionConsolidationRangePercent: 0,
+    extensionConsolidationVolumePercent: 0,
+  };
+  if (allBars.length < 30) return empty;
+
+  const N = allBars.length;
+  const currentBar = allBars[N - 1];
+  const recentWindowSize = 5;
+  const recentBars = allBars.slice(-1 - recentWindowSize, -1);
+  if (recentBars.length < 1) return empty;
+
+  for (let i = 0; i < recentBars.length; i++) {
+    const bar = recentBars[i];
+    const barIdx = N - 1 - recentWindowSize + i;
+    if (barIdx < 15) continue; // need 10 bars of history before the candidate
+
+    // 10 bars of prior price action — gives a meaningful resistance level
+    const priorBars = allBars.slice(barIdx - 10, barIdx);
+    const priorHigh = Math.max(...priorBars.map((b: any) => b.high));
+    const priorLow = Math.min(...priorBars.map((b: any) => b.low));
+
+    // Breakout: candidate bar closed above prior resistance
+    if (bar.close <= priorHigh) continue;
+
+    // Today must still be above that resistance — otherwise it's not a sustained extension
+    if (currentBar.close <= priorHigh) continue;
+
+    // First match wins (oldest = the real Type 1 day, subsequent bars are extensions)
+    const volRefBars = allBars.slice(Math.max(0, barIdx - 20), barIdx);
+    const avgVolRef =
+      volRefBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+      volRefBars.length;
+    const consolAvgVol =
+      priorBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+      priorBars.length;
+
+    return {
+      extensionPriorBreakoutBarsAgo: recentBars.length - i,
+      extensionConsolidationRangePercent:
+        ((priorHigh - priorLow) / priorLow) * 100,
+      extensionConsolidationVolumePercent:
+        avgVolRef > 0 ? (consolAvgVol / avgVolRef) * 100 : 0,
+    };
+  }
+
+  return empty;
+}
+
 async function fetchETFProfile(
   symbol: string,
   apiKey: string,
@@ -463,6 +533,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Detect prior base and prior breakout for Type 1 vs Type 3 classification
       const priorBaseResult = detectPriorBase(allBars);
       const priorBreakoutResult = detectPriorBreakout(allBars);
+      const extensionBreakoutResult = detectExtensionBreakout(allBars);
 
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
@@ -648,7 +719,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         close: latest.close,
         volume: latest.volume,
         avgVolume,
-        timestamp: new Date(),
+        timestamp: new Date(latest.date),
         highs,
         lows,
         ma20,
@@ -683,6 +754,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         priorBaseDays: priorBaseResult.priorBaseDays,
         priorBaseRangePercent: priorBaseResult.priorBaseRangePercent,
         priorBreakoutBarsAgo: priorBreakoutResult.priorBreakoutBarsAgo,
+        extensionPriorBreakoutBarsAgo:
+          extensionBreakoutResult.extensionPriorBreakoutBarsAgo,
+        extensionConsolidationRangePercent:
+          extensionBreakoutResult.extensionConsolidationRangePercent,
+        extensionConsolidationVolumePercent:
+          extensionBreakoutResult.extensionConsolidationVolumePercent,
       };
 
       marketDataCache.set(cacheKey, result);

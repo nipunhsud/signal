@@ -7,13 +7,17 @@ import { globalRateLimiter } from "./rate-limiter.js";
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const MAX_TRANSCRIPT_CHARS = 60000;
 
+const MAX_RISK_FLAGS = 8;
+const MAX_HIGHLIGHTS = 6;
+const MAX_SUMMARY_CHARS = 800;
+
 const AnalysisSchema = z.object({
   tone: z.enum(["bullish", "neutral", "bearish"]),
   toneScore: z.number().min(-1).max(1),
   guidanceDirection: z.enum(["raised", "maintained", "lowered", "none"]),
-  riskFlags: z.array(z.string()).max(8),
-  highlights: z.array(z.string()).max(6),
-  summary: z.string().max(800),
+  riskFlags: z.array(z.string()),
+  highlights: z.array(z.string()),
+  summary: z.string(),
 });
 
 export type TranscriptAnalysis = z.infer<typeof AnalysisSchema>;
@@ -26,9 +30,9 @@ Fields:
 - tone: overall management tone — "bullish" / "neutral" / "bearish"
 - toneScore: -1.0 (very bearish) to +1.0 (very bullish), reflects strength of the read
 - guidanceDirection: did forward guidance get "raised", "maintained", "lowered", or was there "none" provided
-- riskFlags: short phrases for material risks management acknowledged (margin pressure, customer concentration, regulatory, supply chain, demand softness, etc). Empty array if none material.
-- highlights: short phrases for positive catalysts (new product traction, large deals, accelerating growth, margin expansion, capital return, etc)
-- summary: 3-5 sentence narrative summary tying the above into a momentum view
+- riskFlags: up to 8 short phrases for material risks management acknowledged (margin pressure, customer concentration, regulatory, supply chain, demand softness, etc). Empty array if none material.
+- highlights: up to 6 short phrases for positive catalysts (new product traction, large deals, accelerating growth, margin expansion, capital return, etc)
+- summary: 3-5 sentence narrative summary (≤800 characters) tying the above into a momentum view
 
 Be decisive but evidence-based. If guidance was reaffirmed without raise, that is "maintained" not "raised". Bullish ≠ uncritical — flag risks even on strong quarters.`;
 
@@ -155,8 +159,15 @@ async function analyzeWithClaude(
     return null;
   }
 
+  const analysis: TranscriptAnalysis = {
+    ...validated.data,
+    riskFlags: validated.data.riskFlags.slice(0, MAX_RISK_FLAGS),
+    highlights: validated.data.highlights.slice(0, MAX_HIGHLIGHTS),
+    summary: validated.data.summary.slice(0, MAX_SUMMARY_CHARS),
+  };
+
   return {
-    analysis: validated.data,
+    analysis,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
   };

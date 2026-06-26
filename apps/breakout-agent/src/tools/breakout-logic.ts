@@ -123,12 +123,20 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
   // Type 1 vs Type 3 classification
   // Type 1: Fresh breakout from real prior base with no recent prior breakout
-  // Type 3: Just a continuation (has pineScriptGreen but no real prior base, or riding a prior breakout)
+  // Type 3: Continuation — either riding an older prior breakout, or extension of one in the last ~5 bars
   let breakoutType: "Type1" | "Type3" | "unknown" = "unknown";
 
-  if (pineScriptGreen && liquidityOk) {
-    // Check Type 1 conditions
-    const hasGoodPriorBase = priorBaseDays >= 15 && priorBaseRangePercent <= 35;
+  // Extension: a breakout already happened in the last 5 bars and price is still
+  // above that prior resistance. Today is a continuation regardless of whether
+  // today itself triggers a fresh breakout signal.
+  const extensionBarsAgo = data.extensionPriorBreakoutBarsAgo || 0;
+  const isExtension = extensionBarsAgo > 0;
+
+  if (isExtension && maStack && liquidityOk) {
+    breakoutType = "Type3";
+  } else if (pineScriptGreen && liquidityOk) {
+    const hasGoodPriorBase =
+      priorBaseDays >= 15 && priorBaseRangePercent <= 35;
     const noRecentPriorBreakout =
       priorBreakoutBarsAgo === 0 || priorBreakoutBarsAgo > 45;
 
@@ -162,8 +170,32 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
     consolidationQuality = Math.max(0.8, consolidationQuality); // Floor at 80%
     confidence = consolidationQuality;
+  } else if (breakoutType === "Type3" && isExtension) {
+    // Type 3 extension: real breakout was in the last ~5 bars. Inherit the Type 1
+    // confidence by applying the same formula to the consolidation that preceded
+    // that breakout — keeps confidence stable day-over-day post-breakout.
+    let consolidationQuality = 0.99;
+
+    const rangePercent =
+      data.extensionConsolidationRangePercent ||
+      data.consolidationRangePercent ||
+      0;
+    if (rangePercent > 5) {
+      consolidationQuality -= (rangePercent - 5) / 100;
+    }
+
+    const volumePercent =
+      data.extensionConsolidationVolumePercent ||
+      data.consolidationVolumePercent ||
+      0;
+    if (volumePercent > 100) {
+      consolidationQuality -= (volumePercent - 100) / 100;
+    }
+
+    consolidationQuality = Math.max(0.8, consolidationQuality);
+    confidence = consolidationQuality;
   } else if (breakoutType === "Type3") {
-    // Continuation: start at 40%, degrade based on how long ago the real breakout was
+    // Continuation of an older breakout: start at 40%, degrade by bars ago
     confidence = 0.4;
     if (priorBreakoutBarsAgo > 0) {
       const degradation = priorBreakoutBarsAgo * 0.005; // -0.5% per bar ago

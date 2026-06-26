@@ -52,6 +52,8 @@ app.get('/api/signals', async (req, res) => {
           bs.sector,
           bs.industry,
           bs."breakoutType",
+          bs."extensionPriorBreakoutBarsAgo",
+          bs."signalDate",
           fg."firstGreenAt",
           fg."entryResistance",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
@@ -78,6 +80,8 @@ app.get('/api/signals', async (req, res) => {
         sector,
         industry,
         "breakoutType",
+        "extensionPriorBreakoutBarsAgo",
+        "signalDate",
         "firstGreenAt",
         "entryResistance"
       FROM ranked
@@ -100,9 +104,20 @@ app.get('/api/signals', async (req, res) => {
     // Format Type 1 & Type 3 response
     const formatBreakout = (s) => {
       const firstGreenAt = s.firstGreenAt ? new Date(s.firstGreenAt) : null;
-      const hoursSinceFirstGreen = firstGreenAt ? (Date.now() - firstGreenAt.getTime()) / (1000 * 60 * 60) : null;
-      const daysSinceBreakout = hoursSinceFirstGreen !== null ? hoursSinceFirstGreen / 24 : null;
       const entryResistance = s.entryResistance ? parseFloat(s.entryResistance) : null;
+
+      // Days since the actual market breakout, not since we first recorded it.
+      // Type 3 extensions know exactly how many bars ago the real breakout fired
+      // (1-5). Type 1 fresh breakouts are by definition 0. Fall back to
+      // firstGreenAt only when neither is available.
+      let daysSinceBreakout = null;
+      if (s.breakoutType === 'Type3' && s.extensionPriorBreakoutBarsAgo > 0) {
+        daysSinceBreakout = s.extensionPriorBreakoutBarsAgo;
+      } else if (s.breakoutType === 'Type1') {
+        daysSinceBreakout = 0;
+      } else if (firstGreenAt) {
+        daysSinceBreakout = (Date.now() - firstGreenAt.getTime()) / (1000 * 60 * 60 * 24);
+      }
 
       // Use actual breakoutType from database: Type1 (fresh) vs Type3 (extension)
       const isType1 = s.breakoutType === 'Type1';
@@ -328,6 +343,33 @@ app.delete('/api/removed-assets/:asset', async (req, res) => {
     await db.removedAsset.delete({ where: { asset } });
     res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/transcript/:symbol/analyze', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const { getOrAnalyzeTranscript } = await import('./dist/tools/transcript-analysis.js');
+    const analysis = await getOrAnalyzeTranscript(symbol);
+    if (!analysis) {
+      return res.status(404).json({ error: 'No transcript available for ' + symbol });
+    }
+    res.json({
+      asset: analysis.asset,
+      quarter: analysis.quarter,
+      year: analysis.year,
+      tone: analysis.tone,
+      toneScore: analysis.toneScore,
+      guidanceDirection: analysis.guidanceDirection,
+      riskFlags: analysis.riskFlags,
+      highlights: analysis.highlights,
+      summary: analysis.summary,
+      modelUsed: analysis.modelUsed,
+      createdAt: analysis.createdAt,
+    });
+  } catch (error) {
+    console.error('[Transcript on-demand] failed:', error);
     res.status(500).json({ error: error.message });
   }
 });
