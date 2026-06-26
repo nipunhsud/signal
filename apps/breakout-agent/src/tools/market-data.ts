@@ -33,6 +33,7 @@ export interface MarketData {
   setupBarsInRange?: number;
   setupConsolidationRangePercent?: number;
   setupConsolidationVolumePercent?: number;
+  setupInflectionCount?: number; // Number of direction changes in setup consolidation
   // 52-week high
   high52w?: number;
   // Earnings
@@ -70,6 +71,7 @@ interface ConsolidationResult {
   barsInRange: number;
   consolidationRangePercent: number;
   consolidationVolumePercent: number; // avg consolidation volume as % of 20-bar avg
+  inflectionCount?: number; // Number of direction changes (peaks/troughs) in consolidation
 }
 
 interface PriorBaseResult {
@@ -79,6 +81,25 @@ interface PriorBaseResult {
 
 interface PriorBreakoutResult {
   priorBreakoutBarsAgo: number;
+}
+
+function countInflections(bars: any[]): number {
+  if (bars.length < 3) return 0;
+
+  // Use closes to detect direction changes
+  const closes = bars.map((b) => b.close);
+  let inflections = 0;
+  let prevDirection = closes[1] > closes[0] ? 1 : -1; // 1 = up, -1 = down
+
+  for (let i = 2; i < closes.length; i++) {
+    const currDirection = closes[i] > closes[i - 1] ? 1 : -1;
+    if (currDirection !== prevDirection) {
+      inflections++;
+      prevDirection = currDirection;
+    }
+  }
+
+  return inflections;
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
@@ -153,6 +174,7 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
       barsInRange: 0,
       consolidationRangePercent: 0,
       consolidationVolumePercent: 0,
+      inflectionCount: 0,
     };
 
   // Look at the last 10 bars to find consolidation
@@ -165,6 +187,7 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
   let bestConsolidationHigh = 0;
   let bestConsolidationLow = 0;
   let bestConsolidationVolume = 0;
+  let bestWindowBars: any[] = [];
 
   // Check windows of different sizes, from longest to shortest
   for (let winSize = recentBars.length - 1; winSize >= 3; winSize--) {
@@ -190,6 +213,7 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
         bestConsolidationHigh = high;
         bestConsolidationLow = low;
         bestConsolidationVolume = volPercent;
+        bestWindowBars = windowBars;
       }
     }
     // Stop once we found a valid consolidation
@@ -205,6 +229,7 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
           bestConsolidationLow) *
         100,
       consolidationVolumePercent: bestConsolidationVolume,
+      inflectionCount: countInflections(bestWindowBars),
     };
   }
 
@@ -212,6 +237,7 @@ function detectSetupConsolidation(allBars: any[]): ConsolidationResult {
     barsInRange: 0,
     consolidationRangePercent: 0,
     consolidationVolumePercent: 0,
+    inflectionCount: 0,
   };
 }
 
@@ -639,6 +665,8 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
           setupConsolidationResult.consolidationRangePercent,
         setupConsolidationVolumePercent:
           setupConsolidationResult.consolidationVolumePercent,
+        setupInflectionCount:
+          setupConsolidationResult.inflectionCount,
         high52w,
         earningsGrowth,
         epsGrowthPct,

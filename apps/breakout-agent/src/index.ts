@@ -56,11 +56,39 @@ if (IMMEDIATE_SCAN) {
   })();
 } else {
   // Schedule recurring scans (both stocks and ETFs, run sequentially to respect FMP rate limit)
-  const schedule = config.cronSchedule || "0 10-16 * * 1-5"; // 10am-4pm EDT weekdays (covers market hours 9:30am-4pm)
+  const schedule = config.cronSchedule || "*/15 9-15 * * 1-5"; // Every 15min: 9:00am-3:45pm EDT weekdays (market hours 9:30am-4pm)
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
   // Schedule with explicit timezone enforcement (node-cron v3+)
   cron.schedule(schedule, async () => {
+    // Double-check we're in market hours before scanning
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: timezone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    };
+    const formatter = new Intl.DateTimeFormat("en-US", options);
+    const parts = formatter.formatToParts(new Date());
+    const partsMap = Object.fromEntries(
+      parts.map((p) => [p.type, p.value])
+    ) as Record<string, string>;
+
+    const weekday = partsMap.weekday;
+    const hour = parseInt(partsMap.hour, 10);
+    const minute = parseInt(partsMap.minute, 10);
+
+    const tradingDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const timeInMinutes = hour * 60 + minute;
+    const marketOpenTime = 9 * 60 + 30; // 9:30 AM
+    const marketCloseTime = 16 * 60; // 4:00 PM
+
+    if (!tradingDays.includes(weekday) || timeInMinutes < marketOpenTime || timeInMinutes >= marketCloseTime) {
+      console.log(`⊘ Skip scan: Outside market hours (${partsMap.hour}:${partsMap.minute} ${weekday})`);
+      return;
+    }
+
     try {
       await scan("stocks");
       await scan("etfs");
@@ -74,5 +102,5 @@ if (IMMEDIATE_SCAN) {
     `Asset mode: ${DYNAMIC_ASSETS ? "Dynamic (FMP)" : "Static (file)"}`,
   );
   console.log(`Immediate scan: ${IMMEDIATE_SCAN ? "enabled" : "disabled"}`);
-  console.log(`Running stocks and ETF scans sequentially per schedule (respecting FMP 750rpm limit)`);
+  console.log(`Running stocks and ETF scans sequentially every 15min during market hours (respecting FMP 750rpm limit)`);
 }

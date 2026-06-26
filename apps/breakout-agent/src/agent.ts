@@ -3,6 +3,7 @@ import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { sendEmail } from "./email.js";
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
+import { getOrAnalyzeTranscript } from "./tools/transcript-analysis.js";
 
 function isMarketOpen(date: Date = new Date()): boolean {
   // Create a date in America/New_York timezone
@@ -23,7 +24,6 @@ function isMarketOpen(date: Date = new Date()): boolean {
   const weekday = partsMap.weekday;
   const hour = parseInt(partsMap.hour, 10);
   const minute = parseInt(partsMap.minute, 10);
-  const second = parseInt(partsMap.second, 10);
 
   // Check if trading day (Mon-Fri)
   const tradingDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -66,6 +66,7 @@ export interface BreakoutResult {
   confidence: number;
   reasoning: string;
   shouldAlert: boolean;
+  breakoutType?: string;
 }
 
 export class BreakoutAgent {
@@ -100,9 +101,9 @@ export class BreakoutAgent {
           `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=true&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
         );
       } else {
-        // Stocks: standard requirements
+        // Stocks: standard requirements, US exchange only
         assetsRes = await fetch(
-          `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
+          `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NASDAQ,NYSE,AMEX&limit=10000&apikey=${apiKey}`,
         );
       }
 
@@ -111,7 +112,8 @@ export class BreakoutAgent {
         const assetsData = (await assetsRes.json()) as ScreenerResult[];
         stockSymbols = (Array.isArray(assetsData) ? assetsData : [])
           .map((s) => s.symbol)
-          .filter(Boolean);
+          .filter(Boolean)
+          .filter((s) => !s.match(/\.(TO|L|V|TSX|CN|IN|HK|SG|AU)$/i)); // Exclude non-US country codes
         console.log(`    ✓ ${assetType}: ${assetsData.length} records → ${stockSymbols.length} unique symbols`);
       } else {
         console.warn(`  [FMP] ${assetType} query failed (${assetsRes.status}), skipping`);
@@ -225,6 +227,24 @@ export class BreakoutAgent {
       // ETFs screener (isEtf=true) → all are ETFs
       // Don't override with profile detection - trust the screener classification
       data.assetType = mode === "etfs" ? "etf" : "stock";
+
+      // Check for recent prior alert (last 5 days): if found, force Type 3 to avoid duplicate Type 1 alerts
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      const priorAlert = await db.breakoutSignal.findFirst({
+        where: {
+          asset,
+          alertSentAt: { gte: fiveDaysAgo },
+        },
+        orderBy: { alertSentAt: "desc" },
+      });
+
+      if (priorAlert) {
+        // Force signal to be Type 3 (extension) by zeroing out the prior base detection
+        // This ensures the breakout type logic treats it as a continuation
+        data.priorBaseDays = 0;
+        data.priorBreakoutBarsAgo = 1; // < 45, so triggers Type 3
+      }
 
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
@@ -427,8 +447,19 @@ export class BreakoutAgent {
           priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
           priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
           liquidityOk: breakoutAnalysis.liquidityOk,
+          signalDate: data.timestamp,
         },
       });
+
+      // Earnings transcript analysis for high-confidence stock signals (≥90%).
+      // Cached by (asset, quarter, year) so same transcript is never re-analyzed.
+      if (shouldAlert && confidence >= 0.9 && data.assetType === "stock") {
+        try {
+          await getOrAnalyzeTranscript(asset);
+        } catch (err: any) {
+          console.warn(`[Transcript] ${asset} analysis failed:`, err?.message);
+        }
+      }
 
       // Store setup signals (Type 2 green cone) in Signal table with metadata
       if (setupAnalysis.isSetup) {
@@ -478,6 +509,14 @@ export class BreakoutAgent {
   }
 
   async sendAlert(result: BreakoutResult): Promise<void> {
+    // Email only for 98%+ confidence
+    if (result.confidence < 0.98) {
+      console.log(
+        `⊘ Skip email for ${result.asset}: ${(result.confidence * 100).toFixed(0)}% < 98% threshold`,
+      );
+      return;
+    }
+
     // Verify the record was persisted to database before sending alert
     const latestRecord = await db.breakoutSignal.findFirst({
       where: { asset: result.asset },
@@ -541,15 +580,50 @@ export class BreakoutAgent {
     const breakoutLabel = latestRecord.breakoutType === "Type1" ? "Fresh Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
     const subject = `🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${result.asset}`;
+
+    // Trade setup for Type 1 & Type 3
+    const buyPoint = result.resistance > 0 ? result.resistance.toFixed(2) : "N/A";
+    const stopLoss = result.support > 0 ? (result.support * 0.98).toFixed(2) : "N/A"; // 2% below support
+    const riskReward = result.resistance > 0 && result.support > 0
+      ? ((result.currentPrice - result.support) / (result.resistance - result.support)).toFixed(2)
+      : "N/A";
+
+    // Pull cached earnings transcript analysis (if any) for stock signals
+    let transcriptSection = "";
+    if (latestRecord.assetType === "stock") {
+      const ta = await db.transcriptAnalysis.findFirst({
+        where: { asset: result.asset },
+        orderBy: [{ year: "desc" }, { quarter: "desc" }],
+      });
+      if (ta) {
+        const risks = (ta.riskFlags as string[]) || [];
+        const highlights = (ta.highlights as string[]) || [];
+        transcriptSection = `
+═══ EARNINGS CALL (Q${ta.quarter} ${ta.year}) ═══
+Tone: ${ta.tone} (${ta.toneScore.toFixed(2)}) | Guidance: ${ta.guidanceDirection}
+${ta.summary}
+${highlights.length ? "+ " + highlights.join(" | ") : ""}
+${risks.length ? "⚠ " + risks.join(" | ") : ""}
+`;
+      }
+    }
+
     const body = `
 Asset: ${result.asset} ${assetTypeIndicator}
 Type: ${breakoutLabel}
-Price: $${result.currentPrice}
-Resistance: $${result.resistance}
+Current Price: $${result.currentPrice}
 Confidence: ${(result.confidence * 100).toFixed(0)}%${etfInfo}
 
-Reasoning: ${result.reasoning}
+═══ TRADE SETUP ═══
+Buy Point (Entry): $${buyPoint}
+Stop Loss: $${stopLoss}
+Support: $${result.support.toFixed(2)}
+Risk/Reward: ${riskReward}
 
+═══ ANALYSIS ═══
+Resistance: $${result.resistance.toFixed(2)}
+Reasoning: ${result.reasoning}
+${transcriptSection}
 TradingView: ${tradingViewUrl}
 
 Source: Signal Forge - Breakout Agent

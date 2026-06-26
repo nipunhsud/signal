@@ -157,6 +157,8 @@ app.get('/api/signals', async (req, res) => {
         displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
         firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
         entryResistance,
+        stopLoss: s.support > 0 ? Math.round(s.support * 0.98 * 100) / 100 : null, // 2% below support
+        riskReward: entryResistance > 0 && s.support > 0 ? Math.round(((s.currentPrice - s.support) / (entryResistance - s.support)) * 100) / 100 : null,
         daysSinceBreakout: daysSinceBreakout !== null ? Math.round(daysSinceBreakout * 10) / 10 : null,
         pctGainFromEntry,
         displayAsset: `${s.asset} ${assetTypeLabel}${etfNote}`,
@@ -330,20 +332,75 @@ app.delete('/api/removed-assets/:asset', async (req, res) => {
   }
 });
 
+app.get('/api/transcript/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const analysis = await db.transcriptAnalysis.findFirst({
+      where: { asset: symbol.toUpperCase() },
+      orderBy: [{ year: 'desc' }, { quarter: 'desc' }],
+    });
+    if (!analysis) return res.json(null);
+    res.json({
+      asset: analysis.asset,
+      quarter: analysis.quarter,
+      year: analysis.year,
+      tone: analysis.tone,
+      toneScore: analysis.toneScore,
+      guidanceDirection: analysis.guidanceDirection,
+      riskFlags: analysis.riskFlags,
+      highlights: analysis.highlights,
+      summary: analysis.summary,
+      modelUsed: analysis.modelUsed,
+      createdAt: analysis.createdAt,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/candles/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const apiKey = process.env.FMP_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'FMP_API_KEY not set' });
+    }
+
     const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`;
+    console.log(`[/api/candles] Fetching: ${symbol}`);
+
     const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`[/api/candles] FMP error for ${symbol}: ${response.status}`);
+      return res.status(response.status).json({ error: `FMP API error: ${response.status}` });
+    }
+
     const data = await response.json();
-    // Response is direct array, not wrapped in {historical: [...]}
-    const historicalData = Array.isArray(data) ? data : (data.historical || []);
+
+    // Handle different FMP response formats
+    let historicalData = [];
+    if (Array.isArray(data)) {
+      historicalData = data;
+    } else if (data.historical && Array.isArray(data.historical)) {
+      historicalData = data.historical;
+    } else if (data.results && Array.isArray(data.results)) {
+      historicalData = data.results;
+    }
+
+    if (!historicalData.length) {
+      console.warn(`[/api/candles] No data for ${symbol}`);
+      return res.json([]);
+    }
+
     const bars = historicalData
       .reverse()
-      .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
+      .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }))
+      .filter(b => b.time && b.open && b.high && b.low && b.close); // Filter out incomplete bars
+
+    console.log(`[/api/candles] Success: ${symbol} = ${bars.length} bars`);
     res.json(bars);
   } catch (error) {
+    console.error(`[/api/candles] Error for ${req.params.symbol}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });

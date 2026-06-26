@@ -60,6 +60,7 @@ model BreakoutSignal {
   lastAlertAt DateTime?       // Timestamp of last alert (for re-alerts)
 
   // Timing
+  signalDate DateTime?        // When the signal actually occurred (market candle date), not when logged
   createdAt DateTime @default(now())
   executedAt DateTime?
 
@@ -146,4 +147,27 @@ model RemovedAsset {
   removedAt DateTime @default(now())
 
   @@index([asset])
+}
+
+model TranscriptAnalysis {
+  id      String @id @default(cuid())
+  asset   String
+  quarter Int
+  year    Int
+
+  tone              String  // "bullish" | "neutral" | "bearish"
+  toneScore         Float   // -1.0 to +1.0
+  guidanceDirection String  // "raised" | "maintained" | "lowered" | "none"
+  riskFlags         Json    // string[]
+  highlights        Json    // string[]
+  summary           String
+
+  modelUsed    String
+  inputTokens  Int
+  outputTokens Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([asset, quarter, year])
+  @@index([asset, createdAt])
 }

@@ -241,6 +241,7 @@ export function analyzeSetup(
     close,
     setupBarsInRange = 0,
     setupConsolidationVolumePercent = 0,
+    setupConsolidationRangePercent = 0,
   } = data;
   const { maStackTurning, breakoutSignal } = breakout;
 
@@ -277,20 +278,22 @@ export function analyzeSetup(
   // Calculate distance from 20 MA
   const distanceFromMA20 = (Math.abs(close - ma20) / ma20) * 100;
 
-  // Determine setup type and apply confidence
-  const isHandle = distanceFromMA20 < 3; // Tight pullback close to 20MA
-  let confidence: number;
+  // Start confidence at 100%, deduct for inflections (choppy = lower quality)
+  let confidence = 1.0;
   let distancePenalty = 0;
 
-  if (priceAboveMA20) {
-    // Above 20MA: distinguish handle vs tight base
-    if (isHandle) {
-      confidence = 0.87; // Handle (tight pullback): moderate-high confidence
-    } else {
-      confidence = 0.95; // Tight consolidation above 20MA: very high confidence
-    }
-  } else {
-    // Between 50MA and 20MA: penalize for distance from 20MA
+  // Each inflection (direction change) reduces confidence by 5%
+  const setupInflections = data.setupInflectionCount || 0;
+  confidence -= setupInflections * 0.05;
+
+  // Penalty for wider consolidation range (> 5% = lower quality setup)
+  const rangePercent = setupConsolidationRangePercent || 0;
+  if (rangePercent > 3) {
+    confidence -= (rangePercent - 3) * 0.03; // -3% per 1% of range beyond 3%
+  }
+
+  // Distance from 20MA penalty
+  if (!priceAboveMA20) {
     if (distanceFromMA20 > 5) {
       if (distanceFromMA20 <= 10) {
         distancePenalty = distanceFromMA20 - 5;
@@ -298,8 +301,17 @@ export function analyzeSetup(
         distancePenalty = 10 - 5 + (distanceFromMA20 - 10) * 1.5;
       }
     }
-    confidence = Math.max(0.8, 0.95 - distancePenalty / 100);
+    confidence -= distancePenalty / 100;
   }
+
+  // Bonus for tight, smooth handles
+  const isHandle = distanceFromMA20 < 3;
+  if (isHandle && setupInflections <= 1) {
+    confidence += 0.05; // Tight + smooth = bonus
+  }
+
+  // Ensure confidence is within bounds
+  confidence = Math.max(0.1, Math.min(0.99, confidence));
 
   return {
     isSetup: true,
