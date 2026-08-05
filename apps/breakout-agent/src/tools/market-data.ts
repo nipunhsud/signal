@@ -1,6 +1,41 @@
 import axios from "axios";
 import { globalRateLimiter } from "./rate-limiter.js";
-import { marketDataCache } from "./cache.js";
+
+const cache = new Map<string, { data: MarketData; expires: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Fetch EPS beat/miss vs analyst estimate for the latest *reported* quarter.
+// FMP returns rows newest-first; the newest can be a future quarter with a null
+// epsActual, so skip to the first row that actually reported.
+export async function fetchEarningsSurprise(
+  symbol: string,
+  apiKey: string,
+): Promise<{ epsBeat: boolean; epsSurprisePct: number } | null> {
+  try {
+    const data = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/stable/earnings`,
+        { params: { symbol, limit: 4, apikey: apiKey }, timeout: 10000 },
+      );
+      return res.data;
+    });
+    if (!Array.isArray(data)) return null;
+    const reported = data.find(
+      (q) => q?.epsActual != null && q?.epsEstimated != null,
+    );
+    if (!reported) return null;
+    const actual = Number(reported.epsActual);
+    const est = Number(reported.epsEstimated);
+    if (!Number.isFinite(actual) || !Number.isFinite(est) || est === 0)
+      return null;
+    return {
+      epsBeat: actual > est,
+      epsSurprisePct: ((actual - est) / Math.abs(est)) * 100,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function calculateMA(prices: number[], period: number): number {
   if (prices.length < period) return prices[prices.length - 1];
@@ -29,6 +64,7 @@ export interface MarketData {
   barsInRange?: number;
   consolidationRangePercent?: number; // % range of consolidation bars
   consolidationVolumePercent?: number; // consolidation avg volume as % of 20-bar avg
+  cleanConsolidation?: boolean; // shape+breakout OK regardless of volume (Type1b weak-vol classification)
   // Setup consolidation (pre-breakout without breakout yet) - Type 2
   setupBarsInRange?: number;
   setupConsolidationRangePercent?: number;
@@ -36,6 +72,10 @@ export interface MarketData {
   setupInflectionCount?: number; // Number of direction changes in setup consolidation
   // 52-week high
   high52w?: number;
+  // Trailing returns (%): last 5 / 20 / 60 bars → 1w / 1m / 3m
+  return1wPct?: number;
+  return1mPct?: number;
+  return3mPct?: number;
   // Earnings
   earningsGrowth?: number; // YoY earnings growth %
   // Fundamentals
@@ -76,6 +116,7 @@ interface ConsolidationResult {
   consolidationRangePercent: number;
   consolidationVolumePercent: number; // avg consolidation volume as % of 20-bar avg
   inflectionCount?: number; // Number of direction changes (peaks/troughs) in consolidation
+  cleanConsolidation?: boolean; // shape+breakout satisfied regardless of volume gate
 }
 
 interface PriorBaseResult {
@@ -85,12 +126,9 @@ interface PriorBaseResult {
 
 interface PriorBreakoutResult {
   priorBreakoutBarsAgo: number;
-}
-
-interface ExtensionBreakoutResult {
-  extensionPriorBreakoutBarsAgo: number; // 1-5 (1 = breakout 1 bar ago, 5 = 5 bars ago)
-  extensionConsolidationRangePercent: number;
-  extensionConsolidationVolumePercent: number;
+  priorBreakoutResistance: number; // rolling-high the breakout cleared; extension = today still above this
+  priorBreakoutConsolRangePercent: number;
+  priorBreakoutConsolVolumePercent: number;
 }
 
 function countInflections(bars: any[]): number {
@@ -113,22 +151,18 @@ function countInflections(bars: any[]): number {
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
-  if (allBars.length < 6)
-    return {
-      barsInRange: 0,
-      consolidationRangePercent: 0,
-      consolidationVolumePercent: 0,
-    };
+  const empty: ConsolidationResult = {
+    barsInRange: 0,
+    consolidationRangePercent: 0,
+    consolidationVolumePercent: 0,
+    cleanConsolidation: false,
+  };
+  if (allBars.length < 6) return empty;
 
   const currentBar = allBars[allBars.length - 1];
   const prev5Bars = allBars.slice(-6, -1); // Previous 5 bars before current
 
-  if (prev5Bars.length < 3)
-    return {
-      barsInRange: 0,
-      consolidationRangePercent: 0,
-      consolidationVolumePercent: 0,
-    };
+  if (prev5Bars.length < 3) return empty;
 
   // Calculate average volume from last 20 bars for reference
   const avgVolume =
@@ -149,27 +183,18 @@ function calculateBarsInRange(allBars: any[]): ConsolidationResult {
 
   // Current bar must break above consolidation
   const breaksAboveConsolidation = currentBar.close > consolidationHigh;
-  if (!breaksAboveConsolidation)
-    return {
-      barsInRange: 0,
-      consolidationRangePercent: 0,
-      consolidationVolumePercent: 0,
-    };
+  if (!breaksAboveConsolidation) return empty;
 
-  // Current bar must have high volume (>= 1.2x average)
+  // Shape + breakout satisfied. Volume gate decides strict barsInRange (used by
+  // pineScriptGreen); cleanConsolidation stays true either way, so downstream
+  // can flag Type1b weak-volume breakouts.
   const highVolume = currentBar.volume >= avgVolume * 1.2;
-  if (!highVolume)
-    return {
-      barsInRange: 0,
-      consolidationRangePercent: 0,
-      consolidationVolumePercent: 0,
-    };
 
-  // All conditions met: return count, range %, and volume % (penalties applied in breakout-logic.ts)
   return {
-    barsInRange: prev5Bars.length,
+    barsInRange: highVolume ? prev5Bars.length : 0,
     consolidationRangePercent,
     consolidationVolumePercent,
+    cleanConsolidation: true,
   };
 }
 
@@ -301,89 +326,50 @@ function detectPriorBase(allBars: any[]): PriorBaseResult {
  * Used to identify Type 3 (continuation after prior breakout) vs Type 1 (fresh breakout)
  */
 function detectPriorBreakout(allBars: any[]): PriorBreakoutResult {
-  if (allBars.length < 70) return { priorBreakoutBarsAgo: 0 };
+  const empty: PriorBreakoutResult = {
+    priorBreakoutBarsAgo: 0,
+    priorBreakoutResistance: 0,
+    priorBreakoutConsolRangePercent: 0,
+    priorBreakoutConsolVolumePercent: 0,
+  };
+  if (allBars.length < 70) return empty;
 
   const priorWindow = allBars.slice(-65, -6);
-  if (priorWindow.length < 20) return { priorBreakoutBarsAgo: 0 };
+  if (priorWindow.length < 20) return empty;
 
-  let mostRecentBreakoutBarsAgo = 0;
+  let result = empty;
 
-  // Scan for high-volume breakout: close > rolling 20-bar high AND volume >= 1.5x rolling avg
+  // Scan for high-volume breakout: close > rolling 20-bar high AND volume >= 1.5x rolling avg.
+  // Last match wins = most recent breakout.
   for (let i = 20; i < priorWindow.length; i++) {
     const bar = priorWindow[i];
-    const historyBars = priorWindow.slice(Math.max(0, i - 20), i);
+    const historyBars = priorWindow.slice(i - 20, i);
     const rollingHigh = Math.max(...historyBars.map((b: any) => b.high));
+    const rollingLow = Math.min(...historyBars.map((b: any) => b.low));
     const rollingAvgVol =
       historyBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
       historyBars.length;
 
     if (bar.close > rollingHigh && bar.volume >= rollingAvgVol * 1.5) {
-      // Found a prior breakout; record how many bars ago
-      mostRecentBreakoutBarsAgo = priorWindow.length - 1 - i;
+      const volRefBars = priorWindow.slice(Math.max(0, i - 40), i - 20);
+      const avgVolRef =
+        volRefBars.length > 0
+          ? volRefBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
+            volRefBars.length
+          : rollingAvgVol;
+
+      result = {
+        priorBreakoutBarsAgo: priorWindow.length - 1 - i,
+        priorBreakoutResistance: rollingHigh,
+        priorBreakoutConsolRangePercent:
+          ((rollingHigh - rollingLow) / rollingLow) * 100,
+        priorBreakoutConsolVolumePercent:
+          avgVolRef > 0 ? (rollingAvgVol / avgVolRef) * 100 : 0,
+      };
     }
   }
 
-  return { priorBreakoutBarsAgo: mostRecentBreakoutBarsAgo };
-}
-
-/**
- * Detect a breakout in the LAST 5 bars (excluding current bar).
- * If found, today's signal is a Type 3 extension, not a fresh Type 1 breakout.
- *
- * "Breakout" here = close above prior 10-bar resistance. Volume confirmation
- * is *not* required because real breakouts often occur on average volume —
- * gating on 1.2x would miss them. Returns the EARLIEST recent breakout (the
- * actual Type 1 day), so today is correctly identified as the extension of it.
- */
-function detectExtensionBreakout(allBars: any[]): ExtensionBreakoutResult {
-  const empty: ExtensionBreakoutResult = {
-    extensionPriorBreakoutBarsAgo: 0,
-    extensionConsolidationRangePercent: 0,
-    extensionConsolidationVolumePercent: 0,
-  };
-  if (allBars.length < 30) return empty;
-
-  const N = allBars.length;
-  const currentBar = allBars[N - 1];
-  const recentWindowSize = 5;
-  const recentBars = allBars.slice(-1 - recentWindowSize, -1);
-  if (recentBars.length < 1) return empty;
-
-  for (let i = 0; i < recentBars.length; i++) {
-    const bar = recentBars[i];
-    const barIdx = N - 1 - recentWindowSize + i;
-    if (barIdx < 15) continue; // need 10 bars of history before the candidate
-
-    // 10 bars of prior price action — gives a meaningful resistance level
-    const priorBars = allBars.slice(barIdx - 10, barIdx);
-    const priorHigh = Math.max(...priorBars.map((b: any) => b.high));
-    const priorLow = Math.min(...priorBars.map((b: any) => b.low));
-
-    // Breakout: candidate bar closed above prior resistance
-    if (bar.close <= priorHigh) continue;
-
-    // Today must still be above that resistance — otherwise it's not a sustained extension
-    if (currentBar.close <= priorHigh) continue;
-
-    // First match wins (oldest = the real Type 1 day, subsequent bars are extensions)
-    const volRefBars = allBars.slice(Math.max(0, barIdx - 20), barIdx);
-    const avgVolRef =
-      volRefBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
-      volRefBars.length;
-    const consolAvgVol =
-      priorBars.reduce((sum: number, b: any) => sum + b.volume, 0) /
-      priorBars.length;
-
-    return {
-      extensionPriorBreakoutBarsAgo: recentBars.length - i,
-      extensionConsolidationRangePercent:
-        ((priorHigh - priorLow) / priorLow) * 100,
-      extensionConsolidationVolumePercent:
-        avgVolRef > 0 ? (consolAvgVol / avgVolRef) * 100 : 0,
-    };
-  }
-
-  return empty;
+  return result;
 }
 
 async function fetchETFProfile(
@@ -426,10 +412,12 @@ async function fetchETFProfile(
 
 let cachedFedRate: number | null = null;
 let fedRateFetchTime = 0;
+let fedRateIsFallback = false;
 
 async function getFedRate(apiKey: string): Promise<number> {
   const now = Date.now();
-  if (cachedFedRate !== null && now - fedRateFetchTime < 24 * 60 * 60 * 1000) {
+  const ttl = fedRateIsFallback ? 15 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  if (cachedFedRate !== null && now - fedRateFetchTime < ttl) {
     return cachedFedRate;
   }
 
@@ -448,11 +436,18 @@ async function getFedRate(apiKey: string): Promise<number> {
     if (data && Array.isArray(data) && data[0]) {
       cachedFedRate = parseFloat(data[0].value) || 5.25;
       fedRateFetchTime = now;
+      fedRateIsFallback = false;
       return cachedFedRate;
     }
-  } catch (error) {
-    console.warn("Failed to fetch Fed rate, using fallback");
+  } catch (error: any) {
+    if (!fedRateIsFallback) {
+      const status = error?.response?.status;
+      console.warn(`Failed to fetch Fed rate${status ? ` (${status})` : ""}, using 5.25 fallback for 15 min`);
+    }
   }
+  cachedFedRate = 5.25;
+  fedRateFetchTime = now;
+  fedRateIsFallback = true;
   return 5.25;
 }
 
@@ -463,11 +458,10 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
   // Delisting already filtered at universe level in agent.ts via filterDelistedStocks
   // Skip per-stock check to avoid rate limit exhaustion
 
-  const cacheKey = `market:${symbol}`;
-  const cached = marketDataCache.get<MarketData>(cacheKey);
-  if (cached) {
+  const cached = cache.get(symbol);
+  if (cached && Date.now() < cached.expires) {
     console.log(`Cache hit for ${symbol}`);
-    return cached;
+    return cached.data;
   }
 
   let retries = 3;
@@ -508,6 +502,62 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         throw new Error(`[STALE] ${symbol}: last data from ${latestDate.toISOString().split('T')[0]} (${daysSinceLastData.toFixed(1)} days ago)`);
       }
 
+      // Splice in today's live quote so indicators run on current tape, not yesterday's EOD.
+      // /stable/quote returns real-time price + today's OHLV during market hours.
+      try {
+        const quoteData = await globalRateLimiter.execute(async () => {
+          const res = await axios.get(
+            `https://financialmodelingprep.com/stable/quote`,
+            {
+              params: { symbol, apikey: apiKey },
+              timeout: 10000,
+            },
+          );
+          return res.data;
+        });
+
+        if (quoteData && Array.isArray(quoteData) && quoteData[0]) {
+          const q = quoteData[0];
+          if (
+            typeof q.price === "number" &&
+            typeof q.dayHigh === "number" &&
+            typeof q.dayLow === "number" &&
+            typeof q.open === "number"
+          ) {
+            const quoteMs = q.timestamp ? q.timestamp * 1000 : Date.now();
+            const etDateStr = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "America/New_York",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            }).format(new Date(quoteMs));
+
+            const todayBar = {
+              date: etDateStr,
+              open: q.open,
+              high: q.dayHigh,
+              low: q.dayLow,
+              close: q.price,
+              volume: q.volume ?? 0,
+            };
+
+            const lastEodDateStr = String(allBars[allBars.length - 1].date).slice(0, 10);
+            if (lastEodDateStr === etDateStr) {
+              // EOD already posted for today (post-close scan) — refresh with live values
+              allBars[allBars.length - 1] = todayBar;
+              console.log(`[LIVE] ${symbol} overwrote ${etDateStr} bar with quote close=${q.price.toFixed(2)}`);
+            } else if (lastEodDateStr < etDateStr) {
+              // EOD lags today (during market hours) — append live bar
+              allBars.push(todayBar);
+              console.log(`[LIVE] ${symbol} appended ${etDateStr} bar close=${q.price.toFixed(2)} (last EOD=${lastEodDateStr})`);
+            }
+          }
+        }
+      } catch (err) {
+        // Live quote unavailable — fall back to EOD-only for this asset
+        console.warn(`[LIVE] ${symbol}: quote fetch failed, using EOD only`);
+      }
+
       const closes = allBars.map((b: any) => b.close);
       const ma20 = calculateMA(closes, 20);
       const ma50 = calculateMA(closes, 50);
@@ -533,10 +583,36 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Detect prior base and prior breakout for Type 1 vs Type 3 classification
       const priorBaseResult = detectPriorBase(allBars);
       const priorBreakoutResult = detectPriorBreakout(allBars);
-      const extensionBreakoutResult = detectExtensionBreakout(allBars);
+
+      // Extension = prior breakout exists AND today still closes above its resistance.
+      // No time window — a breakout stays an extension for as long as price holds it.
+      const currentClose = allBars[allBars.length - 1].close;
+      const isExtension =
+        priorBreakoutResult.priorBreakoutBarsAgo > 0 &&
+        currentClose > priorBreakoutResult.priorBreakoutResistance;
+      const extensionPriorBreakoutBarsAgo = isExtension
+        ? priorBreakoutResult.priorBreakoutBarsAgo
+        : 0;
+      const extensionConsolidationRangePercent = isExtension
+        ? priorBreakoutResult.priorBreakoutConsolRangePercent
+        : 0;
+      const extensionConsolidationVolumePercent = isExtension
+        ? priorBreakoutResult.priorBreakoutConsolVolumePercent
+        : 0;
 
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
+
+      // Trailing returns (moving winners screen). Undefined if too little history.
+      const returnAt = (barsBack: number): number | undefined => {
+        if (allBars.length <= barsBack) return undefined;
+        const past = allBars[allBars.length - 1 - barsBack];
+        if (!past?.close) return undefined;
+        return ((latest.close - past.close) / past.close) * 100;
+      };
+      const return1wPct = returnAt(5);
+      const return1mPct = returnAt(20);
+      const return3mPct = returnAt(60);
 
       let earningsGrowth = 0;
       let epsGrowthPct: number | undefined;
@@ -731,6 +807,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
           consolidationResult.consolidationRangePercent,
         consolidationVolumePercent:
           consolidationResult.consolidationVolumePercent,
+        cleanConsolidation: consolidationResult.cleanConsolidation ?? false,
         setupBarsInRange: setupConsolidationResult.barsInRange,
         setupConsolidationRangePercent:
           setupConsolidationResult.consolidationRangePercent,
@@ -739,6 +816,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         setupInflectionCount:
           setupConsolidationResult.inflectionCount,
         high52w,
+        return1wPct,
+        return1mPct,
+        return3mPct,
         earningsGrowth,
         epsGrowthPct,
         revenueGrowthPct,
@@ -754,15 +834,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         priorBaseDays: priorBaseResult.priorBaseDays,
         priorBaseRangePercent: priorBaseResult.priorBaseRangePercent,
         priorBreakoutBarsAgo: priorBreakoutResult.priorBreakoutBarsAgo,
-        extensionPriorBreakoutBarsAgo:
-          extensionBreakoutResult.extensionPriorBreakoutBarsAgo,
-        extensionConsolidationRangePercent:
-          extensionBreakoutResult.extensionConsolidationRangePercent,
-        extensionConsolidationVolumePercent:
-          extensionBreakoutResult.extensionConsolidationVolumePercent,
+        extensionPriorBreakoutBarsAgo,
+        extensionConsolidationRangePercent,
+        extensionConsolidationVolumePercent,
       };
 
-      marketDataCache.set(cacheKey, result);
+      cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });
       return result;
     } catch (error: any) {
       lastError = error;

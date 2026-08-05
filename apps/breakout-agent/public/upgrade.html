@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reactivate — DataQuant.ai</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #0F172A;
+      color: #F8FAFC;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(31, 41, 55, 0.6) 0%, rgba(17, 24, 39, 0.6) 100%);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 12px;
+      backdrop-filter: blur(6px);
+    }
+    .btn-primary {
+      background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 100%);
+      color: #0F172A;
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 8px;
+      transition: transform 180ms ease, box-shadow 220ms ease, filter 180ms ease;
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -8px rgba(245, 158, 11, 0.35);
+      border: none;
+    }
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    .btn-primary:disabled { opacity: 0.6; cursor: wait; }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .grid-bg {
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245, 158, 11, 0.08), transparent 60%);
+    }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+  <div class="max-w-lg mx-auto px-6 py-20 md:py-28 text-center">
+    <div class="inline-flex w-14 h-14 items-center justify-center rounded-2xl bg-amber-500/15 border border-amber-500/30 mb-8">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+    </div>
+
+    <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
+      Your subscription is inactive.
+    </h1>
+    <p class="mt-4 text-slate-400 leading-relaxed">
+      Reactivate to continue receiving signals. Same $499/month plan — cancel again any time.
+    </p>
+
+    <div class="card p-8 mt-10 text-left">
+      <div class="flex items-baseline gap-2">
+        <span class="text-4xl font-bold tabular">$499</span>
+        <span class="text-slate-500">/month</span>
+      </div>
+      <p class="mt-2 text-sm text-slate-400">Cancel anytime from the Stripe portal.</p>
+
+      <button id="reactivate-btn" class="btn-primary w-full justify-center mt-6">
+        Reactivate subscription
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+      <p id="status" class="mt-4 text-xs text-slate-500 text-center"></p>
+    </div>
+
+    <p class="mt-8 text-xs text-slate-500">
+      <a href="/" class="underline hover:text-slate-300">Back to landing</a>
+      <span class="mx-2">·</span>
+      <a href="mailto:hello@dataquant.ai" class="underline hover:text-slate-300">Contact support</a>
+    </p>
+  </div>
+
+  <script>
+    const btn = document.getElementById('reactivate-btn');
+    const status = document.getElementById('status');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      status.textContent = 'Creating checkout session...';
+      try {
+        const res = await fetch('/api/create-checkout-session', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        const { url } = await res.json();
+        window.location = url;
+      } catch (e) {
+        btn.disabled = false;
+        status.textContent = 'Something went wrong: ' + e.message;
+        status.className = 'mt-4 text-xs text-red-400 text-center';
+      }
+    });
+  </script>
+</body>
+</html>

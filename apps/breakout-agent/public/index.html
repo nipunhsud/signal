@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Signal Forge - Breakout Signals Dashboard</title>
+  <title>Data Quant — Breakouts confirmed by earnings tone</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
@@ -18,11 +18,258 @@
       padding-right: 2rem !important;
     }
     .signal-row {
-      transition: all 0.2s ease;
+      transition: background-color 0.15s ease;
       position: relative;
     }
     .signal-row:hover {
-      background-color: rgba(239, 68, 68, 0.1) !important;
+      background-color: rgba(59, 130, 246, 0.08) !important;
+    }
+    .signal-row:hover .row-asset {
+      color: #93c5fd;
+    }
+    thead.sticky-head th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background-color: rgb(55 65 81); /* gray-700 */
+    }
+    @keyframes pulse-alert {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); }
+      50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+    }
+    .alert-pulse {
+      animation: pulse-alert 1.8s ease-in-out infinite;
+    }
+    .conf-bar {
+      height: 3px;
+      border-radius: 2px;
+      margin-top: 3px;
+      background: linear-gradient(90deg, currentColor 0%, currentColor var(--pct, 0%), rgba(255,255,255,0.08) var(--pct, 0%));
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    /* Toast stack */
+    #toast-stack {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto;
+      min-width: 220px;
+      max-width: 360px;
+      padding: 10px 14px;
+      background: rgba(31, 41, 55, 0.98);
+      backdrop-filter: blur(4px);
+      color: #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: toast-in 0.18s ease forwards;
+    }
+    .toast.leaving {
+      animation: toast-out 0.18s ease forwards;
+    }
+    @keyframes toast-in {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toast-out {
+      to { opacity: 0; transform: translateY(8px); }
+    }
+    .toast-icon {
+      width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 999px;
+    }
+    .toast-success .toast-icon { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .toast-info    .toast-icon { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .toast-warn    .toast-icon { background: rgba(234,179,8,0.2);  color: #facc15; }
+    .toast-undo {
+      margin-left: auto;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #93c5fd;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(147,197,253,0.3);
+      background: transparent;
+    }
+    .toast-undo:hover { background: rgba(147,197,253,0.1); }
+
+    /* Freshness pulsing dot */
+    @keyframes fresh-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .fresh-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 999px;
+      animation: fresh-pulse 2s ease-in-out infinite;
+    }
+
+    /* Skeleton loading */
+    @keyframes skeleton-shimmer {
+      0% { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, rgba(55,65,81,0.4) 0%, rgba(75,85,99,0.6) 50%, rgba(55,65,81,0.4) 100%);
+      background-size: 800px 100%;
+      animation: skeleton-shimmer 1.4s infinite linear;
+      border-radius: 4px;
+    }
+
+    /* Confidence-tier row wash */
+    .signal-row.tier-elite td:first-child { box-shadow: inset 2px 0 0 rgba(34,197,94,0.6); }
+    .signal-row.tier-elite { background-color: rgba(34,197,94,0.04) !important; }
+    .signal-row.tier-strong td:first-child { box-shadow: inset 2px 0 0 rgba(234,179,8,0.5); }
+
+    /* Glossary tooltip — element is styled here; the floating panel is portaled to body via JS
+       (avoids clipping by table overflow / sticky headers). */
+    [data-tip] { cursor: help; border-bottom: 1px dashed rgba(148,163,184,0.35); }
+    #sf-tooltip {
+      position: fixed;
+      background: rgba(17,24,39,0.98);
+      color: #e5e7eb;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      max-width: 260px;
+      border: 1px solid rgba(75,85,99,0.6);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+      pointer-events: none;
+      z-index: 200;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.12s ease, transform 0.12s ease;
+    }
+    #sf-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    /* Command Palette */
+    #sf-palette-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(2px);
+      z-index: 150;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 15vh;
+    }
+    #sf-palette-backdrop.open { display: flex; }
+    #sf-palette {
+      width: 92%;
+      max-width: 560px;
+      background: rgba(17,24,39,0.98);
+      border: 1px solid rgba(75,85,99,0.6);
+      border-radius: 12px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #sf-palette-input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f3f4f6;
+      font-size: 15px;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(75,85,99,0.4);
+    }
+    #sf-palette-input::placeholder { color: #6b7280; }
+    #sf-palette-results {
+      max-height: 60vh;
+      overflow-y: auto;
+      padding: 6px;
+    }
+    .sf-palette-group {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b7280;
+      padding: 8px 12px 4px;
+      font-weight: 600;
+    }
+    .sf-palette-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: #d1d5db;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .sf-palette-item.active,
+    .sf-palette-item:hover {
+      background: rgba(59, 130, 246, 0.15);
+      color: #eff6ff;
+    }
+    .sf-palette-item .sf-palette-kind {
+      margin-left: auto;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+    }
+    .sf-palette-item .sf-palette-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .sf-palette-hint {
+      padding: 8px 12px;
+      font-size: 10px;
+      color: #6b7280;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid rgba(75,85,99,0.4);
+      background: rgba(0,0,0,0.2);
+    }
+    .sf-kbd {
+      background: rgba(75,85,99,0.4);
+      color: #d1d5db;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
     }
     .signal-row.removing {
       opacity: 0.5;
@@ -43,61 +290,632 @@
     }
   </style>
 </head>
-<body class="bg-gray-900 text-white m-0 p-0">
-  <div id="container" class="flex h-screen w-screen bg-gray-900">
+<body class="bg-gray-900 text-white m-0 p-0 flex flex-col h-screen w-screen">
+  <!-- Persistent top navigation. Server-rendered shell; JS updates the active tab
+       state based on Dashboard.view. Cmd+K still opens the palette from anywhere. -->
+  <nav id="top-nav" class="flex-shrink-0 h-12 bg-gray-950/95 backdrop-blur border-b border-gray-800 flex items-center gap-6 px-6 z-30">
+    <a href="#" onclick="dashboard.setView('dashboard'); return false;" class="flex items-center gap-2 group">
+      <span class="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white group-hover:scale-105 transition">DQ</span>
+      <span class="font-semibold tracking-tight text-gray-100">Data Quant</span>
+    </a>
+    <div id="top-nav-tabs" class="flex items-center gap-1"></div>
+    <div class="ml-auto flex items-center gap-4">
+      <div id="top-nav-status" class="text-[11px] text-gray-500"></div>
+      <button onclick="dashboard.openPalette()" class="text-[11px] text-gray-500 hover:text-gray-300 transition inline-flex items-center gap-1.5" title="Command palette (Cmd+K)">
+        <span class="sf-kbd" style="font-size:9px;">⌘K</span>
+        <span>Jump</span>
+      </button>
+    </div>
+  </nav>
+  <div id="container" class="flex flex-1 min-h-0 bg-gray-900">
     <div id="app" class="flex-1 overflow-auto"></div>
     <div id="drawer" class="relative bg-gray-800 border-l border-gray-700 shadow-lg" style="width: 0px; overflow: hidden; transition: width 0.2s ease;"></div>
   </div>
+  <div id="toast-stack" aria-live="polite" role="status"></div>
+  <div id="sf-tooltip" role="tooltip"></div>
+  <div id="sf-palette-backdrop" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div id="sf-palette">
+      <input id="sf-palette-input" type="text" placeholder="Jump to symbol, run action…" autocomplete="off" spellcheck="false" />
+      <div id="sf-palette-results"></div>
+      <div class="sf-palette-hint">
+        <span><span class="sf-kbd">↑</span> <span class="sf-kbd">↓</span> navigate · <span class="sf-kbd">↵</span> select · <span class="sf-kbd">esc</span> close</span>
+        <span>Cmd+K</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Body-level tooltip portal for [data-tip] elements. Delegated so
+    // dynamic re-renders (Dashboard.render()) don't lose handlers.
+    (function() {
+      const tip = document.getElementById('sf-tooltip');
+      let currentTarget = null;
+      function positionTip(target) {
+        const r = target.getBoundingClientRect();
+        // measure tooltip to center it horizontally over the target
+        const tr = tip.getBoundingClientRect();
+        let left = r.left + r.width / 2 - tr.width / 2;
+        let top = r.top - tr.height - 6;
+        // clamp to viewport
+        const pad = 6;
+        if (left < pad) left = pad;
+        if (left + tr.width > window.innerWidth - pad) left = window.innerWidth - tr.width - pad;
+        if (top < pad) top = r.bottom + 6; // flip below if it would go off top
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+      }
+      document.addEventListener('mouseover', (e) => {
+        const t = e.target.closest('[data-tip]');
+        if (!t || t === currentTarget) return;
+        currentTarget = t;
+        tip.textContent = t.getAttribute('data-tip') || '';
+        tip.classList.add('visible');
+        // Position twice: first to establish size, then to center accurately.
+        positionTip(t);
+        requestAnimationFrame(() => positionTip(t));
+      });
+      document.addEventListener('mouseout', (e) => {
+        const t = e.target.closest('[data-tip]');
+        if (!t) return;
+        // Only hide if we're leaving to something outside the tipped element
+        if (t.contains(e.relatedTarget)) return;
+        currentTarget = null;
+        tip.classList.remove('visible');
+      });
+      // Also hide on scroll — otherwise a stale tip lingers over the wrong element
+      window.addEventListener('scroll', () => {
+        currentTarget = null;
+        tip.classList.remove('visible');
+      }, true);
+    })();
+  </script>
 
   <script>
     class Dashboard {
       constructor() {
+        // Persisted preferences — pulled from localStorage with fallbacks
+        const prefs = this.loadPrefs();
         this.signals = [];
         this.shortlist = [];
         this.loading = true;
         this.scanning = false;
         this.filtering = '';
-        this.minConfidence = 85; // Only show high-confidence signals by default
-        this.sortBy = 'confidence';
-        this.sortDirection = 'desc';
+        this.minConfidence = prefs.minConfidence ?? 85;
+        this.sortBy = prefs.sortBy ?? 'confidence';
+        this.sortDirection = prefs.sortDirection ?? 'desc';
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
-        this.signalTypeFilter = 'all';
-        this.sectorFilter = 'all';
-        this.assetTypeFilter = 'all'; // stocks, etfs, or all
+        this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
+        this.sectorFilter = prefs.sectorFilter ?? 'all';
+        this.assetTypeFilter = prefs.assetTypeFilter ?? 'all';
         this._searchDebounceTimer = null;
         this.showShortlist = false;
+        this.lastFetchAt = null;      // freshness dot input
+        this._removedHistory = [];    // for undo toast
+        this._sparklines = {};        // symbol -> number[]
+        this._sparkFetching = false;
+        // View routing — single source of truth. Legacy showBacktest/showShortlist
+        // getters below stay so existing checks (e.g. skipping renders during
+        // signal fetches) continue to work.
+        this.view = 'dashboard';      // 'dashboard' | 'backtest' | 'shortlist' | 'winners'
+        this.backtest = null;
+        this.backtestLoading = false;
+        this.backtestParams = { type: 'Type1', lookback: 30, horizon: 30 };
+        this.winners = null;
+        this.winnersLoading = false;
+        this.beatRaise = null;
+        this.beatRaiseLoading = false;
+        this.unusualVolume = null;
+        this.unusualVolumeLoading = false;
+        this.winnersFilter = { tier: 'all', screen: 'setup', window: '1m', asset: '' }; // screen: 'setup' | 'moving'; window: '1w' | '1m' | '3m'; asset: substring filter
         this.init();
+      }
+
+      // Back-compat shims for existing code that reads showBacktest/showShortlist.
+      get showBacktest() { return this.view === 'backtest'; }
+      set showBacktest(v) { if (v) this.view = 'backtest'; else if (this.view === 'backtest') this.view = 'home'; }
+      get showShortlist() { return this.view === 'shortlist'; }
+      set showShortlist(v) { if (v) this.view = 'shortlist'; else if (this.view === 'shortlist') this.view = 'dashboard'; }
+
+      setView(name) {
+        const valid = ['dashboard', 'backtest', 'shortlist', 'winners', 'beat-raise', 'unusual-volume'];
+        // Silently redirect legacy 'home' to dashboard so old bookmarks/palette entries still work.
+        if (name === 'home') name = 'dashboard';
+        if (!valid.includes(name)) return;
+        this.view = name;
+        this.closeDrawer();
+        if (name === 'backtest' && !this.backtest && !this.backtestLoading) {
+          this.fetchBacktest();
+        } else if (name === 'winners' && !this.winners && !this.winnersLoading) {
+          this.fetchWinners();
+        } else if (name === 'beat-raise' && !this.beatRaise && !this.beatRaiseLoading) {
+          this.fetchBeatRaise();
+        } else if (name === 'unusual-volume' && !this.unusualVolume && !this.unusualVolumeLoading) {
+          this.fetchUnusualVolume();
+        } else {
+          this.render();
+        }
+      }
+
+      async fetchWinners() {
+        this.winnersLoading = true;
+        this.render();
+        try {
+          const { screen, window } = this.winnersFilter;
+          const url = screen === 'moving'
+            ? `/api/winners?type=moving&window=${window}`
+            : '/api/winners?type=setup';
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('winners fetch failed');
+          this.winners = await res.json();
+        } catch (err) {
+          console.error('Winners fetch failed:', err);
+          this.toast('Winners fetch failed', { kind: 'warn' });
+          this.winners = null;
+        } finally {
+          this.winnersLoading = false;
+          this.render();
+        }
+      }
+
+      async fetchBeatRaise() {
+        this.beatRaiseLoading = true;
+        this.render();
+        try {
+          const res = await fetch('/api/beat-raise');
+          if (!res.ok) throw new Error('beat-raise fetch failed');
+          this.beatRaise = await res.json();
+        } catch (err) {
+          console.error('Beat & Raise fetch failed:', err);
+          this.toast('Beat & Raise fetch failed', { kind: 'warn' });
+          this.beatRaise = null;
+        } finally {
+          this.beatRaiseLoading = false;
+          this.render();
+        }
+      }
+
+      async fetchUnusualVolume() {
+        this.unusualVolumeLoading = true;
+        this.render();
+        try {
+          const res = await fetch('/api/unusual-volume');
+          if (!res.ok) throw new Error('unusual-volume fetch failed');
+          this.unusualVolume = await res.json();
+        } catch (err) {
+          console.error('Unusual volume fetch failed:', err);
+          this.toast('Unusual volume fetch failed', { kind: 'warn' });
+          this.unusualVolume = null;
+        } finally {
+          this.unusualVolumeLoading = false;
+          this.render();
+        }
+      }
+
+      setWinnersTier(tier) {
+        this.winnersFilter.tier = tier;
+        this.render();
+      }
+
+      // Cross-view jumps. Pre-filter destination so the linked asset is the only row.
+      jumpToSignal(asset, signalType) {
+        this.setFilter('signalTypeFilter', signalType || 'all');
+        this.filtering = asset || '';
+        this.setView('dashboard');
+        this.render();
+      }
+      jumpToWinner(asset) {
+        this.winnersFilter.tier = 'all';
+        this.winnersFilter.asset = asset || '';
+        this.setView('winners');
+      }
+
+      setWinnersScreen(screen) {
+        if (this.winnersFilter.screen === screen) return;
+        this.winnersFilter.screen = screen;
+        this.winners = null;
+        this.fetchWinners();
+      }
+
+      setWinnersWindow(window) {
+        if (this.winnersFilter.window === window) return;
+        this.winnersFilter.window = window;
+        if (this.winnersFilter.screen === 'moving') {
+          this.winners = null;
+          this.fetchWinners();
+        } else {
+          this.render();
+        }
+      }
+
+      async fetchBacktest() {
+        this.backtestLoading = true;
+        this.render();
+        try {
+          const p = this.backtestParams;
+          const url = `/api/backtest?type=${p.type}&lookback=${p.lookback}&horizon=${p.horizon}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('backtest fetch failed');
+          this.backtest = await res.json();
+        } catch (err) {
+          console.error('Backtest fetch failed:', err);
+          this.toast('Backtest fetch failed', { kind: 'warn' });
+          this.backtest = null;
+        } finally {
+          this.backtestLoading = false;
+          this.render();
+        }
+      }
+
+      openBacktest() {
+        this.view = 'backtest';
+        if (!this.backtest) this.fetchBacktest();
+        else this.render();
+      }
+
+      closeBacktest() {
+        this.view = 'dashboard';
+        this.render();
+      }
+
+      setBacktestParam(key, value) {
+        this.backtestParams[key] = value;
+        this.fetchBacktest();
+      }
+
+      async fetchSparklines() {
+        if (this._sparkFetching) return;
+        const symbols = this.signals.map(s => s.asset).filter(Boolean);
+        const needed = symbols.filter(s => !this._sparklines[s]);
+        if (!needed.length) return;
+        this._sparkFetching = true;
+        try {
+          const res = await fetch('/api/sparklines', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbols: needed }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            Object.assign(this._sparklines, data);
+            if (!this.showBacktest) this.render();
+          }
+        } catch (e) { /* silent */ }
+        finally { this._sparkFetching = false; }
+      }
+
+      renderSparkline(symbol) {
+        const values = this._sparklines[symbol];
+        if (!values || values.length < 2) {
+          // subtle placeholder while fetching
+          return '<span class="text-gray-700 text-xs font-mono">···</span>';
+        }
+        const w = 68, h = 22, pad = 1.5;
+        const min = Math.min(...values), max = Math.max(...values);
+        const range = max - min || 1;
+        const step = (w - pad * 2) / (values.length - 1);
+        const points = values.map((v, i) =>
+          `${(pad + i * step).toFixed(1)},${(pad + (h - pad * 2) - ((v - min) / range) * (h - pad * 2)).toFixed(1)}`
+        ).join(' ');
+        const rising = values[values.length - 1] >= values[0];
+        const stroke = rising ? '#4ade80' : '#f87171';
+        const areaFill = rising ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)';
+        const areaPoints = `${pad},${(h - pad).toFixed(1)} ${points} ${(w - pad).toFixed(1)},${(h - pad).toFixed(1)}`;
+        return `<svg width="${w}" height="${h}" style="display:block" aria-hidden="true">
+          <polyline points="${areaPoints}" fill="${areaFill}" stroke="none"/>
+          <polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>`;
+      }
+
+      loadPrefs() {
+        try {
+          const raw = localStorage.getItem('sf_prefs_v1');
+          return raw ? JSON.parse(raw) : {};
+        } catch { return {}; }
+      }
+
+      savePrefs() {
+        try {
+          localStorage.setItem('sf_prefs_v1', JSON.stringify({
+            sortBy: this.sortBy,
+            sortDirection: this.sortDirection,
+            signalTypeFilter: this.signalTypeFilter,
+            assetTypeFilter: this.assetTypeFilter,
+            sectorFilter: this.sectorFilter,
+            minConfidence: this.minConfidence,
+          }));
+        } catch {}
+      }
+
+      toast(message, opts = {}) {
+        const stack = document.getElementById('toast-stack');
+        if (!stack) return;
+        const kind = opts.kind || 'info'; // 'success' | 'info' | 'warn'
+        const icon = kind === 'success' ? '✓' : kind === 'warn' ? '!' : 'i';
+        const el = document.createElement('div');
+        el.className = `toast toast-${kind}`;
+        const undoHtml = opts.undo
+          ? `<button class="toast-undo" onclick="this.parentElement.classList.add('leaving'); (${opts.undo.toString()})(); setTimeout(() => this.parentElement.remove(), 180);">Undo</button>`
+          : '';
+        el.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>${undoHtml}`;
+        stack.appendChild(el);
+        const life = opts.duration || (opts.undo ? 4500 : 2200);
+        setTimeout(() => {
+          el.classList.add('leaving');
+          setTimeout(() => el.remove(), 200);
+        }, life);
+      }
+
+      // ==== Command palette (Cmd+K) ====
+      openPalette() {
+        const backdrop = document.getElementById('sf-palette-backdrop');
+        const input = document.getElementById('sf-palette-input');
+        if (!backdrop || !input) return;
+        this._paletteIndex = 0;
+        this._paletteQuery = '';
+        backdrop.classList.add('open');
+        input.value = '';
+        this.renderPalette();
+        setTimeout(() => input.focus(), 0);
+      }
+
+      closePalette() {
+        const backdrop = document.getElementById('sf-palette-backdrop');
+        if (backdrop) backdrop.classList.remove('open');
+      }
+
+      getPaletteItems() {
+        // Assets (sorted by confidence desc for practical relevance)
+        const assets = [...this.signals]
+          .sort((a, b) => b.confidence - a.confidence)
+          .map(s => ({
+            kind: 'asset',
+            id: 'asset:' + s.asset,
+            label: s.asset,
+            desc: `${s.signalType} · ${s.confidence}% · ${s.sector || '—'}`,
+            signal: s,
+            search: `${s.asset} ${s.sector || ''} ${s.industry || ''}`.toLowerCase(),
+            run: () => { this.openDrawer(s); this.closePalette(); },
+          }));
+        // Filter actions
+        const actions = [
+          { id: 'sig:breakout',  label: 'Filter: Actionable breakouts', desc: 'Fresh breakouts from a clean base', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'breakout'); this.closePalette(); this.toast('Filter → Actionable', { kind: 'info' }); } },
+          { id: 'sig:setup',     label: 'Filter: Setups',     desc: 'Show pre-breakout Type 2 setups', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'setup'); this.closePalette(); this.toast('Filter → Setups', { kind: 'info' }); } },
+          { id: 'sig:extension', label: 'Filter: Extensions',           desc: 'Continuation of a recent breakout', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'extension'); this.closePalette(); this.toast('Filter → Extension', { kind: 'info' }); } },
+          { id: 'ast:all',       label: 'Show: All assets',   desc: 'Stocks + ETFs', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'all'); this.closePalette(); } },
+          { id: 'ast:stock',     label: 'Show: Stocks only',  desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'stock'); this.closePalette(); } },
+          { id: 'ast:etf',       label: 'Show: ETFs only',    desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'etf'); this.closePalette(); } },
+          { id: 'reset',         label: 'Reset all filters',  desc: 'Back to defaults', kind: 'action', run: () => { this.resetFilters(); this.closePalette(); } },
+          { id: 'dashboard',     label: 'Open Dashboard',     desc: 'Live signals table', kind: 'action', run: () => { this.setView('dashboard'); this.closePalette(); } },
+          { id: 'shortlist',     label: 'Open Shortlist',     desc: '', kind: 'action', run: () => { this.setView('shortlist'); this.closePalette(); } },
+          { id: 'backtest',      label: 'Open Backtest',      desc: 'Historical performance of past signals', kind: 'action', run: () => { this.setView('backtest'); this.closePalette(); } },
+          { id: 'scan',          label: 'Trigger scan now',   desc: 'Runs a fresh scan in the background', kind: 'action', run: async () => {
+            this.closePalette();
+            this.toast('Scan started…', { kind: 'info' });
+            try { await fetch('/api/scan', { method: 'POST' }); this.toast('Scan running in background', { kind: 'success' }); }
+            catch { this.toast('Scan failed to start', { kind: 'warn' }); }
+          }},
+        ].map(a => ({ ...a, search: (a.label + ' ' + (a.desc || '')).toLowerCase() }));
+        return { assets, actions };
+      }
+
+      renderPalette() {
+        const el = document.getElementById('sf-palette-results');
+        if (!el) return;
+        const q = (this._paletteQuery || '').trim().toLowerCase();
+        const { assets, actions } = this.getPaletteItems();
+        const match = it => !q || it.search.includes(q);
+        // fuzzy-ish score: exact prefix > substring; assets scored on ticker only
+        const scored = (items, tickerField) => items
+          .filter(match)
+          .map(it => {
+            const t = (tickerField ? it.label.toLowerCase() : it.search);
+            const score = !q ? 0
+              : t.startsWith(q) ? 3
+              : t.split(/\s+/).some(w => w.startsWith(q)) ? 2
+              : 1;
+            return { it, score };
+          })
+          .sort((a, b) => b.score - a.score)
+          .map(x => x.it);
+        const matchedAssets = scored(assets, true).slice(0, q ? 12 : 6);
+        const matchedActions = scored(actions, false);
+        const items = [];
+        if (matchedActions.length) items.push({ group: 'Actions' }, ...matchedActions);
+        if (matchedAssets.length) items.push({ group: 'Assets' }, ...matchedAssets);
+        this._paletteFlat = items.filter(x => !x.group); // only selectable items
+        if (this._paletteIndex >= this._paletteFlat.length) this._paletteIndex = 0;
+        el.innerHTML = items.length === 0
+          ? '<div class="sf-palette-group">No results</div>'
+          : items.map(it => {
+            if (it.group) return `<div class="sf-palette-group">${it.group}</div>`;
+            const flatIdx = this._paletteFlat.indexOf(it);
+            const active = flatIdx === this._paletteIndex ? 'active' : '';
+            const badge = it.kind === 'asset'
+              ? `<span class="sf-palette-badge" style="background:rgba(59,130,246,0.15);color:#93c5fd">${it.signal.confidence}%</span>`
+              : '';
+            return `
+              <div class="sf-palette-item ${active}" data-idx="${flatIdx}" onclick="dashboard._paletteFlat[${flatIdx}].run()">
+                ${badge}
+                <div>
+                  <div style="color:#f3f4f6;font-weight:500">${it.label}</div>
+                  ${it.desc ? `<div style="font-size:11px;color:#9ca3af">${it.desc}</div>` : ''}
+                </div>
+                <span class="sf-palette-kind">${it.kind}</span>
+              </div>
+            `;
+          }).join('');
+        // Scroll active into view
+        const activeEl = el.querySelector('.sf-palette-item.active');
+        if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest' });
+      }
+
+      // Top nav — active-tab state + right-side status. Injected on every render.
+      renderNavBar() {
+        const tabsEl = document.getElementById('top-nav-tabs');
+        const statusEl = document.getElementById('top-nav-status');
+        if (!tabsEl || !statusEl) return;
+        const tabs = [
+          { key: 'dashboard', label: 'Signals' },
+          { key: 'winners',   label: 'Winners' },
+          { key: 'beat-raise', label: 'Beat & Raise' },
+          { key: 'unusual-volume', label: 'Unusual Volume' },
+          { key: 'backtest',  label: 'Backtest' },
+          { key: 'shortlist', label: 'Shortlist' },
+        ];
+        tabsEl.innerHTML = tabs.map(t => {
+          const active = this.view === t.key;
+          return `
+            <button onclick="dashboard.setView('${t.key}')"
+              class="px-3 py-1 rounded-md text-xs font-medium transition ${active ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-400 hover:text-white'}">
+              ${t.label}
+            </button>
+          `;
+        }).join('');
+        // Compact freshness dot in status area
+        const mostRecent = this.signals.reduce((max, s) => {
+          const t = new Date(s.createdAt).getTime();
+          return t > max ? t : max;
+        }, 0);
+        if (mostRecent) {
+          const ageMin = (Date.now() - mostRecent) / 60000;
+          const color = ageMin < 20 ? '#4ade80' : ageMin < 40 ? '#facc15' : '#f87171';
+          const label = ageMin < 1 ? 'just now'
+            : ageMin < 60 ? `${Math.round(ageMin)}m`
+            : `${Math.round(ageMin / 60)}h`;
+          statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="fresh-dot" style="background:${color}"></span>Last scan <span class="text-gray-300">${label}</span> ago</span>`;
+        } else {
+          statusEl.innerHTML = '';
+        }
+      }
+
+      freshnessDot() {
+        if (!this.lastFetchAt) return '';
+        const mostRecent = this.signals.reduce((max, s) => {
+          const t = new Date(s.createdAt).getTime();
+          return t > max ? t : max;
+        }, 0);
+        if (!mostRecent) return '';
+        const ageMin = (Date.now() - mostRecent) / 60000;
+        const color = ageMin < 20 ? '#4ade80' : ageMin < 40 ? '#facc15' : '#f87171';
+        const label = ageMin < 1 ? 'just now'
+          : ageMin < 60 ? `${Math.round(ageMin)}m ago`
+          : `${Math.round(ageMin / 60)}h ago`;
+        const title = `Most recent signal · ${new Date(mostRecent).toLocaleTimeString()}`;
+        return `
+          <span class="inline-flex items-center gap-1.5 text-[11px] text-gray-400" title="${title}">
+            <span class="fresh-dot" style="background:${color}"></span>
+            <span>Last scan <span class="text-gray-300 font-medium">${label}</span></span>
+          </span>
+        `;
       }
 
       async init() {
         this.fetchSignals();
         this.fetchShortlist();
         setInterval(() => this.fetchSignals(), 5000);
+        setInterval(() => { if (!this.showBacktest) this.render(); }, 60_000); // keep freshness dot label current
+
+        // Close palette when clicking outside the panel
+        const backdrop = document.getElementById('sf-palette-backdrop');
+        if (backdrop) {
+          backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) this.closePalette();
+          });
+        }
+
+        // Command palette input: intercept nav keys before the global handler
+        const paletteInput = document.getElementById('sf-palette-input');
+        if (paletteInput) {
+          paletteInput.addEventListener('input', (e) => {
+            this._paletteQuery = e.target.value;
+            this._paletteIndex = 0;
+            this.renderPalette();
+          });
+          paletteInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              if (this._paletteFlat?.length) {
+                this._paletteIndex = (this._paletteIndex + 1) % this._paletteFlat.length;
+                this.renderPalette();
+              }
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (this._paletteFlat?.length) {
+                this._paletteIndex = (this._paletteIndex - 1 + this._paletteFlat.length) % this._paletteFlat.length;
+                this.renderPalette();
+              }
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              const item = this._paletteFlat?.[this._paletteIndex];
+              if (item) item.run();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              this.closePalette();
+            }
+          });
+        }
 
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
+          // Cmd+K / Ctrl+K: open command palette from anywhere
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            this.openPalette();
+            return;
+          }
+
+          // ESC works from search input too — lets you back out quickly
+          if (e.code === 'Escape') {
+            const backdrop = document.getElementById('sf-palette-backdrop');
+            if (backdrop?.classList.contains('open')) {
+              this.closePalette();
+              return;
+            }
+            const tagEsc = e.target?.tagName;
+            if (tagEsc === 'INPUT' && e.target.id === 'search-input') {
+              e.target.blur();
+              return;
+            }
+            this.closeDrawer();
+            return;
+          }
+
           const tag = e.target?.tagName;
           if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
 
-          const filtered = this.getFilteredSignals();
-          if (!filtered.length) return;
+          // "/" focuses search — same idiom as gh, gmail, slack
+          if (e.key === '/') {
+            e.preventDefault();
+            const s = document.getElementById('search-input');
+            if (s) { s.focus(); s.select(); }
+            return;
+          }
+
+          // 1/2/3 toggle the signal type filter quickly
+          const signalKeyMap = { '1': 'breakout', '2': 'setup', '3': 'extension' };
+          if (signalKeyMap[e.key]) {
+            this.setFilter('signalTypeFilter', signalKeyMap[e.key]);
+            return;
+          }
+
+          // Nav list depends on which view is active: shortlist vs main table.
+          // Without this, pressing space in the shortlist would jump into the dashboard's filtered signals.
+          const navList = this.getNavList();
+          if (!navList.length) return;
 
           if (e.code === 'Space') {
             e.preventDefault();
-            this.currentAssetIndex = (this.currentAssetIndex + 1) % filtered.length;
-            this.openDrawer(filtered[this.currentAssetIndex]);
+            this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
+            this.openDrawer(navList[this.currentAssetIndex]);
           } else if (e.code === 'ArrowLeft') {
-            this.currentAssetIndex = (this.currentAssetIndex - 1 + filtered.length) % filtered.length;
-            this.openDrawer(filtered[this.currentAssetIndex]);
+            this.currentAssetIndex = (this.currentAssetIndex - 1 + navList.length) % navList.length;
+            this.openDrawer(navList[this.currentAssetIndex]);
           } else if (e.code === 'ArrowRight') {
-            this.currentAssetIndex = (this.currentAssetIndex + 1) % filtered.length;
-            this.openDrawer(filtered[this.currentAssetIndex]);
-          } else if (e.code === 'Escape') {
-            this.closeDrawer();
+            this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
+            this.openDrawer(navList[this.currentAssetIndex]);
           }
         });
 
@@ -140,9 +958,14 @@
           } else {
             this.signals = Array.isArray(data) ? data : [];
           }
+          this.breadth = data.stats?.breadth || null;
 
+          this.lastFetchAt = Date.now();
           this.loading = false;
-          this.render();
+          // Only re-render the main dashboard — the backtest panel is independent of
+          // signals and re-rendering would flicker the recent-evaluations list every 5s.
+          if (!this.showBacktest) this.render();
+          this.fetchSparklines();
         } catch (error) {
           console.error('Failed to fetch signals:', error);
         }
@@ -152,7 +975,7 @@
         try {
           const res = await fetch('/api/shortlist');
           this.shortlist = await res.json();
-          this.render();
+          if (!this.showBacktest) this.render();
         } catch (error) {
           console.error('Failed to fetch shortlist:', error);
         }
@@ -164,16 +987,19 @@
         try {
           if (isInList) {
             await fetch(`/api/shortlist/${encodeURIComponent(asset)}`, { method: 'DELETE' });
+            this.toast(`${asset} removed from shortlist`, { kind: 'info' });
           } else {
             await fetch('/api/shortlist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ asset }),
             });
+            this.toast(`${asset} added to shortlist`, { kind: 'success' });
           }
           await this.fetchShortlist();
         } catch (error) {
           console.error('Failed to update shortlist:', error);
+          this.toast('Shortlist update failed', { kind: 'warn' });
         }
       }
 
@@ -190,9 +1016,21 @@
           await new Promise(resolve => setTimeout(resolve, 300)); // Wait for animation
           this.closeDrawer();
           await this.fetchSignals();
+          this.toast(`${asset} hidden`, {
+            kind: 'info',
+            undo: async () => {
+              try {
+                await fetch(`/api/removed-assets/${encodeURIComponent(asset)}`, { method: 'DELETE' });
+                await this.fetchSignals();
+              } catch (err) {
+                console.error('Undo hide failed', err);
+              }
+            },
+          });
         } catch (error) {
           console.error('Failed to remove asset:', error);
           if (row) row.classList.remove('removing');
+          this.toast(`Failed to hide ${asset}`, { kind: 'warn' });
         }
       }
 
@@ -270,70 +1108,119 @@
         const signal = this.selectedAsset;
         const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
 
-        const filtered = this.getFilteredSignals();
-        const currentIndex = filtered.findIndex(s => s.asset === signal.asset);
-        const assetPosition = currentIndex >= 0 ? `${currentIndex + 1}/${filtered.length}` : '';
+        const navList = this.getNavList();
+        const currentIndex = navList.findIndex(s => s.asset === signal.asset);
+        const assetPosition = currentIndex >= 0 ? `${currentIndex + 1}/${navList.length}${this.showShortlist ? ' · shortlist' : ''}` : '';
 
         const assetEscaped = signal.asset.replace(/'/g, "\\'");
         drawer.innerHTML = `
-          <div id="drawer-resize-handle" class="absolute left-0 top-0 bottom-0 w-1 bg-gray-600 hover:bg-blue-500 cursor-col-resize transition z-50"></div>
-          <div class="h-screen overflow-y-auto pl-1">
-            <div class="sticky top-0 bg-gray-800 p-6 border-b border-gray-700">
-              <div class="flex justify-between items-center mb-2">
-                <div class="flex items-center gap-2">
-                  <h2 class="text-2xl font-bold">${signal.asset}</h2>
-                  <span class="text-sm font-semibold px-2 py-1 rounded ${signal.assetType === 'etf' ? 'bg-yellow-900 text-yellow-300' : 'bg-green-900 text-green-300'}">
-                    ${signal.assetType === 'etf' ? '📊 ETF' : '📈 STOCK'}
+          <div id="drawer-resize-handle" class="absolute left-0 top-0 bottom-0 w-1 bg-gray-700 hover:bg-blue-500 cursor-col-resize transition z-50"></div>
+          <div class="h-screen overflow-y-auto pl-1 bg-gray-900">
+            <!-- Sticky header: asset + key stats strip — everything important above the fold -->
+            <div class="sticky top-0 z-20 bg-gray-850 border-b border-gray-700/60 backdrop-blur" style="background-color: rgba(31, 41, 55, 0.98);">
+              <div class="px-5 pt-4 pb-3 flex justify-between items-start gap-3">
+                <div class="flex items-center gap-2 flex-wrap min-w-0">
+                  <h2 class="text-2xl font-bold tracking-tight text-white">${signal.asset}</h2>
+                  <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${signal.assetType === 'etf' ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700/40' : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'}">
+                    ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
                   </span>
-                  <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-lg text-blue-400 hover:text-blue-300 transition" title="Open on TradingView (set to Daily timeframe)">📈</a>
+                  ${signal.signalType === 'breakout'
+                    ? (signal.weakVolume
+                        ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
+                        : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
+                    : signal.signalType === 'setup'
+                      ? '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
+                      : signal.signalType === 'extension'
+                        ? '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>'
+                        : ''}
+                  ${signal.confidence >= 90 ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
+                  <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition ml-1" title="Open on TradingView">↗</a>
                 </div>
-                <button onclick="dashboard.closeDrawer();" class="text-2xl hover:text-gray-400">✕</button>
+                <button onclick="dashboard.closeDrawer();" class="text-gray-500 hover:text-white transition text-xl leading-none flex-shrink-0" title="Close">✕</button>
               </div>
-              <div class="text-xs text-gray-400 flex justify-between">
+
+              <!-- Above-the-fold key stats: Price · BO/Entry · Stop · Conf · Sector -->
+              ${(() => {
+                const stop = signal.stopLoss != null ? signal.stopLoss : null;
+                const buyLabel = signal.signalType === 'breakout' ? 'Buy Point' :
+                                 signal.signalType === 'extension' ? 'Entry' :
+                                 signal.signalType === 'setup' ? 'MA20' : 'Level';
+                // Both breakout and extension read the frozen entryPrice (snapshotted
+                // at flip) — signal.resistance is a rolling Donchian value that drifts
+                // once the breakout candle enters the 20-bar window.
+                const buyVal = signal.signalType === 'breakout' ? signal.entryPrice :
+                               signal.signalType === 'extension' ? signal.entryPrice :
+                               signal.signalType === 'setup' ? signal.ma20 : null;
+                const pctVsBuy = (buyVal && signal.currentPrice)
+                  ? ((signal.currentPrice - buyVal) / buyVal * 100)
+                  : null;
+                const confColor = signal.confidence >= 95 ? 'text-green-400'
+                  : signal.confidence >= 85 ? 'text-yellow-400'
+                  : signal.confidence >= 75 ? 'text-orange-400'
+                  : 'text-red-400';
+                return `
+                <div class="px-5 pb-3 grid grid-cols-4 gap-3">
+                  <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Price</div>
+                    <div class="font-mono text-base font-bold text-white tabular-nums leading-tight mt-0.5">$${this.safeNum(signal.currentPrice, 2)}</div>
+                  </div>
+                  <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">${buyLabel}</div>
+                    <div class="font-mono text-base font-bold text-yellow-400 tabular-nums leading-tight mt-0.5">${buyVal != null ? '$' + this.safeNum(buyVal, 2) : '<span class="text-gray-600">—</span>'}</div>
+                    ${pctVsBuy != null ? `<div class="text-[10px] font-mono ${pctVsBuy >= 0 ? 'text-green-400' : 'text-red-400'} tabular-nums">${pctVsBuy >= 0 ? '+' : ''}${pctVsBuy.toFixed(1)}%</div>` : ''}
+                  </div>
+                  <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Stop</div>
+                    <div class="font-mono text-base font-bold text-red-400 tabular-nums leading-tight mt-0.5">${stop != null ? '$' + stop.toFixed(2) : '<span class="text-gray-600">—</span>'}</div>
+                  </div>
+                  <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Confidence</div>
+                    <div class="flex items-baseline gap-0.5 leading-tight mt-0.5">
+                      <span class="text-base font-bold ${confColor} tabular-nums">${signal.confidence}</span>
+                      <span class="text-[10px] text-gray-500">%</span>
+                    </div>
+                    <div class="conf-bar ${confColor}" style="--pct: ${signal.confidence}%;"></div>
+                  </div>
+                </div>
+                <div class="px-5 pb-3 flex items-center gap-1.5 text-[11px]">
+                  <span class="bg-gray-800/60 text-gray-300 ring-1 ring-gray-700/60 px-2 py-0.5 rounded">${signal.sector || 'Unknown'}</span>
+                  ${signal.industry && signal.industry !== 'Unknown' ? `<span class="text-gray-500">${signal.industry}</span>` : ''}
+                </div>
+                `;
+              })()}
+
+              <div class="px-5 pb-2 text-[10px] text-gray-500 flex justify-between font-mono">
                 <span>${assetPosition}</span>
-                <span class="text-right">SPACE: next | ← →: nav | ESC: close</span>
+                <span>space next · ← → nav · esc close</span>
               </div>
             </div>
 
-            <div class="p-6 space-y-6">
+            <div class="p-5 space-y-5">
               <!-- Chart -->
               <div>
-                <div class="text-sm text-gray-400 mb-2 flex justify-between">
-                  <span>📊 3-Month Daily Chart</span>
-                  <span class="text-xs text-gray-500">Daily | ${signal.asset}</span>
+                <div class="text-xs text-gray-400 mb-1.5 flex justify-between">
+                  <span>6 months · Daily</span>
+                  <span class="text-gray-500">${signal.asset}</span>
                 </div>
-                <div id="chart-container" style="height:240px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
-              </div>
-
-              <!-- Quick Stats -->
-              <div class="space-y-3">
-                <div class="flex justify-between items-center">
-                  <span class="text-gray-400">Confidence</span>
-                  <div class="bg-green-600 px-3 py-1 rounded font-bold">${signal.confidence}%</div>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-gray-400">Signal Type</span>
-                  <span class="text-lg">${signal.signalType === 'green' ? '🟢 Green' : signal.signalType === 'orange' ? '🟠 Orange' : '🟡 Yellow'}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-400">Alert Status</span>
-                  <span>${signal.shouldAlert ? '⚠️ Active' : '✓ Tracked'}</span>
-                </div>
+                <div id="chart-container" style="height:260px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
               </div>
 
               <!-- ETF Info (if applicable) -->
               ${signal.assetType === 'etf' ? `
-              <div class="border-t border-gray-700 pt-4 mt-4">
-                <h3 class="font-semibold text-gray-300 mb-3">📊 ETF Details</h3>
+              <div class="border-t border-gray-700/60 pt-4 mt-4">
+                <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  ETF Details
+                </h3>
                 <div class="space-y-2">
                   ${signal.expenseRatio ? `
-                    <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                       <span class="text-gray-400">Expense Ratio</span>
                       <span class="text-yellow-400 font-mono">${signal.expenseRatio}%</span>
                     </div>
                   ` : ''}
                   ${signal.etfCategory ? `
-                    <div class="bg-gray-700 p-2 rounded flex justify-between">
+                    <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                       <span class="text-gray-400">Category</span>
                       <span class="text-blue-400">${signal.etfCategory}</span>
                     </div>
@@ -343,8 +1230,11 @@
               ` : ''}
 
               <!-- Price & MA Levels -->
-              <div class="border-t border-gray-700 pt-4 space-y-3">
-                <h3 class="font-semibold text-gray-300">📈 ${signal.signalType === 'breakout' ? 'Price Levels' : signal.signalType === 'extension' ? 'Extension Levels' : 'Setup Levels'}</h3>
+              <div class="border-t border-gray-700/60 pt-4 space-y-3">
+                <h3 class="font-semibold text-gray-200 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                  ${signal.signalType === 'breakout' ? 'Price Levels' : signal.signalType === 'extension' ? 'Extension Levels' : 'Setup Levels'}
+                </h3>
                 <div class="space-y-2">
                   <div class="flex justify-between items-center">
                     <span class="text-gray-400">Current Price</span>
@@ -359,7 +1249,7 @@
                       <span class="text-gray-400">Support (S)</span>
                       <span class="font-mono text-green-400 text-lg">$${this.safeNum(signal.support, 2)}</span>
                     </div>
-                    <div class="bg-gray-700 p-2 rounded text-sm mt-2">
+                    <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-2 text-[13px] mt-2">
                       <div class="flex justify-between text-gray-300 mb-1">
                         <span>Distance to Resistance</span>
                         <span>${((signal.resistance - signal.currentPrice) / signal.currentPrice * 100).toFixed(1)}%</span>
@@ -391,7 +1281,7 @@
                       <span class="text-gray-400">Setup Type</span>
                       <span class="font-mono text-yellow-400 text-lg uppercase">${signal.setupType}</span>
                     </div>
-                    <div class="bg-gray-700 p-2 rounded text-sm mt-2">
+                    <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-2 text-[13px] mt-2">
                       <div class="flex justify-between text-gray-300 mb-1">
                         <span>Consolidation Range</span>
                         <span>${signal.consolidationRange?.toFixed(1) || 'N/A'}%</span>
@@ -405,31 +1295,34 @@
                 </div>
               </div>
 
-              <!-- Type 1: Breakout Metrics (ONLY show when Pine Script Green) -->
+              <!-- Breakout Metrics (Pine Script green cone) -->
               ${signal.signalType === 'breakout' && signal.pineScriptGreen ? `
-              <div class="border-t border-gray-700 pt-4">
-                <h3 class="font-semibold text-gray-300 mb-3">🎯 📊 Pine Script Green Cone</h3>
-                <div class="bg-green-900 p-3 rounded-lg border border-green-700 mb-3">
-                  <p class="text-green-200 font-semibold">✓ All conditions met: 99% confidence</p>
+              <div class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                  <span data-tip="Green cone — a Pine Script pattern where price breaks resistance on rising volume, with MA stack bullish and ≥5 bars of tight consolidation just before. All conditions cleared here.">Breakout Confirmed</span>
+                </h3>
+                <div class="bg-green-500/10 ring-1 ring-green-500/30 rounded-lg px-3 py-2.5 mb-3">
+                  <p class="text-green-300 text-sm font-medium">All conditions met · <span class="font-bold">${signal.confidence}%</span> confidence</p>
                 </div>
                 <div class="space-y-2 text-sm">
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Signal Mode</span>
                     <span class="text-yellow-400">Early (On Touch)</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Structure Quality</span>
                     <span class="text-green-400">✓ Good</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Volume Confirmation</span>
                     <span class="text-green-400">✓ OK</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Consolidation Bars</span>
                     <span class="text-blue-400">${signal.barsInRange || '5+'}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Bullish Candle</span>
                     <span class="text-green-400">✓ Close > Open</span>
                   </div>
@@ -437,39 +1330,42 @@
               </div>
               ` : ''}
 
-              <!-- Type 3: Extension Metrics (ONLY show for extension signals) -->
+              <!-- Extension Metrics -->
               ${signal.signalType === 'extension' ? `
-              <div class="border-t border-gray-700 pt-4">
-                <h3 class="font-semibold text-gray-300 mb-3">🟡 Extension Phase</h3>
-                <div class="bg-yellow-900 p-3 rounded-lg border border-yellow-700 mb-3">
-                  <p class="text-yellow-200 font-semibold">
-                    ✓ Holding above breakout — Day ${signal.daysSinceBreakout !== null ? Math.ceil(signal.daysSinceBreakout) : '?'} of extension
+              <div class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                  <span data-tip="Extension — a fresh breakout fired within the last 5 bars and price is still holding above that resistance. Not a fresh entry, but a continuation opportunity.">Extension Phase</span>
+                </h3>
+                <div class="bg-yellow-500/10 ring-1 ring-yellow-500/30 rounded-lg px-3 py-2.5 mb-3">
+                  <p class="text-yellow-300 text-sm font-medium">
+                    Holding above breakout · Day <span class="font-bold">${signal.daysSinceBreakout !== null ? Math.ceil(signal.daysSinceBreakout) : '?'}</span>
                   </p>
                 </div>
                 <div class="space-y-2 text-sm">
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Entry Price (orig. resistance)</span>
                     <span class="text-yellow-400 font-mono">\$${signal.entryResistance !== null ? signal.entryResistance.toFixed(2) : '—'}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Current Price</span>
                     <span class="text-white font-mono font-bold">\$${signal.currentPrice.toFixed(2)}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">% Gain from Entry</span>
                     <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'} font-mono font-bold">
                       ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= 0 ? '+' : '') + signal.pctGainFromEntry.toFixed(2) + '%' : '—'}
                     </span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Days in Extension</span>
                     <span class="text-blue-400">${signal.daysSinceBreakout !== null ? signal.daysSinceBreakout.toFixed(1) + ' days' : '—'}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">First Green Date</span>
                     <span class="text-gray-300">${signal.firstGreenAt ? new Date(signal.firstGreenAt).toLocaleDateString() + ' ' + new Date(signal.firstGreenAt).toLocaleTimeString() : '—'}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Still Above Entry</span>
                     <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= -1 ? 'text-green-400' : 'text-red-400'}">
                       ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= -1 ? '✓ Yes' : '✗ No — below entry') : '—'}
@@ -479,31 +1375,34 @@
               </div>
               ` : ''}
 
-              <!-- Type 2: Setup Metrics (ONLY show for setup signals) -->
+              <!-- Setup Metrics -->
               ${signal.signalType === 'setup' ? `
-              <div class="border-t border-gray-700 pt-4">
-                <h3 class="font-semibold text-gray-300 mb-3">🔵 Pre-Breakout Setup</h3>
-                <div class="bg-blue-900 p-3 rounded-lg border border-blue-700 mb-3">
-                  <p class="text-blue-200 font-semibold">✓ ${(signal.setupType || 'base').toUpperCase()}: Ready to move</p>
+              <div class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                  <span data-tip="Type 2 setup — the stock is consolidating with a bullish MA stack and low relative volume, right below resistance. No breakout has fired yet — this is a watch-list candidate.">Pre-Breakout Setup</span>
+                </h3>
+                <div class="bg-blue-500/10 ring-1 ring-blue-500/30 rounded-lg px-3 py-2.5 mb-3">
+                  <p class="text-blue-300 text-sm font-medium"><span class="font-bold">${(signal.setupType || 'base').toUpperCase()}</span> · Ready to move</p>
                 </div>
                 <div class="space-y-2 text-sm">
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Setup Type</span>
                     <span class="text-blue-400 font-semibold">${(signal.setupType || 'base').toUpperCase()}</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Distance from MA20</span>
                     <span class="text-green-400">${this.safeNum(signal.distanceFromMA20, 1)}%</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Consolidation Range</span>
                     <span class="text-yellow-400">${signal.consolidationRange?.toFixed(1) || 'N/A'}%</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">Volume Indecision</span>
                     <span class="text-yellow-400">${signal.consolidationVolume?.toFixed(0) || 'N/A'}% of avg</span>
                   </div>
-                  <div class="bg-gray-700 p-2 rounded flex justify-between">
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                     <span class="text-gray-400">MA Alignment</span>
                     <span class="text-green-400">✓ Bullish Turning</span>
                   </div>
@@ -512,55 +1411,61 @@
               ` : ''}
 
               <!-- Agent Decision -->
-              <div class="border-t border-gray-700 pt-4">
-                <h3 class="font-semibold text-gray-300 mb-2">💡 Agent Analysis</h3>
-                <div class="bg-gray-700 p-3 rounded text-sm text-gray-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+              <div class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 mb-2 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                  Agent Analysis
+                </h3>
+                <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-3 py-2.5 text-[13px] text-gray-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto leading-relaxed">
                   ${signal.agentDecision || 'No analysis available'}
                 </div>
               </div>
 
               <!-- Earnings Transcript Analysis (loaded lazily) -->
               ${signal.assetType !== 'etf' ? `
-              <div id="transcript-section" class="border-t border-gray-700 pt-4">
+              <div id="transcript-section" class="border-t border-gray-700/60 pt-4">
                 <div class="flex items-center justify-between mb-2">
-                  <h3 class="font-semibold text-gray-300">🎙️ Earnings Call Analysis</h3>
+                  <h3 class="font-semibold text-gray-200 flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    Earnings Call Analysis
+                  </h3>
                   <button
                     id="transcript-analyze-btn"
                     onclick="dashboard.analyzeTranscript('${assetEscaped}', event);"
-                    class="text-xs px-3 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white font-semibold transition"
+                    class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 ring-1 ring-blue-500/40 transition"
                   >
                     Analyze
                   </button>
                 </div>
-                <div id="transcript-content" class="bg-gray-700 p-3 rounded text-sm text-gray-300">
+                <div id="transcript-content" class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-3 py-2.5 text-[13px] text-gray-300 leading-relaxed">
                   <span class="text-gray-500">Loading…</span>
                 </div>
               </div>
               ` : ''}
 
               <!-- Shortlist & Remove -->
-              <div class="border-t border-gray-700 pt-4 space-y-3">
+              <div class="border-t border-gray-700/60 pt-4 grid grid-cols-2 gap-2">
                 <button
                   onclick="dashboard.toggleShortlist('${assetEscaped}', event);"
-                  class="w-full px-4 py-2 rounded-lg font-semibold transition ${
+                  class="px-3 py-2 rounded-md text-sm font-semibold transition ring-1 ${
                     inShortlist
-                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                      ? 'bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 ring-yellow-500/40'
+                      : 'bg-gray-800/60 hover:bg-gray-700/60 text-gray-300 ring-gray-700/60'
                   }"
                 >
-                  ${inShortlist ? '⭐ Remove from Shortlist' : '☆ Add to Shortlist'}
+                  ${inShortlist ? '★ Shortlisted' : '☆ Shortlist'}
                 </button>
                 <button
                   onclick="dashboard.removeAsset('${assetEscaped}', event); event.preventDefault();"
-                  class="w-full px-4 py-2 rounded-lg font-semibold transition bg-red-900 hover:bg-red-800 text-red-100 border border-red-700"
+                  class="px-3 py-2 rounded-md text-sm font-semibold transition bg-red-500/10 hover:bg-red-500/20 text-red-300 ring-1 ring-red-500/30"
                 >
-                  Hide from Dashboard
+                  Hide
                 </button>
               </div>
 
               <!-- Timestamp -->
-              <div class="border-t border-gray-700 pt-4 text-xs text-gray-500">
-                <p>Updated: ${new Date(signal.createdAt).toLocaleString()}</p>
+              <div class="border-t border-gray-700/60 pt-3 text-[11px] text-gray-500 font-mono">
+                Updated ${new Date(signal.createdAt).toLocaleString()}
               </div>
             </div>
           </div>
@@ -595,12 +1500,17 @@
             el.innerHTML = ''; // Clear placeholder
             const chart = LightweightCharts.createChart(el, {
               autoSize: true,
-              height: 240,
+              height: 260,
               layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
               grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
               crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-              rightPriceScale: { borderColor: '#374151' },
-              timeScale: { borderColor: '#374151', timeVisible: false },
+              rightPriceScale: {
+                borderColor: '#374151',
+                // breathing room above/below so price lines don't crowd the candles
+                scaleMargins: { top: 0.12, bottom: 0.12 },
+              },
+              // rightOffset adds blank bars on the right so the latest candle isn't covered by R/S price-line labels
+              timeScale: { borderColor: '#374151', timeVisible: false, rightOffset: 10 },
             });
             const series = chart.addCandlestickSeries({
               upColor: '#10b981',
@@ -610,13 +1520,12 @@
               wickDownColor: '#ef4444',
             });
             series.setData(bars);
-            // Set chart to show ~3 months of daily data (60-65 trading days)
+            // Show ~6 months of daily data (≈126 trading bars)
             if (bars.length > 0) {
-              const barsToShow = Math.min(65, bars.length);
+              const barsToShow = Math.min(126, bars.length);
               const startIdx = Math.max(0, bars.length - barsToShow);
               const firstBar = bars[startIdx];
               const lastBar = bars[bars.length - 1];
-              // Convert date string to Unix timestamp (in seconds)
               const fromTime = Math.floor(new Date(firstBar.time).getTime() / 1000);
               const toTime = Math.floor(new Date(lastBar.time).getTime() / 1000);
               chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
@@ -624,7 +1533,7 @@
               chart.timeScale().fitContent();
             }
 
-            // Type 1: Show resistance/support
+            // Breakout: show resistance/support
             if (signal.signalType === 'breakout') {
               if (signal.resistance) {
                 series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
@@ -633,14 +1542,14 @@
                 series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
               }
             }
-            // Type 3: Show entry resistance (yellow dashed) + current resistance (red dashed)
+            // Extension: show entry resistance (yellow) + current resistance (red)
             else if (signal.signalType === 'extension' && signal.entryResistance) {
               series.createPriceLine({ price: signal.entryResistance, color: '#eab308', lineWidth: 2, lineStyle: 2, title: 'Entry' });
               if (signal.resistance && signal.resistance !== signal.entryResistance) {
                 series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
               }
             }
-            // Type 2: Show MA20
+            // Setup: show MA20
             else if (signal.signalType === 'setup' && signal.ma20) {
               series.createPriceLine({ price: signal.ma20, color: '#3b82f6', lineWidth: 1, lineStyle: 2, title: 'MA20' });
             }
@@ -673,27 +1582,27 @@
       }
 
       getSignalColor(signal) {
-        // Type 1: Fresh breakout at 99% = Green with badge
+        // Fresh breakout at 99% = solid green
         if (signal.signalType === 'breakout' && signal.pineScriptGreen && signal.confidence === 99) {
-          return { emoji: '🟢', label: 'green-type1', bgClass: 'bg-green-700', badge: 'TYPE 1' };
+          return { emoji: '🟢', label: 'fresh-breakout', bgClass: 'bg-green-700' };
         }
-        // 99% Green Cone (Type 2/3)
+        // 99% green cone (any type)
         if (signal.confidence === 99) {
           return { emoji: '🟢', label: 'green', bgClass: 'bg-green-700' };
         }
-        // 95-98%: High confidence, bright green
+        // 95-98%: high confidence
         if (signal.confidence >= 95) {
           return { emoji: '🟢', label: 'bright-green', bgClass: 'bg-green-600' };
         }
-        // 90-94%: Green gradient down
+        // 90-94%: green fade
         if (signal.confidence >= 90) {
           return { emoji: '🟢', label: 'green-fade', bgClass: 'bg-green-500' };
         }
-        // 85-89%: Orange
+        // 85-89%: orange
         if (signal.confidence >= 85) {
           return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
         }
-        // Type 3 Extensions below 85%
+        // Extensions below 85%
         if (signal.signalType === 'extension') {
           return { emoji: '🟡', label: 'extension', bgClass: 'bg-yellow-600' };
         }
@@ -705,12 +1614,35 @@
         return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(asset)}`;
       }
 
+      async copyTvList() {
+        const list = this.shortlist.map(i => i.asset).join(',');
+        try {
+          await navigator.clipboard.writeText(list);
+          this.toast(`Copied ${this.shortlist.length} tickers — paste into TradingView`, { kind: 'success' });
+        } catch {
+          this.toast('Copy failed', { kind: 'warn' });
+        }
+      }
+
       updateSearch(value) {
         clearTimeout(this._searchDebounceTimer);
         this._searchDebounceTimer = setTimeout(() => {
           this.filtering = value;
           this.render();
         }, 500);
+      }
+
+      // Source of truth for keyboard nav (space, ← →). When the shortlist view
+      // is open, walking should stay within the shortlist; otherwise the main
+      // filtered table. Returns full signal objects so openDrawer() gets all data.
+      getNavList() {
+        if (this.showShortlist) {
+          const byAsset = new Map(this.signals.map(s => [s.asset, s]));
+          return this.shortlist
+            .map(item => byAsset.get(item.asset) || { asset: item.asset, assetType: 'stock' })
+            .filter(Boolean);
+        }
+        return this.getFilteredSignals();
       }
 
       getFilteredSignals() {
@@ -742,6 +1674,13 @@
             compareVal = b.confidence - a.confidence;
           } else if (this.sortBy === 'asset') {
             compareVal = a.asset.localeCompare(b.asset);
+          } else if (this.sortBy === 'earnings') {
+            const av = a.earningsSortScore;
+            const bv = b.earningsSortScore;
+            if (av == null && bv == null) compareVal = 0;
+            else if (av == null) compareVal = 1;   // nulls last
+            else if (bv == null) compareVal = -1;
+            else compareVal = bv - av;
           }
           return this.sortDirection === 'asc' ? -compareVal : compareVal;
         });
@@ -756,7 +1695,26 @@
           this.sortBy = field;
           this.sortDirection = 'desc';
         }
+        this.savePrefs();
         this.render();
+      }
+
+      setFilter(kind, value) {
+        this[kind] = value;
+        this.savePrefs();
+        if (kind === 'assetTypeFilter') this.fetchSignals();
+        else this.render();
+      }
+
+      resetFilters() {
+        this.filtering = '';
+        this.minConfidence = 85;
+        this.signalTypeFilter = 'breakout';
+        this.assetTypeFilter = 'all';
+        this.sectorFilter = 'all';
+        this.savePrefs();
+        this.fetchSignals();
+        this.toast('Filters reset', { kind: 'info' });
       }
 
       getSectors() {
@@ -767,6 +1725,199 @@
           }
         });
         return Array.from(sectors).sort();
+      }
+
+      renderBacktestPanel() {
+        const p = this.backtestParams;
+        const bt = this.backtest;
+        const fmt = (n, opts = {}) => {
+          if (n == null || Number.isNaN(n)) return '—';
+          const sign = opts.sign && n > 0 ? '+' : '';
+          const digits = opts.digits ?? 1;
+          return sign + n.toFixed(digits) + (opts.pct ? '%' : '');
+        };
+        const returnColor = (n) => n > 0 ? 'text-green-400' : n < 0 ? 'text-red-400' : 'text-gray-400';
+
+        const controlPill = (label, key, value, current) => `
+          <button onclick="dashboard.setBacktestParam('${key}', ${typeof value === 'string' ? `'${value}'` : value})"
+            class="px-2.5 py-1 rounded text-xs font-medium transition ${current === value ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+        `;
+
+        const app = document.getElementById('app');
+        app.innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <!-- Header -->
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                  <button onclick="dashboard.closeBacktest();" class="text-gray-400 hover:text-white transition text-2xl leading-none" title="Back">←</button>
+                  <div>
+                    <h1 class="text-3xl font-bold tracking-tight">Backtest</h1>
+                    <p class="text-gray-500 text-sm">Historical forward return of persisted signals · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
+                  </div>
+                </div>
+                <div class="text-right text-[11px] text-gray-500">
+                  ${bt?.generatedAt ? `Generated ${new Date(bt.generatedAt).toLocaleTimeString()}${bt.cached ? ' · cached' : ''}` : ''}
+                </div>
+              </div>
+
+              <!-- Controls -->
+              <div class="mb-6 flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Type</span>
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${controlPill('Actionable', 'type', 'Type1', p.type)}
+                    ${controlPill('Extension', 'type', 'Type3', p.type)}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Lookback</span>
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[30, 60, 90, 180].map(v => controlPill(`${v}d`, 'lookback', v, p.lookback)).join('')}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Horizon</span>
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[5, 10, 20, 30].map(v => controlPill(`${v}d`, 'horizon', v, p.horizon)).join('')}
+                  </div>
+                </div>
+                <button onclick="dashboard.fetchBacktest()" class="ml-auto text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">
+                  Refresh
+                </button>
+              </div>
+
+              ${this.backtestLoading || !bt ? `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  ${Array.from({ length: 4 }).map(() => `
+                    <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+                      <div class="skeleton" style="width:60%;height:10px;"></div>
+                      <div class="skeleton" style="width:80%;height:22px;margin-top:8px;"></div>
+                    </div>
+                  `).join('')}
+                </div>
+                <div class="text-center py-10 text-gray-500 text-sm">Computing forward returns… first run pulls historical prices from FMP and may take 15-30s.</div>
+              ` : bt.summary.totalSignals === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No evaluable signals</h3>
+                  <p class="text-sm text-gray-500 mb-5">No ${p.type} signals in the last ${p.lookback} days had enough forward data to score.</p>
+                </div>
+              ` : `
+                <!-- Summary stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Signals evaluated</div>
+                    <div class="text-2xl font-bold text-white tabular-nums leading-tight mt-0.5">${bt.summary.totalSignals}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">${bt.summary.uniqueAssets} unique assets</div>
+                  </div>
+                  <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Win rate</div>
+                    <div class="text-2xl font-bold ${bt.summary.winRate >= 55 ? 'text-green-400' : bt.summary.winRate >= 45 ? 'text-yellow-400' : 'text-red-400'} tabular-nums leading-tight mt-0.5">${fmt(bt.summary.winRate, { pct: true })}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">closed positive after ${p.horizon}d</div>
+                  </div>
+                  <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Avg return</div>
+                    <div class="text-2xl font-bold ${returnColor(bt.summary.avgReturn)} tabular-nums leading-tight mt-0.5">${fmt(bt.summary.avgReturn, { sign: true, pct: true })}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">assumes ${bt.summary.stopLossPct ?? 8}% stop-loss · median ${fmt(bt.summary.medianReturn, { sign: true, pct: true })}</div>
+                  </div>
+                  <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Return range</div>
+                    <div class="flex items-baseline gap-2 mt-0.5">
+                      <div class="text-lg font-bold text-red-400 tabular-nums leading-tight">${fmt(bt.summary.worstReturn, { sign: true, pct: true })}</div>
+                      <span class="text-gray-600">·</span>
+                      <div class="text-lg font-bold text-green-400 tabular-nums leading-tight">${fmt(bt.summary.bestReturn, { sign: true, pct: true })}</div>
+                    </div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">worst / best</div>
+                  </div>
+                </div>
+
+                <!-- By tier -->
+                <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4 mb-6">
+                  <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                    By confidence tier
+                  </h3>
+                  ${(() => {
+                    const maxAbs = Math.max(0.5, ...bt.byTier.map(t => Math.abs(t.avgReturn)));
+                    return `<div class="space-y-2.5">
+                      ${bt.byTier.map(t => {
+                        const empty = t.count === 0;
+                        const pct = empty ? 0 : Math.abs(t.avgReturn) / maxAbs * 100;
+                        const pos = t.avgReturn >= 0;
+                        return `
+                          <div class="flex items-center gap-3">
+                            <div class="w-16 text-[11px] font-mono text-gray-400">${t.label}</div>
+                            <div class="flex-1 relative h-6 bg-gray-900/60 rounded overflow-hidden">
+                              <div class="absolute inset-y-0 left-1/2 border-l border-gray-700/60"></div>
+                              ${empty ? '' : `
+                                <div class="absolute inset-y-0 ${pos ? 'left-1/2' : 'right-1/2'} ${pos ? 'bg-green-500/40' : 'bg-red-500/40'}" style="width: ${pct / 2}%"></div>
+                              `}
+                              <div class="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-semibold ${returnColor(t.avgReturn)}">
+                                ${empty ? '<span class="text-gray-600">no data</span>' : fmt(t.avgReturn, { sign: true, pct: true })}
+                              </div>
+                            </div>
+                            <div class="w-20 text-right text-[11px] text-gray-400 tabular-nums">${empty ? '—' : `${t.count} signals`}</div>
+                            <div class="w-16 text-right text-[11px] tabular-nums ${empty ? 'text-gray-600' : t.winRate >= 55 ? 'text-green-400' : t.winRate >= 45 ? 'text-yellow-400' : 'text-red-400'}">
+                              ${empty ? '—' : fmt(t.winRate, { pct: true, digits: 0 }) + ' win'}
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>`;
+                  })()}
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <!-- By sector -->
+                  <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4">
+                    <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                      <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                      By sector
+                    </h3>
+                    ${bt.bySector.length === 0 ? `
+                      <p class="text-gray-500 text-sm">Not enough sector diversity to break down.</p>
+                    ` : `
+                      <div class="space-y-1.5">
+                        ${bt.bySector.map(s => `
+                          <div class="flex items-center gap-3 text-[13px]">
+                            <div class="flex-1 truncate text-gray-300">${s.sector}</div>
+                            <div class="w-12 text-right text-[11px] text-gray-500 tabular-nums">${s.count}</div>
+                            <div class="w-16 text-right font-mono tabular-nums ${returnColor(s.avgReturn)}">${fmt(s.avgReturn, { sign: true, pct: true })}</div>
+                            <div class="w-14 text-right text-[11px] tabular-nums ${s.winRate >= 55 ? 'text-green-400' : s.winRate >= 45 ? 'text-yellow-400' : 'text-red-400'}">${fmt(s.winRate, { pct: true, digits: 0 })}</div>
+                          </div>
+                        `).join('')}
+                      </div>
+                    `}
+                  </div>
+
+                  <!-- Recent -->
+                  <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4">
+                    <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                      <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                      Recent evaluations
+                    </h3>
+                    <div class="max-h-96 overflow-y-auto space-y-1">
+                      ${bt.recent.map(r => `
+                        <div class="flex items-center gap-3 text-[13px] py-1 border-b border-gray-700/40 last:border-0">
+                          <div class="w-16 font-mono text-blue-400 font-semibold">${r.asset}</div>
+                          <div class="w-20 text-[11px] text-gray-500 font-mono">${r.signalDate}</div>
+                          <div class="flex-1 text-[11px] text-gray-500 truncate">${r.sector}</div>
+                          <div class="w-14 text-right text-[11px] font-mono text-gray-400 tabular-nums">${fmt(r.confidence, { digits: 0, pct: true })}</div>
+                          <div class="w-20 text-right font-mono font-semibold tabular-nums ${returnColor(r.returnPct)}">${fmt(r.returnPct, { sign: true, pct: true })}</div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                </div>
+
+                <p class="text-[10px] text-gray-500 mt-4 text-center font-mono">
+                  Note: forward return computed as (close after ${p.horizon} trading days − close on signal date) / close on signal date. Uses first ${p.type} signal per asset in the window. Cache TTL 6h.
+                </p>
+              `}
+            </div>
+          </div>
+        `;
       }
 
       renderShortlistPanel() {
@@ -786,11 +1937,12 @@
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
               <div class="mb-8 flex items-center gap-4">
-                <button onclick="dashboard.showShortlist = false; dashboard.render();" class="text-2xl hover:text-gray-400 transition">←</button>
-                <div>
+                <button onclick="dashboard.setView('dashboard')" class="text-2xl hover:text-gray-400 transition">←</button>
+                <div class="flex-1">
                   <h1 class="text-4xl font-bold">⭐ Shortlist</h1>
                   <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}</p>
                 </div>
+                ${items.length ? `<button onclick="dashboard.copyTvList()" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm font-semibold" title="Copy as comma-separated tickers — paste into TradingView 'Add symbol' or Import list">Copy TV list</button>` : ''}
               </div>
 
               <!-- Content -->
@@ -862,6 +2014,63 @@
           : '—';
       }
 
+      renderMarketStatus() {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+        const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]));
+        const wd = parts.weekday;
+        const h = parseInt(parts.hour, 10);
+        const m = parseInt(parts.minute, 10);
+        const mins = h * 60 + m;
+        const isWeekday = ['Mon','Tue','Wed','Thu','Fri'].includes(wd);
+        const open = 9 * 60 + 30;   // 9:30 AM ET
+        const close = 16 * 60;      // 4:00 PM ET
+        const cronStart = 10 * 60;  // first scan 10 AM ET
+        const cronEnd = 15 * 60;    // last scan 3 PM ET
+
+        let dot, label, nextScan;
+        if (isWeekday && mins >= open && mins < close) {
+          dot = 'bg-green-500';
+          label = 'Market open';
+          if (mins < cronStart) nextScan = 'Next scan: 10:00 AM ET';
+          else if (mins < cronEnd) {
+            const nextHour = h + 1;
+            nextScan = `Next scan: ${nextHour}:00 ET`;
+          } else nextScan = 'Last intraday scan complete';
+        } else {
+          dot = 'bg-gray-500';
+          label = isWeekday && mins < open ? 'Pre-market' : 'Market closed';
+          nextScan = isWeekday && mins < open ? 'Next scan: 10:00 AM ET today' : 'Next scan: Mon 10:00 AM ET';
+        }
+        return `
+          <div class="flex items-center gap-2 justify-end">
+            <span class="inline-block w-2 h-2 rounded-full ${dot}"></span>
+            <span class="text-gray-300 font-medium">${label}</span>
+          </div>
+          <div class="text-gray-500 mt-0.5">${nextScan} · live refresh ${new Date().toLocaleTimeString()}</div>
+        `;
+      }
+
+      formatRelative(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        const diffMs = Date.now() - d.getTime();
+        const min = Math.floor(diffMs / 60000);
+        if (min < 1) return 'just now';
+        if (min < 60) return min + 'm ago';
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return hr + 'h ago';
+        const day = Math.floor(hr / 24);
+        if (day < 7) return day + 'd ago';
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      formatAlertDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
       render() {
         const active = document.activeElement;
         const activeId = active?.id || null;
@@ -870,8 +2079,17 @@
           try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) {}
         }
 
-        if (this.showShortlist) {
+        this.renderNavBar();
+        if (this.view === 'backtest') {
+          this.renderBacktestPanel();
+        } else if (this.view === 'shortlist') {
           this.renderShortlistPanel();
+        } else if (this.view === 'winners') {
+          this.renderWinnersPanel();
+        } else if (this.view === 'beat-raise') {
+          this.renderBeatRaisePanel();
+        } else if (this.view === 'unusual-volume') {
+          this.renderUnusualVolumePanel();
         } else {
           this.renderMainDashboard();
         }
@@ -887,6 +2105,263 @@
         }
       }
 
+      renderBeatRaisePanel() {
+        const d = this.beatRaise;
+        const stocks = d?.stocks || [];
+        const fmt = (n, digits = 1, pct = false) => (n == null || Number.isNaN(n)) ? '—' : (n > 0 && pct ? '+' : '') + n.toFixed(digits) + (pct ? '%' : '');
+        const toneColor = (t) => t === 'bullish' ? 'text-green-400' : t === 'bearish' ? 'text-red-400' : 'text-gray-300';
+
+        const row = (s) => `
+          <tr class="border-b border-gray-800 hover:bg-gray-800/40 cursor-pointer" onclick="dashboard.jumpToSignal('${s.asset}', 'all')">
+            <td class="px-3 py-2 font-mono font-semibold text-white">${s.asset}</td>
+            <td class="px-3 py-2 text-gray-400 text-xs">${s.sector || '—'}</td>
+            <td class="px-3 py-2 font-mono tabular-nums">$${this.safeNum(s.currentPrice, 2)}</td>
+            <td class="px-3 py-2 font-mono tabular-nums text-right text-gray-300">
+              ${(s.epsQuarters || []).slice().reverse().map(e => e.toFixed(2)).join(' → ')}
+            </td>
+            <td class="px-3 py-2 font-mono tabular-nums text-right text-green-400">${fmt(s.epsSurprisePct, 1, true)}</td>
+            <td class="px-3 py-2 text-center"><span class="text-xs font-medium px-2 py-0.5 rounded bg-green-500/15 text-green-400 ring-1 ring-green-500/30">raised</span></td>
+            <td class="px-3 py-2 text-center ${toneColor(s.earningsTone)} text-xs">${s.earningsTone || '—'}${s.earningsQuarter ? ` · Q${s.earningsQuarter} ${s.earningsYear}` : ''}</td>
+          </tr>
+        `;
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Beat &amp; Raise</h1>
+                  <p class="text-gray-500 text-sm">Scanned stocks that beat EPS &amp; raised guidance last quarter, with EPS rising two consecutive quarters</p>
+                </div>
+                <button onclick="dashboard.fetchBeatRaise()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+              </div>
+              ${this.beatRaiseLoading || !d ? `
+                <div class="text-center py-16 text-gray-500 text-sm">Screening beat &amp; raise names… checking quarterly EPS trend from FMP.</div>
+              ` : stocks.length === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No matches</h3>
+                  <p class="text-sm text-gray-500">No recently-scanned stock currently shows a beat + raised guidance with two quarters of sequential EPS growth.</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800/40 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-900/60">
+                      <tr>
+                        <th class="px-3 py-2 text-left font-medium">Symbol</th>
+                        <th class="px-3 py-2 text-left font-medium">Sector</th>
+                        <th class="px-3 py-2 text-left font-medium">Price</th>
+                        <th class="px-3 py-2 text-right font-medium">EPS (q-2 → latest)</th>
+                        <th class="px-3 py-2 text-right font-medium">Surprise</th>
+                        <th class="px-3 py-2 text-center font-medium">Guidance</th>
+                        <th class="px-3 py-2 text-center font-medium">Tone</th>
+                      </tr>
+                    </thead>
+                    <tbody>${stocks.map(row).join('')}</tbody>
+                  </table>
+                </div>
+                <p class="text-[11px] text-gray-600 mt-3">${stocks.length} match${stocks.length === 1 ? '' : 'es'} · generated ${d.generatedAt ? new Date(d.generatedAt).toLocaleTimeString() : ''}</p>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
+      renderUnusualVolumePanel() {
+        const d = this.unusualVolume;
+        const stocks = d?.stocks || [];
+        // volumeRatio 2.0 = 100% above avg. Show as "+N%" above average.
+        const abovePct = (r) => (r == null || Number.isNaN(r)) ? '—' : '+' + Math.round((r - 1) * 100) + '%';
+
+        const row = (s) => `
+          <tr class="border-b border-gray-800 hover:bg-gray-800/40 cursor-pointer" onclick="dashboard.jumpToSignal('${s.asset}', 'all')">
+            <td class="px-3 py-2 font-mono font-semibold text-white">${s.asset}</td>
+            <td class="px-3 py-2 text-gray-400 text-xs">${s.sector || '—'}</td>
+            <td class="px-3 py-2 font-mono tabular-nums">$${this.safeNum(s.currentPrice, 2)}</td>
+            <td class="px-3 py-2 font-mono tabular-nums text-right text-green-400 font-semibold">${abovePct(s.volumeRatio)}</td>
+            <td class="px-3 py-2 font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
+            <td class="px-3 py-2 text-center text-gray-400 text-xs">${s.breakoutType || '—'}</td>
+            <td class="px-3 py-2 text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
+          </tr>
+        `;
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Unusual Volume</h1>
+                  <p class="text-gray-500 text-sm">Scanned stocks trading on 100%+ above average volume with an upside (bullish) candle</p>
+                </div>
+                <button onclick="dashboard.fetchUnusualVolume()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+              </div>
+              ${this.unusualVolumeLoading || !d ? `
+                <div class="text-center py-16 text-gray-500 text-sm">Screening for unusual volume…</div>
+              ` : stocks.length === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No matches</h3>
+                  <p class="text-sm text-gray-500">No recently-scanned stock is currently trading 100%+ above average volume on an up candle.</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800/40 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-900/60">
+                      <tr>
+                        <th class="px-3 py-2 text-left font-medium">Symbol</th>
+                        <th class="px-3 py-2 text-left font-medium">Sector</th>
+                        <th class="px-3 py-2 text-left font-medium">Price</th>
+                        <th class="px-3 py-2 text-right font-medium">Vs Avg Vol</th>
+                        <th class="px-3 py-2 text-right font-medium">Ratio</th>
+                        <th class="px-3 py-2 text-center font-medium">Type</th>
+                        <th class="px-3 py-2 text-right font-medium">Scanned</th>
+                      </tr>
+                    </thead>
+                    <tbody>${stocks.map(row).join('')}</tbody>
+                  </table>
+                </div>
+                <p class="text-[11px] text-gray-600 mt-3">${stocks.length} match${stocks.length === 1 ? '' : 'es'} · generated ${d.generatedAt ? new Date(d.generatedAt).toLocaleTimeString() : ''}</p>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
+      renderWinnersPanel() {
+        const w = this.winners;
+        const { tier: filterTier, screen, window: win, asset: assetFilter } = this.winnersFilter;
+        const isMoving = screen === 'moving';
+        const rows = (w?.winners || [])
+          .filter(r => filterTier === 'all' || r.tier === filterTier)
+          .filter(r => !assetFilter || (r.asset || '').toLowerCase().includes(assetFilter.toLowerCase()));
+        const tierCount = (t) => (w?.winners || []).filter(r => r.tier === t).length;
+        const fmt = (n, digits = 1, pct = false) => (n == null || Number.isNaN(n)) ? '—' : n.toFixed(digits) + (pct ? '%' : '');
+        const tierColor = (t) => t === 'A' ? 'text-green-400' : t === 'B' ? 'text-yellow-400' : 'text-gray-300';
+        const tierBg = (t) => t === 'A' ? 'bg-green-500/15 ring-green-500/30' : t === 'B' ? 'bg-yellow-500/15 ring-yellow-500/30' : 'bg-gray-500/15 ring-gray-500/30';
+
+        const tierPill = (label, value, active) => `
+          <button onclick="dashboard.setWinnersTier('${value}')"
+            class="px-2.5 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+        `;
+        const screenPill = (label, value, active) => `
+          <button onclick="dashboard.setWinnersScreen('${value}')"
+            class="px-3 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+        `;
+        const windowPill = (label, value, active) => `
+          <button onclick="dashboard.setWinnersWindow('${value}')"
+            class="px-2.5 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+        `;
+
+        const subtitle = isMoving
+          ? `Fundamentals + trailing return · prior-quarter EPS &amp; revenue growth &ge;30%, ranked by ${win} return`
+          : 'Fundamentals + technical setup · prior-quarter EPS &amp; revenue growth &ge;30%, near 52w high, stacked MAs';
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Winners</h1>
+                  <p class="text-gray-500 text-sm">${subtitle}</p>
+                </div>
+                <button onclick="dashboard.fetchWinners()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+              </div>
+
+              <div class="mb-4 flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Screen</span>
+                <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                  ${screenPill('Setup', 'setup', !isMoving)}
+                  ${screenPill('Moving', 'moving', isMoving)}
+                </div>
+                ${isMoving ? `
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium ml-3">Window</span>
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${windowPill('+1w', '1w', win === '1w')}
+                    ${windowPill('+1m', '1m', win === '1m')}
+                    ${windowPill('+3m', '3m', win === '3m')}
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="mb-6 flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Tier</span>
+                <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                  ${tierPill(`All (${w?.count ?? 0})`, 'all', filterTier === 'all')}
+                  ${tierPill(`A · elite (${tierCount('A')})`, 'A', filterTier === 'A')}
+                  ${tierPill(`B · strong (${tierCount('B')})`, 'B', filterTier === 'B')}
+                  ${tierPill(`C · qualified (${tierCount('C')})`, 'C', filterTier === 'C')}
+                </div>
+                <div class="ml-auto text-[11px] text-gray-500">${w?.generatedAt ? 'Updated ' + new Date(w.generatedAt).toLocaleTimeString() : ''}</div>
+              </div>
+
+              ${assetFilter ? `
+                <div class="mb-3 flex items-center gap-2 text-xs">
+                  <span class="text-gray-500">Filtered to</span>
+                  <span class="font-mono font-semibold text-white">${assetFilter}</span>
+                  <button onclick="dashboard.winnersFilter.asset=''; dashboard.render();" class="text-blue-400 hover:text-blue-300 transition">clear ✕</button>
+                </div>
+              ` : ''}
+
+              ${this.winnersLoading || !w ? `
+                <div class="text-center py-10 text-gray-500 text-sm">Loading winners…</div>
+              ` : rows.length === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No winners in this ${isMoving ? 'window/tier' : 'tier'}</h3>
+                  <p class="text-sm text-gray-500">No stocks currently pass the ${isMoving ? 'fundamentals + ' + win + ' return' : 'fundamentals + setup'} screen for the selected tier.</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
+                  <div class="grid grid-cols-12 gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-gray-500 font-medium border-b border-gray-700/60">
+                    <div class="col-span-2">Asset</div>
+                    <div class="col-span-1 text-center">Tier</div>
+                    <div class="col-span-2 text-right">Price</div>
+                    <div class="col-span-1 text-right">EPS Δ</div>
+                    <div class="col-span-1 text-right">Rev Δ</div>
+                    <div class="col-span-2 text-right">${isMoving ? '+' + win + ' Return' : 'Dist 52w'}</div>
+                    <div class="col-span-1 text-right">MAs</div>
+                    <div class="col-span-1 text-right">Signal</div>
+                    <div class="col-span-1 text-right">Sector</div>
+                  </div>
+                  ${rows.map(r => {
+                    const signalBadge = (t) => {
+                      const assetEsc = (r.asset || '').replace(/'/g, "\\'");
+                      const jump = (filter) => `dashboard.jumpToSignal('${assetEsc}','${filter}'); event.stopPropagation();`;
+                      const cls = 'inline-flex items-center gap-0.5 cursor-pointer px-1.5 py-0.5 rounded text-[10px] font-bold ring-1 transition hover:brightness-125';
+                      if (t === 'breakout') return `<button onclick="${jump('breakout')}" class="${cls} bg-green-500/15 ring-green-500/30 text-green-400" title="Also flagged as Type 1 breakout — click to open Signals filtered to ${r.asset}">Breakout <span class="text-[9px] opacity-80">↗</span></button>`;
+                      if (t === 'breakout-weak') return `<button onclick="${jump('breakout')}" class="${cls} bg-orange-500/15 ring-orange-500/30 text-orange-300" title="Clean breakout pattern but volume <1.2x avg — click to open Signals filtered to ${r.asset}">Breakout · weak <span class="text-[9px] opacity-80">↗</span></button>`;
+                      if (t === 'extension') return `<button onclick="${jump('extension')}" class="${cls} bg-yellow-500/15 ring-yellow-500/30 text-yellow-400" title="Also flagged as Type 3 extension — click to open Signals filtered to ${r.asset}">Extension <span class="text-[9px] opacity-80">↗</span></button>`;
+                      if (t === 'setup') return `<button onclick="${jump('setup')}" class="${cls} bg-blue-500/15 ring-blue-500/30 text-blue-400" title="Also flagged as Type 2 setup — click to open Signals filtered to ${r.asset}">Setup <span class="text-[9px] opacity-80">↗</span></button>`;
+                      return '<span class="text-gray-600">—</span>';
+                    };
+                    return `
+                    <div class="grid grid-cols-12 gap-3 px-4 py-2.5 items-center border-b border-gray-800/60 hover:bg-gray-800/40 transition">
+                      <div class="col-span-2 font-mono font-semibold text-white flex items-center gap-1.5">
+                        <span>${r.asset}</span>
+                        <a href="${this.getTradingViewUrl(r.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition" title="Open on TradingView" onclick="event.stopPropagation();">↗</a>
+                        ${r.politicianBuy ? `<a href="${r.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${r.politicianBuy.name} (${r.politicianBuy.transactionDate || '?'}) · ${r.politicianBuy.amount || ''}">🏛</a>` : ''}
+                      </div>
+                      <div class="col-span-1 text-center">
+                        <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ring-1 ${tierBg(r.tier)} ${tierColor(r.tier)}">${r.tier}</span>
+                      </div>
+                      <div class="col-span-2 text-right font-mono text-white tabular-nums">$${fmt(r.currentPrice, 2)}</div>
+                      <div class="col-span-1 text-right font-mono text-green-400 tabular-nums">${fmt(r.epsGrowthPct, 0, true)}</div>
+                      <div class="col-span-1 text-right font-mono text-green-400 tabular-nums">${fmt(r.revenueGrowthPct, 0, true)}</div>
+                      ${isMoving
+                        ? `<div class="col-span-2 text-right font-mono tabular-nums text-green-400">+${fmt(r.returnPct, 1, true)}</div>`
+                        : `<div class="col-span-2 text-right font-mono tabular-nums ${r.distFrom52wHighPct <= 5 ? 'text-green-400' : 'text-gray-300'}">-${fmt(r.distFrom52wHighPct, 1, true)}</div>`}
+                      <div class="col-span-1 text-right ${r.maStacked ? 'text-green-400' : 'text-gray-500'}">${r.maStacked ? '✓' : '—'}</div>
+                      <div class="col-span-1 text-right">${signalBadge(r.signalType)}</div>
+                      <div class="col-span-1 text-right text-[11px] text-gray-400 truncate">${r.sector || '—'}</div>
+                    </div>
+                  `; }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
       renderMainDashboard() {
         const filtered = this.getFilteredSignals();
         const validSignals = this.signals.filter(s => s.confidence >= this.minConfidence);
@@ -895,258 +2370,352 @@
         const orangeCount = validSignals.filter(s => s.confidence >= 85 && s.confidence < 95).length;
         const yellowCount = validSignals.filter(s => s.confidence >= 75 && s.confidence < 85).length;
         const extensionCount = validSignals.filter(s => s.signalType === 'extension').length;
-        const alertCount = validSignals.filter(s => s.shouldAlert).length;
 
         document.getElementById('app').innerHTML = `
           <div class="flex-1 overflow-auto p-8 bg-gray-900">
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
-              <div class="mb-8">
-                <h1 class="text-4xl font-bold mb-2">📊 Signal Forge</h1>
-                <p class="text-gray-400">Real-time breakout detection dashboard</p>
-              </div>
-
-              <!-- Stats -->
-              <div class="grid grid-cols-7 gap-4 mb-8">
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">Valid Signals</p>
-                  <p class="text-2xl font-bold">${validSignals.length}</p>
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Signals</h1>
+                  <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} after filters</p>
                 </div>
-                <div class="bg-green-900 p-4 rounded-lg border border-green-700">
-                  <p class="text-green-400 text-sm">🟢 Green Cone (99%)</p>
-                  <p class="text-2xl font-bold text-green-400">${greenCount}</p>
-                </div>
-                <div class="bg-green-800 p-4 rounded-lg border border-green-600">
-                  <p class="text-green-300 text-sm">💚 High Conf (95%)</p>
-                  <p class="text-2xl font-bold text-green-300">${brightCount}</p>
-                </div>
-                <div class="bg-yellow-900 p-4 rounded-lg border border-yellow-700">
-                  <p class="text-yellow-400 text-sm">🟡 Extension (1-3d)</p>
-                  <p class="text-2xl font-bold text-yellow-400">${extensionCount}</p>
-                </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">🟠 Orange (85%)</p>
-                  <p class="text-2xl font-bold text-orange-500">${orangeCount}</p>
-                </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <p class="text-gray-400 text-sm">⚠️ Alerts</p>
-                  <p class="text-2xl font-bold text-red-500">${alertCount}</p>
-                </div>
-                <div class="bg-yellow-900 p-4 rounded-lg border border-yellow-700 cursor-pointer hover:bg-yellow-800 transition" onclick="dashboard.showShortlist = true; dashboard.render();">
-                  <p class="text-yellow-400 text-sm">⭐ Shortlist</p>
-                  <p class="text-2xl font-bold text-yellow-500">${this.shortlist.length}</p>
+                <div class="flex items-center gap-3">
+                  <button onclick="dashboard.setView('backtest')"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 ring-1 ring-purple-500/30 transition"
+                    title="View backtest / historical accuracy">
+                    <span>⌘</span> Backtest
+                  </button>
+                  <div class="flex flex-col items-end gap-1 text-xs">
+                    ${this.freshnessDot()}
+                    ${this.renderMarketStatus()}
+                  </div>
                 </div>
               </div>
 
-              <!-- Controls -->
-              <div class="mb-6 space-y-4">
-                <div class="flex gap-4">
+              <!-- Stats strip: clickable, doubles as quick filter -->
+              ${(() => {
+                const breakoutCount = validSignals.filter(s => s.signalType === 'breakout').length;
+                const setupCount = validSignals.filter(s => s.signalType === 'setup').length;
+                const extCount = validSignals.filter(s => s.signalType === 'extension').length;
+                const stats = [
+                  { key: 'breakout',  label: 'Actionable', count: breakoutCount, accent: 'border-green-500',  glow: 'shadow-green-500/10',  text: 'text-green-400' },
+                  { key: 'setup',     label: 'Handles',    count: setupCount,    accent: 'border-blue-500',   glow: 'shadow-blue-500/10',   text: 'text-blue-400' },
+                  { key: 'extension', label: 'Extension',  count: extCount,      accent: 'border-yellow-500', glow: 'shadow-yellow-500/10', text: 'text-yellow-400' },
+                ];
+                return `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  ${stats.map(s => {
+                    const isActive = this.signalTypeFilter === s.key;
+                    const isEmpty = s.count === 0;
+                    return `
+                    <button onclick="dashboard.setFilter('signalTypeFilter', '${s.key}');"
+                      class="group relative bg-gray-800 hover:bg-gray-750 px-4 py-3 rounded-lg border-l-4 text-left transition-all
+                        ${isActive ? s.accent + ' ring-1 ring-gray-600 ' + s.glow + ' shadow-lg' : 'border-gray-700 hover:' + s.accent}
+                        ${isEmpty ? 'opacity-60' : ''}">
+                      <div class="flex items-baseline justify-between gap-2">
+                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">${s.label}</p>
+                        ${isActive ? `<span class="text-[9px] uppercase tracking-wider ${s.text} font-bold">Active</span>` : ''}
+                      </div>
+                      <p class="text-2xl font-bold ${isEmpty ? 'text-gray-500' : 'text-white'} tabular-nums leading-tight mt-0.5">${s.count.toLocaleString()}</p>
+                    </button>
+                  `; }).join('')}
+                  <button onclick="dashboard.setView('shortlist')"
+                    class="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-lg border-l-4 border-yellow-500 text-left transition-all ${this.shortlist.length === 0 ? 'opacity-60' : ''}">
+                    <p class="text-[11px] uppercase tracking-wider text-yellow-400/80 font-medium">★ Shortlist</p>
+                    <p class="text-2xl font-bold ${this.shortlist.length > 0 ? 'text-yellow-400' : 'text-gray-500'} tabular-nums leading-tight mt-0.5">${this.shortlist.length}</p>
+                  </button>
+                </div>
+                `;
+              })()}
+
+              <!-- Market breadth: aggregate count of loose setup-base candidates
+                   from the most recent scan. Not tradable per-stock but a
+                   useful accumulation/distribution gauge across the universe. -->
+              ${(() => {
+                const b = this.breadth || {};
+                if (!b.stocks && !b.etfs) return '';
+                const fmt = (row, label) => {
+                  if (!row) return '';
+                  const pct = row.totalScanned > 0
+                    ? Math.round((row.baseCount / row.totalScanned) * 100)
+                    : 0;
+                  return `<span class="mr-4"><span class="text-gray-400">${label}:</span> <span class="text-gray-200 tabular-nums">${row.baseCount.toLocaleString()}</span> <span class="text-gray-500">(${pct}% of ${row.totalScanned.toLocaleString()})</span></span>`;
+                };
+                return `
+                <div class="mb-5 -mt-2 px-1 text-[11px] uppercase tracking-wider">
+                  <span class="text-gray-500 font-medium mr-2">Market breadth (bases)</span>
+                  ${fmt(b.stocks, 'Stocks')}
+                  ${fmt(b.etfs, 'ETFs')}
+                </div>
+                `;
+              })()}
+
+              <!-- Sticky toolbar: search · asset type · signal type · sector · min conf · scan -->
+              <div class="sticky top-0 z-30 -mx-8 px-8 py-3 mb-4 bg-gray-900/95 backdrop-blur border-b border-gray-700">
+                <div class="flex items-center gap-2 flex-wrap">
                   <input
                     type="text"
                     id="search-input"
-                    placeholder="Search assets..."
+                    placeholder="Search assets…  ( / )"
                     value="${(this.filtering || '').replace(/"/g, '&quot;')}"
                     onkeyup="dashboard.updateSearch(this.value);"
-                    class="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    class="flex-1 min-w-[180px] px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 text-sm"
                   />
-                  <button
-                    onclick="dashboard.runScan();"
-                    ${this.scanning ? 'disabled' : ''}
-                    class="px-6 py-2 rounded-lg font-semibold transition ${
-                      this.scanning
-                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }"
-                  >
-                    ${this.scanning ? '🔄 Scanning...' : '▶️ Run Scan Now'}
-                  </button>
-                </div>
 
-                <!-- Asset Type Filter Tabs -->
-                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg w-fit">
-                  ${[
-                    { key: 'all', label: 'All Assets' },
-                    { key: 'stock', label: '📈 Stocks' },
-                    { key: 'etf', label: '📊 ETFs' },
-                  ].map(tab => {
-                    const count = tab.key === 'all'
-                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
-                      : this.signals.filter(s => s.assetType === tab.key && s.confidence >= this.minConfidence).length;
-                    return `<button onclick="dashboard.assetTypeFilter='${tab.key}';dashboard.fetchSignals();"
-                      class="px-4 py-2 rounded text-sm font-medium transition ${this.assetTypeFilter === tab.key ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
-                      ${tab.label} (${count})
-                    </button>`;
-                  }).join('')}
-                </div>
-
-                <!-- Signal Type Filter Tabs -->
-                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg w-fit">
-                  ${[
-                    { key: 'all', label: 'All' },
-                    { key: 'breakout', label: '🟢 Type 1 Fresh' },
-                    { key: 'setup', label: '🔵 Type 2 Setup' },
-                    { key: 'extension', label: '🟡 Type 3 Ext' },
-                  ].map(tab => {
-                    const count = tab.key === 'all'
-                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
-                      : this.signals.filter(s => s.signalType === tab.key && s.confidence >= this.minConfidence).length;
-                    return `<button onclick="dashboard.signalTypeFilter='${tab.key}';dashboard.render();"
-                      class="px-4 py-2 rounded text-sm font-medium transition ${this.signalTypeFilter === tab.key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
-                      ${tab.label} (${count})
-                    </button>`;
-                  }).join('')}
-                </div>
-
-                <!-- Sector Filter Tabs -->
-                <div class="flex gap-1 bg-gray-800 p-1 rounded-lg flex-wrap">
-                  ${[
-                    { key: 'all', label: 'All Sectors' },
-                    ...this.getSectors().map(sector => ({
-                      key: sector,
-                      label: sector
-                    })),
-                  ].map(tab => {
-                    const count = tab.key === 'all'
-                      ? this.signals.filter(s => s.confidence >= this.minConfidence).length
-                      : this.signals.filter(s => (s.sector === tab.key || (tab.key === 'all')) && s.confidence >= this.minConfidence).length;
-                    return `<button onclick="dashboard.sectorFilter='${tab.key}';dashboard.render();"
-                      class="px-3 py-2 rounded text-sm font-medium transition ${this.sectorFilter === tab.key ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}">
-                      ${tab.label} (${count})
-                    </button>`;
-                  }).join('')}
-                </div>
-
-                <!-- Confidence Filter -->
-                <div class="bg-gray-800 p-4 rounded-lg">
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="text-sm text-gray-400">Min Confidence: <span id="confidence-label">${this.minConfidence}</span>%</label>
+                  <!-- Asset Type pills -->
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[
+                      { key: 'all', label: 'All' },
+                      { key: 'stock', label: '📈' },
+                      { key: 'etf', label: '📊' },
+                    ].map(tab => `<button onclick="dashboard.setFilter('assetTypeFilter', '${tab.key}');"
+                      title="${tab.key === 'stock' ? 'Stocks only' : tab.key === 'etf' ? 'ETFs only' : 'All assets'}"
+                      class="px-2.5 py-1 rounded text-xs font-medium transition ${this.assetTypeFilter === tab.key ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}">
+                      ${tab.label}
+                    </button>`).join('')}
                   </div>
-                  <input
-                    type="range"
-                    id="confidence-slider"
-                    min="0"
-                    max="100"
-                    value="${this.minConfidence}"
-                    oninput="document.getElementById('confidence-label').textContent = this.value;"
-                    onchange="dashboard.minConfidence = parseInt(this.value); dashboard.render();"
-                    class="w-full accent-blue-500"
-                  />
-                  <div class="flex justify-between text-xs text-gray-500 mt-2">
-                    <span>0%</span>
-                    <span>50%</span>
-                    <span>100%</span>
+
+                  <!-- Signal Type pills -->
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[
+                      { key: 'breakout',  label: 'Breakout',  color: 'bg-green-600',  shortcut: '1' },
+                      { key: 'setup',     label: 'Setup',     color: 'bg-blue-600',   shortcut: '2' },
+                      { key: 'extension', label: 'Extension', color: 'bg-yellow-600', shortcut: '3' },
+                    ].map(tab => `<button onclick="dashboard.setFilter('signalTypeFilter', '${tab.key}');"
+                      title="Press ${tab.shortcut} to toggle"
+                      class="px-2.5 py-1 rounded text-xs font-medium transition ${this.signalTypeFilter === tab.key ? tab.color + ' text-white' : 'text-gray-400 hover:text-white'}">
+                      ${tab.label}
+                    </button>`).join('')}
                   </div>
+
+                  <!-- Sector dropdown (was 15+ tabs) -->
+                  <select
+                    onchange="dashboard.setFilter('sectorFilter', this.value);"
+                    class="px-2.5 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white focus:outline-none focus:border-blue-500 max-w-[160px]">
+                    <option value="all" ${this.sectorFilter === 'all' ? 'selected' : ''}>All sectors</option>
+                    ${this.getSectors().map(sec => `<option value="${sec}" ${this.sectorFilter === sec ? 'selected' : ''}>${sec}</option>`).join('')}
+                  </select>
+
+                  <!-- Min confidence inline slider -->
+                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap">
+                    Min
+                    <input
+                      type="range"
+                      id="confidence-slider"
+                      min="0"
+                      max="100"
+                      value="${this.minConfidence}"
+                      oninput="document.getElementById('confidence-label').textContent = this.value + '%';"
+                      onchange="dashboard.setFilter('minConfidence', parseInt(this.value));"
+                      class="w-24 accent-blue-500"
+                    />
+                    <span id="confidence-label" class="w-10 text-right font-mono text-gray-300">${this.minConfidence}%</span>
+                  </label>
+
+                </div>
+                <div class="text-[10px] text-gray-500 mt-1.5 font-mono">
+                  shortcuts: <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
                 </div>
               </div>
 
+              <!-- Active filter chips -->
+              ${(() => {
+                const chips = [];
+                if (this.filtering) chips.push({ label: `Search: "${this.filtering}"`, clear: `dashboard.filtering=''; dashboard.render();` });
+                if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
+                if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
+                if (this.minConfidence !== 85) chips.push({ label: `Min: ${this.minConfidence}%`, clear: `dashboard.setFilter('minConfidence', 85)` });
+                if (chips.length === 0) return '';
+                return `
+                <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium mr-1">Filters:</span>
+                  ${chips.map(c => `
+                    <button onclick="${c.clear}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-blue-500/10 text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-500/20 transition">
+                      ${c.label} <span class="text-blue-400 font-bold">×</span>
+                    </button>
+                  `).join('')}
+                  <button onclick="dashboard.resetFilters()" class="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-300 font-medium ml-1">
+                    Reset all
+                  </button>
+                </div>`;
+              })()}
+
               <!-- Table -->
               ${this.loading ? `
-                <div class="text-center py-12">
-                  <p class="text-gray-400">Loading signals...</p>
+                <div class="bg-gray-800 rounded-lg overflow-hidden ring-1 ring-gray-700/60">
+                  <div class="border-b border-gray-600 px-3 py-2.5 flex gap-4">
+                    ${['80px','100px','60px','100px','80px','90px','60px','120px','120px','60px'].map(w => `<div class="skeleton" style="width:${w};height:12px;"></div>`).join('')}
+                  </div>
+                  ${Array.from({ length: 8 }).map((_, i) => `
+                    <div class="border-b border-gray-700/50 px-3 py-3 flex gap-4 items-center ${i % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'}">
+                      <div class="skeleton" style="width:80px;height:14px;"></div>
+                      <div class="skeleton" style="width:60px;height:18px;"></div>
+                      <div class="skeleton" style="width:56px;height:18px;"></div>
+                      <div class="skeleton" style="width:90px;height:14px;"></div>
+                      <div class="skeleton" style="width:80px;height:14px;"></div>
+                      <div class="skeleton" style="width:80px;height:18px;border-radius:999px;"></div>
+                      <div class="skeleton" style="width:60px;height:14px;"></div>
+                      <div class="skeleton" style="width:120px;height:14px;"></div>
+                      <div class="skeleton" style="width:120px;height:14px;"></div>
+                      <div class="skeleton" style="width:50px;height:12px;margin-left:auto;"></div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : filtered.length === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No signals match your filters</h3>
+                  <p class="text-sm text-gray-500 mb-5">
+                    ${validSignals.length > 0
+                      ? `${validSignals.length} signals were fetched but none pass the current filter set.`
+                      : 'Nothing in the last 72 hours. Waiting for the next scan.'}
+                  </p>
+                  <button onclick="dashboard.resetFilters()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 ring-1 ring-blue-500/40 text-sm font-medium transition">
+                    Reset filters
+                  </button>
                 </div>
               ` : `
-                <div class="bg-gray-800 rounded-lg overflow-hidden">
-                  <table class="w-full">
-                    <thead>
-                      <tr class="bg-gray-700 border-b border-gray-700">
-                        <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('asset');">
-                          Asset ${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60">
+                  <table class="w-full" style="min-width:1080px;">
+                    <thead class="sticky-head">
+                      <tr class="border-b border-gray-600">
+                        <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset');">
+                          Asset <span class="text-gray-500">${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
                         </th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="dashboard.toggleSort('confidence');">
-                          Confidence ${this.sortBy === 'confidence' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}
+                        <th style="min-width:110px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('confidence');">
+                          <span data-tip="Model confidence in the setup (0-99%). Combines technical structure, volume, and earnings-call tone.">Confidence</span> <span class="text-gray-500">${this.sortBy === 'confidence' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
                         </th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Sector</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Type</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal Details</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Details 2</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Details 3</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Alert</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Alerted At</th>
+                        <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+                          <span data-tip="Last 30 daily closes. Green = closed higher over the window, red = closed lower.">Trend</span>
+                        </th>
+                        <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings');">
+                          <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> <span class="text-gray-500">${this.sortBy === 'earnings' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
+                        </th>
+                        <th style="min-width:140px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                        <th style="min-width:120px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+                          <span data-tip="Actionable = fresh breakout from a clean base. Setup = pre-breakout consolidation. Extension = continuation of a recent breakout.">Signal</span>
+                        </th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:150px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+                          <span data-tip="R = Resistance (breakout level). S = Support (recent low). Entry = original breakout resistance for extensions.">Levels</span>
+                        </th>
+                        <th style="min-width:170px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+                          <span data-tip="Handle = tight late-stage consolidation before breakout. Base = broader flat consolidation zone. 'from MA20' = % distance from 20-day moving average.">Detail</span>
+                        </th>
+                        <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Updated</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${filtered.map((signal, idx) => {
                         const color = this.getSignalColor(signal);
-                        const alertDate = new Date(signal.createdAt);
-                        const dateStr = alertDate.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: '2-digit' });
-                        const timeStr = alertDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                         const tvUrl = this.getTradingViewUrl(signal.asset);
                         const inShortlist = this.isInShortlist(signal.asset);
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
+                        const signalLabel = signal.signalType === 'breakout'
+                          ? (signal.weakVolume
+                              ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
+                              : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
+                          : signal.signalType === 'extension'
+                            ? `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
+                            : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>';
+                        const price = '$' + this.safeNum(signal.currentPrice, 2);
+                        const levels = signal.signalType === 'breakout'
+                          ? `<span class="text-gray-400" data-tip="Resistance — breakout level to clear.">R</span> <span class="text-red-400">$${this.safeNum(signal.resistance, 2)}</span> <span class="text-gray-600">·</span> <span class="text-gray-400" data-tip="Support — recent low, used to set stop loss.">S</span> <span class="text-green-400">$${this.safeNum(signal.support, 2)}</span>`
+                          : signal.signalType === 'extension'
+                            ? (signal.entryResistance != null
+                                ? `<span class="text-gray-400" data-tip="Entry — the original breakout resistance level, when the fresh breakout fired.">entry</span> <span class="text-yellow-400">$${signal.entryResistance.toFixed(2)}</span>`
+                                : '<span class="text-gray-500">—</span>')
+                            : `<span class="text-gray-400" data-tip="20-day moving average — the setup pivots around this level.">MA20</span> <span class="text-blue-400">$${this.safeNum(signal.ma20, 2)}</span>`;
+                        const detail = signal.signalType === 'breakout'
+                          ? (() => {
+                              // Frozen entryPrice is the actual breakout level; signal.resistance
+                              // rolls with the 20-bar window and drifts once the breakout bar enters it.
+                              const bo = signal.entryPrice != null ? signal.entryPrice : signal.resistance;
+                              if (!(bo > 0) || !(signal.currentPrice > 0)) return '<span class="text-gray-500">—</span>';
+                              const pct = (signal.currentPrice - bo) / bo * 100;
+                              const color = signal.currentPrice >= bo ? 'text-green-400' : 'text-red-400';
+                              const sign = pct >= 0 ? '+' : '';
+                              return `<span class="text-gray-400">BO</span> <span class="text-yellow-400 font-mono">$${this.safeNum(bo, 2)}</span> <span class="text-gray-600">·</span> <span class="${color}">${sign}${pct.toFixed(1)}%</span>`;
+                            })()
+                          : signal.signalType === 'extension'
+                            ? (signal.pctGainFromEntry != null
+                                ? `<span class="${signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'}">${signal.pctGainFromEntry >= 0 ? '+' : ''}${signal.pctGainFromEntry.toFixed(1)}%</span> <span class="text-gray-400">from entry</span>`
+                                : '<span class="text-gray-400">below entry</span>')
+                            : `<span class="text-gray-200 font-semibold" data-tip="${signal.setupType === 'handle' ? 'Handle — tight late-stage consolidation right at the pivot, just before the breakout.' : 'Base — broader flat consolidation zone forming below resistance.'}">${(signal.setupType || 'base').toUpperCase()}</span> <span class="text-gray-600">·</span> <span class="text-gray-400">${this.safeNum(signal.distanceFromMA20, 1)}% from MA20</span>`;
+                        const earnings = (() => {
+                          if (signal.earningsTone == null) {
+                            return '<span class="text-gray-600 text-xs">—</span>';
+                          }
+                          const toneRing = signal.earningsTone === 'bullish' ? 'ring-green-500/40 text-green-400 bg-green-500/10'
+                            : signal.earningsTone === 'bearish' ? 'ring-red-500/40 text-red-400 bg-red-500/10'
+                            : 'ring-gray-500/40 text-gray-400 bg-gray-500/10';
+                          const toneEmoji = signal.earningsTone === 'bullish' ? '▲'
+                            : signal.earningsTone === 'bearish' ? '▼'
+                            : '·';
+                          const guidance = signal.earningsGuidance === 'raised'
+                            ? '<span class="text-green-400 font-bold" title="Guidance raised">↑</span>'
+                            : signal.earningsGuidance === 'lowered'
+                              ? '<span class="text-red-400 font-bold" title="Guidance lowered">↓</span>'
+                              : signal.earningsGuidance === 'maintained'
+                                ? '<span class="text-gray-500" title="Guidance maintained">=</span>'
+                                : '';
+                          const qLabel = signal.earningsQuarter && signal.earningsYear
+                            ? `<span class="text-gray-500 text-[10px] font-mono">Q${signal.earningsQuarter}'${String(signal.earningsYear).slice(-2)}</span>`
+                            : '';
+                          const score = signal.earningsToneScore != null
+                            ? `<span class="badge ${toneRing} ring-1 font-mono">${toneEmoji}${signal.earningsToneScore.toFixed(2)}</span>`
+                            : '';
+                          return `<div class="flex items-center gap-1.5">${score}${guidance}${qLabel}</div>`;
+                        })();
+                        const confTextColor = signal.confidence >= 95 ? 'text-green-400'
+                          : signal.confidence >= 85 ? 'text-yellow-400'
+                          : signal.confidence >= 75 ? 'text-orange-400'
+                          : 'text-red-400';
+                        const tierClass = signal.confidence >= 99 ? 'tier-elite'
+                          : signal.confidence >= 95 ? 'tier-strong'
+                          : '';
                         return `
                           <tr
-                            class="signal-row ${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-900'} border-b border-gray-700 cursor-pointer ${signal.signalType === 'extension' ? 'border-l-4 border-yellow-500' : ''}"
+                            class="signal-row ${tierClass} ${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 cursor-pointer ${signal.signalType === 'extension' ? 'border-l-2 border-yellow-500/70' : ''}"
                             data-signal-index="${idx}"
                             onclick="if (!event.target.closest('button') && !event.target.closest('a')) dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
                           >
-                            <td class="px-6 py-4 font-bold text-lg">
+                            <td class="px-3 py-2.5 whitespace-nowrap">
                               <div class="flex items-center gap-2">
-                                <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="text-lg hover:scale-125 transition flex-shrink-0" title="Add to shortlist">
-                                  ${inShortlist ? '⭐' : '☆'}
+                                <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="hover:scale-125 transition flex-shrink-0 ${inShortlist ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}" title="Shortlist">
+                                  ${inShortlist ? '★' : '☆'}
                                 </button>
-                                <div class="flex-grow">
-                                  <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">
-                                    ${signal.asset} ↗
-                                  </a>
-                                  <span class="ml-2 text-sm ${signal.assetType === 'etf' ? 'text-yellow-400' : 'text-green-400'} font-semibold">
-                                    ${signal.assetType === 'etf' ? '📊 ETF' : '📈 STOCK'}
-                                  </span>
-                                </div>
-                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-red-500 hover:text-red-300 px-2 py-1 rounded hover:bg-red-900 text-sm font-semibold flex-shrink-0 transition" title="Remove from dashboard">
-                                  Remove
+                                <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="row-asset text-blue-400 hover:text-blue-300 font-bold text-base tracking-tight" title="Open on TradingView">
+                                  ${signal.asset}
+                                </a>
+                                <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${signal.assetType === 'etf' ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700/40' : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'}">
+                                  ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
+                                </span>
+                                ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
+                                ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
+                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">
+                                  ✕
                                 </button>
                               </div>
                             </td>
-                            <td class="px-6 py-4">
-                              <div class="flex items-center gap-2">
-                                <div class="${color.bgClass} px-3 py-1 rounded text-white font-bold inline-block">
-                                  ${signal.confidence}%
+                            <td class="px-3 py-2.5 whitespace-nowrap">
+                              <div class="flex flex-col gap-0.5 w-[70px]">
+                                <div class="flex items-baseline gap-1">
+                                  <span class="text-lg font-bold ${confTextColor} tabular-nums leading-none">${signal.confidence}</span>
+                                  <span class="text-[10px] text-gray-500 font-medium">%</span>
                                 </div>
-                                ${color.badge ? `<span class="text-xs bg-blue-700 px-2 py-1 rounded text-white font-semibold">${color.badge}</span>` : ''}
+                                <div class="conf-bar ${confTextColor}" style="--pct: ${signal.confidence}%;"></div>
                               </div>
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-300">
-                              <span class="bg-gray-700 px-2 py-1 rounded inline-block">${signal.sector || 'Unknown'}</span>
-                            </td>
-                            <td class="px-6 py-4 text-2xl">${color.emoji}</td>
-                            <td class="px-6 py-4">
-                              ${signal.signalType === 'breakout' ? '🟢 Breakout' : signal.signalType === 'extension' ? '🟡 Ext ' + (signal.daysSinceBreakout !== null ? signal.daysSinceBreakout.toFixed(0) + 'd' : '') : '🔵 Setup'}
-                            </td>
-                            <td class="px-6 py-4">
-                              ${signal.signalType === 'breakout'
-                                ? 'Price: $' + this.safeNum(signal.currentPrice, 2)
-                                : signal.signalType === 'extension'
-                                  ? (signal.pctGainFromEntry !== null && signal.pctGainFromEntry !== undefined
-                                      ? (signal.pctGainFromEntry >= 0 ? '+' : '') + signal.pctGainFromEntry.toFixed(1) + '% gain'
-                                      : 'Below entry')
-                                  : (signal.setupType || 'base').toUpperCase() + ' @ $' + this.safeNum(signal.currentPrice, 2)
-                              }
-                            </td>
-                            <td class="px-6 py-4">
-                              ${signal.signalType === 'breakout'
-                                ? 'R: $' + this.safeNum(signal.resistance, 2)
-                                : signal.signalType === 'extension'
-                                  ? (signal.entryResistance !== null && signal.entryResistance !== undefined
-                                      ? '$' + signal.entryResistance.toFixed(2) + ' → $' + this.safeNum(signal.currentPrice, 2)
-                                      : '')
-                                  : 'MA20: $' + this.safeNum(signal.ma20, 2)
-                              }
-                            </td>
-                            <td class="px-6 py-4">
-                              ${signal.signalType === 'breakout'
-                                ? 'S: $' + this.safeNum(signal.support, 2)
-                                : signal.signalType === 'extension'
-                                  ? (signal.daysSinceBreakout !== null && signal.daysSinceBreakout !== undefined
-                                      ? signal.daysSinceBreakout.toFixed(1) + 'd since BO'
-                                      : '')
-                                  : 'Dist: ' + this.safeNum(signal.distanceFromMA20, 1) + '%'
-                              }
-                            </td>
-                            <td class="px-6 py-4">${signal.shouldAlert ? '⚠️' : ''}</td>
-                            <td class="px-6 py-4 text-gray-400 whitespace-nowrap">
-                              <div class="text-sm font-mono">${dateStr}</div>
-                              <div class="text-xs text-gray-500 font-mono">${timeStr}</div>
-                            </td>
+                            <td class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
+                            <td class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
+                            <td class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
+                            <td class="px-3 py-2.5 whitespace-nowrap">${signalLabel}</td>
+                            <td class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
+                            <td class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
+                            <td class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
+                            <td class="px-3 py-2.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">${this.formatRelative(signal.createdAt)}</td>
                           </tr>
                         `;
                       }).join('')}
@@ -1155,10 +2724,8 @@
                 </div>
               `}
 
-              <!-- Footer -->
-              <div class="mt-8 text-center text-gray-500 text-sm">
-                <p>Auto-refreshes every 5 seconds • Last update: ${new Date().toLocaleTimeString()}</p>
-              </div>
+              <!-- Footer removed — status now lives in the header -->
+
             </div>
           </div>
         `;

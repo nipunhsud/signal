@@ -5,3 +5,5 @@ dist/
 .DS_Store
 *.log
 .turbo/
+sqlite.db
+processed-stocks-*.txt

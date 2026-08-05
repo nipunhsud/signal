@@ -9,7 +9,6 @@ RUN npm install -g pnpm
 
 # Copy monorepo files
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY packages/ packages/
 COPY apps/breakout-agent/ apps/breakout-agent/
 COPY prisma/ prisma/
 COPY scripts/ scripts/
