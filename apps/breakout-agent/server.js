@@ -817,7 +817,7 @@ app.get('/api/beat-raise', async (req, res) => {
 app.get('/api/unusual-volume', async (req, res) => {
   try {
     const since = new Date();
-    since.setDate(since.getDate() - 14);
+    since.setHours(0, 0, 0, 0); // today's scans only
     // volumeRatio = volume / avgVolume, so >= 2 means 100%+ above average.
     // bullishCandle => the move was on the upside.
     const rows = await db.breakoutSignal.findMany({
