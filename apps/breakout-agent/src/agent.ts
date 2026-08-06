@@ -739,6 +739,15 @@ export class BreakoutAgent {
       return;
     }
 
+    // Stopped out: price closed at/below the frozen stop — the trade is dead,
+    // don't alert on it (it still shows on the dashboard, flagged).
+    if (latestRecord.stopLoss != null && result.currentPrice <= latestRecord.stopLoss) {
+      console.log(
+        `⊘ Skip alert ${result.asset}: stopped out (${result.currentPrice} ≤ stop ${latestRecord.stopLoss})`,
+      );
+      return;
+    }
+
     // Type 1/1b/3 only alert during market hours (9:30am-4pm EDT, Mon-Fri)
     if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3") && !isMarketOpen()) {
       console.log(

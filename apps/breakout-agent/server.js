@@ -243,6 +243,24 @@ app.get('/api/billing-portal', requireAuth(), async (req, res) => {
 // landing page, not to index.html.
 app.use(express.static('public'));
 
+// Extension distance penalty: a heavily-extended Type3 is a valid breakout but a
+// bad re-entry, so its DISPLAY confidence is discounted from the raw db value.
+// Shared by /api/signals and /api/unusual-volume so both agree on what counts as
+// actionable (>= 80). pctGainFromEntry is % above the frozen entry price.
+function displayConfidenceFor(rawConfidence, isExtension, pctGainFromEntry) {
+  let display = Math.round(rawConfidence * 100);
+  if (isExtension && pctGainFromEntry != null) {
+    let penalty = 0;
+    if (pctGainFromEntry > 2) {
+      penalty = pctGainFromEntry <= 5
+        ? (pctGainFromEntry - 2)          // -1% per 1% gain in 2-5% zone
+        : (3 + (pctGainFromEntry - 5) * 1.5); // steeper beyond 5%
+    }
+    display = Math.max(50, display - Math.round(penalty)); // floor at 50%
+  }
+  return display;
+}
+
 app.get('/api/signals', async (req, res) => {
   console.log('[/api/signals] Handler called with query:', req.query);
   const assetTypeFilter = req.query.type || 'all'; // 'stocks', 'etfs', or 'all'
@@ -393,28 +411,17 @@ app.get('/api/signals', async (req, res) => {
       const isExtension = isType3;
       const weakVolume = isType1b;
 
+      // Stopped out: price has closed at/below the frozen stop. The trade is
+      // dead — keep it visible but flag it and drop it out of alerts/high-conf.
+      const stoppedOut = persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
+
       const signalType = isExtension ? 'extension' : 'breakout';
       const pctGainFromEntry = (isExtension && entryResistance > 0)
         ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
         : null;
 
-      // Extensions show true confidence with distance penalty
-      let displayConfidence = Math.round(s.confidence * 100);
-      if (isExtension && pctGainFromEntry !== null) {
-        // Penalize based on extension distance from entry:
-        // 0-2%: no penalty (ideal re-entry zone)
-        // 2-5%: -1% per 1% gain
-        // 5%+: -1.5% per 1% gain
-        let extensionPenalty = 0;
-        if (pctGainFromEntry > 2) {
-          if (pctGainFromEntry <= 5) {
-            extensionPenalty = pctGainFromEntry - 2; // -1% per 1%
-          } else {
-            extensionPenalty = (5 - 2) + (pctGainFromEntry - 5) * 1.5; // steeper for >5%
-          }
-        }
-        displayConfidence = Math.max(50, displayConfidence - Math.round(extensionPenalty)); // Floor at 50%
-      }
+      // Extensions show true confidence with distance penalty (shared helper).
+      const displayConfidence = displayConfidenceFor(s.confidence, isExtension, pctGainFromEntry);
 
       const assetTypeLabel = s.assetType === 'etf' ? '📊 ETF' : '📈 STOCK';
       const etfNote = s.assetType === 'etf' && s.expenseRatio ? ` (${s.expenseRatio}% expense)` : '';
@@ -432,6 +439,7 @@ app.get('/api/signals', async (req, res) => {
         resistance: s.resistance,
         support: s.support,
         shouldAlert: s.shouldAlert,
+        stoppedOut,
         alertSentAt: s.alertSentAt || null,
         agentDecision: s.agentDecision || '',
         createdAt: s.createdAt,
@@ -564,8 +572,13 @@ app.get('/api/signals', async (req, res) => {
 
     const sorted = allSignals.sort((a, b) => b.confidence - a.confidence);
 
-    const highConfidence = sorted.filter(s => s.confidence >= 95);
-    const mediumConfidence = sorted.filter(s => s.confidence >= 80 && s.confidence < 95);
+    // Stopped-out names never count as high-confidence, whatever their score —
+    // they stay visible but drop into the medium group (frontend sinks them last).
+    const highConfidence = sorted.filter(s => s.confidence >= 95 && !s.stoppedOut);
+    const mediumConfidence = [
+      ...sorted.filter(s => s.confidence >= 80 && s.confidence < 95 && !s.stoppedOut),
+      ...sorted.filter(s => s.stoppedOut && s.confidence >= 80),
+    ];
 
     const breakoutCount = formattedBreakouts.filter(s => s.signalType === 'breakout').length;
     const extensionCount = formattedBreakouts.filter(s => s.signalType === 'extension').length;
@@ -836,16 +849,28 @@ app.get('/api/unusual-volume', async (req, res) => {
     const byAsset = new Map();
     for (const r of rows) if (!byAsset.has(r.asset)) byAsset.set(r.asset, r);
     const stocks = [...byAsset.values()]
-      .map((c) => ({
-        asset: c.asset,
-        currentPrice: c.currentPrice,
-        sector: c.sector,
-        industry: c.industry,
-        volumeRatio: c.volumeRatio,
-        breakoutType: c.breakoutType,
-        confidence: c.confidence,
-        createdAt: c.createdAt,
-      }))
+      .map((c) => {
+        // Same display confidence the Signals list uses, so we can tag movers
+        // that surged on volume but aren't actionable (e.g. over-extended Type3).
+        const isExtension = c.breakoutType === 'Type3';
+        const entry = c.entryPrice != null ? Number(c.entryPrice) : null;
+        const pctGainFromEntry = (isExtension && entry > 0)
+          ? ((c.currentPrice - entry) / entry) * 100
+          : null;
+        const displayConfidence = displayConfidenceFor(c.confidence, isExtension, pctGainFromEntry);
+        return {
+          asset: c.asset,
+          currentPrice: c.currentPrice,
+          sector: c.sector,
+          industry: c.industry,
+          volumeRatio: c.volumeRatio,
+          breakoutType: c.breakoutType,
+          confidence: c.confidence,
+          displayConfidence,
+          lowConfidence: displayConfidence < 80, // below the actionable Signals bar
+          createdAt: c.createdAt,
+        };
+      })
       .sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0)); // biggest surge first
 
     res.json({ generatedAt: new Date().toISOString(), count: stocks.length, stocks });
