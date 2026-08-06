@@ -816,8 +816,15 @@ app.get('/api/beat-raise', async (req, res) => {
 
 app.get('/api/unusual-volume', async (req, res) => {
   try {
-    const since = new Date();
-    since.setHours(0, 0, 0, 0); // today's scans only
+    // "Today" = the latest scan session, not wall-clock UTC-today: off-hours
+    // the UTC day rolls over before the next session runs, which would empty
+    // the panel. Anchor to the most recent signal's day instead.
+    const latest = await db.breakoutSignal.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const since = latest ? new Date(latest.createdAt) : new Date();
+    since.setHours(0, 0, 0, 0);
     // volumeRatio = volume / avgVolume, so >= 2 means 100%+ above average.
     // bullishCandle => the move was on the upside.
     const rows = await db.breakoutSignal.findMany({
