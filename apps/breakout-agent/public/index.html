@@ -409,6 +409,7 @@
         this.beatRaiseLoading = false;
         this.unusualVolume = null;
         this.unusualVolumeLoading = false;
+        this.unusualVolumeDate = null; // null = latest scan day
         this.winnersFilter = { tier: 'all', screen: 'setup', window: '1m', asset: '' }; // screen: 'setup' | 'moving'; window: '1w' | '1m' | '3m'; asset: substring filter
         this.init();
       }
@@ -477,13 +478,25 @@
         }
       }
 
-      async fetchUnusualVolume() {
+      shiftUnusualVolumeDay(delta) {
+        const base = this.unusualVolume?.date || this.unusualVolumeDate;
+        if (!base) return;
+        const d = new Date(`${base}T00:00:00`);
+        d.setDate(d.getDate() + delta);
+        const p = (n) => String(n).padStart(2, '0');
+        this.fetchUnusualVolume(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`);
+      }
+
+      async fetchUnusualVolume(date) {
+        if (date !== undefined) this.unusualVolumeDate = date; // '' or null resets to latest
         this.unusualVolumeLoading = true;
         this.render();
         try {
-          const res = await fetch('/api/unusual-volume');
+          const url = this.unusualVolumeDate ? `/api/unusual-volume?date=${this.unusualVolumeDate}` : '/api/unusual-volume';
+          const res = await fetch(url);
           if (!res.ok) throw new Error('unusual-volume fetch failed');
           this.unusualVolume = await res.json();
+          this.unusualVolumeDate = this.unusualVolume.date; // adopt resolved day (latest when unset)
         } catch (err) {
           console.error('Unusual volume fetch failed:', err);
           this.toast('Unusual volume fetch failed', { kind: 'warn' });
@@ -952,8 +965,8 @@
             return;
           }
 
-          // 1/2/3 toggle the signal type filter quickly
-          const signalKeyMap = { '1': 'breakout', '2': 'setup', '3': 'extension' };
+          // 1/2/3/4 toggle the signal type filter quickly
+          const signalKeyMap = { '1': 'breakout', '2': 'setup', '3': 'extension', '4': 'stopped' };
           if (signalKeyMap[e.key]) {
             this.setFilter('signalTypeFilter', signalKeyMap[e.key]);
             return;
@@ -1714,7 +1727,12 @@
       }
 
       getFilteredSignals() {
-        let filtered = this.signals.filter(s => s.confidence >= this.minConfidence);
+        // "Stopped" is a cross-type view: show every stopped-out name regardless
+        // of signal type or the min-confidence slider.
+        const stoppedView = this.signalTypeFilter === 'stopped';
+        let filtered = stoppedView
+          ? this.signals.filter(s => s.stoppedOut)
+          : this.signals.filter(s => s.confidence >= this.minConfidence);
 
         // Asset type filter (stocks, etfs, all)
         if (this.assetTypeFilter !== 'all') {
@@ -1722,7 +1740,7 @@
         }
 
         // Signal type filter
-        if (this.signalTypeFilter !== 'all') {
+        if (this.signalTypeFilter !== 'all' && !stoppedView) {
           filtered = filtered.filter(s => s.signalType === this.signalTypeFilter);
         }
 
@@ -2263,9 +2281,19 @@
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
                 <div>
                   <h1 class="text-2xl font-bold tracking-tight">Unusual Volume</h1>
-                  <p class="text-gray-500 text-sm">Today's scans trading on 100%+ above average volume with an upside (bullish) candle</p>
+                  <p class="text-gray-500 text-sm">Scans trading on 100%+ above average volume with an upside (bullish) candle</p>
                 </div>
-                <button onclick="dashboard.fetchUnusualVolume()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+                <div class="flex items-center gap-2">
+                  <button onclick="dashboard.shiftUnusualVolumeDay(-1)" ${!d ? 'disabled' : ''}
+                    class="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition disabled:opacity-40" title="Previous day">‹</button>
+                  <input type="date" value="${d?.date || ''}" max="${d?.latestDate || ''}"
+                    onchange="dashboard.fetchUnusualVolume(this.value)"
+                    class="bg-gray-800 text-gray-200 text-xs px-2 py-1 rounded ring-1 ring-gray-700/60 [color-scheme:dark]" />
+                  <button onclick="dashboard.shiftUnusualVolumeDay(1)" ${(!d || d.date >= d.latestDate) ? 'disabled' : ''}
+                    class="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition disabled:opacity-40" title="Next day">›</button>
+                  ${d && d.date !== d.latestDate ? `<button onclick="dashboard.fetchUnusualVolume('')" class="text-[11px] uppercase tracking-wider font-semibold px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 ring-1 ring-gray-700/60 transition" title="Jump to latest scan day">Latest</button>` : ''}
+                  <button onclick="dashboard.fetchUnusualVolume()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+                </div>
               </div>
               ${this.unusualVolumeLoading || !d ? `
                 <div class="text-center py-16 text-gray-500 text-sm">Screening for unusual volume…</div>
@@ -2470,10 +2498,12 @@
                 const breakoutCount = validSignals.filter(s => s.signalType === 'breakout').length;
                 const setupCount = validSignals.filter(s => s.signalType === 'setup').length;
                 const extCount = validSignals.filter(s => s.signalType === 'extension').length;
+                const stoppedCount = this.signals.filter(s => s.stoppedOut).length; // all stopped, ignore conf slider
                 const stats = [
                   { key: 'breakout',  label: 'Actionable', count: breakoutCount, accent: 'border-green-500',  glow: 'shadow-green-500/10',  text: 'text-green-400' },
                   { key: 'setup',     label: 'Handles',    count: setupCount,    accent: 'border-blue-500',   glow: 'shadow-blue-500/10',   text: 'text-blue-400' },
                   { key: 'extension', label: 'Extension',  count: extCount,      accent: 'border-yellow-500', glow: 'shadow-yellow-500/10', text: 'text-yellow-400' },
+                  { key: 'stopped',   label: 'Stopped',    count: stoppedCount,  accent: 'border-red-500',    glow: 'shadow-red-500/10',    text: 'text-red-400' },
                 ];
                 return `
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -2554,6 +2584,7 @@
                       { key: 'breakout',  label: 'Breakout',  color: 'bg-green-600',  shortcut: '1' },
                       { key: 'setup',     label: 'Setup',     color: 'bg-blue-600',   shortcut: '2' },
                       { key: 'extension', label: 'Extension', color: 'bg-yellow-600', shortcut: '3' },
+                      { key: 'stopped',   label: 'Stopped',   color: 'bg-red-600',    shortcut: '4' },
                     ].map(tab => `<button onclick="dashboard.setFilter('signalTypeFilter', '${tab.key}');"
                       title="Press ${tab.shortcut} to toggle"
                       class="px-2.5 py-1 rounded text-xs font-medium transition ${this.signalTypeFilter === tab.key ? tab.color + ' text-white' : 'text-gray-400 hover:text-white'}">
