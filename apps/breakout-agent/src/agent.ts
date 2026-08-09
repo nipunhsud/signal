@@ -498,19 +498,72 @@ export class BreakoutAgent {
         .filter(Boolean)
         .join(" | ");
 
+      // Frozen trade setup: inherit entryPrice/stopLoss across a continuous
+      // Type1/Type3 streak. Recompute only on a fresh flip. Hoisted above the
+      // alert gate so the grace window below can test distance-from-entry on
+      // first observation.
+      //
+      // A streak ENDS on a gap: a stock can break out, pull back, re-base, and
+      // break out again weeks later (AVT: late-May move, then Aug) — that second
+      // breakout is a new episode deserving its own entry and its own alert. If
+      // the last signal row is stale (>5 days — survives weekends/holidays but
+      // not a multi-week pullback or a scan outage), treat this flip as fresh:
+      // recompute entry and re-enable the grace alert. Without this the frozen
+      // entry from breakout #1 would stick forever and #2 would never notify.
+      const STREAK_MAX_GAP_MS = 5 * 24 * 60 * 60 * 1000;
+      const latestForAsset = await db.breakoutSignal.findFirst({
+        where: { asset },
+        orderBy: { createdAt: "desc" },
+      });
+      const lastRowAgeMs = latestForAsset
+        ? Date.now() - new Date(latestForAsset.createdAt).getTime()
+        : Infinity;
+      const isActiveStreak =
+        latestForAsset &&
+        latestForAsset.breakoutType !== "unknown" &&
+        latestForAsset.entryPrice != null &&
+        lastRowAgeMs <= STREAK_MAX_GAP_MS;
+      const entryPrice = isActiveStreak
+        ? (latestForAsset!.entryPrice as number)
+        : breakoutAnalysis.resistance;
+      const stopLoss = isActiveStreak
+        ? (latestForAsset!.stopLoss as number)
+        : entryPrice * 0.93;
+
       // Alerts: Type1 (fresh breakout) and Type1b (weak-vol clean breakout).
       // Type1b already passed goodStructure + cleanConsolidation + hasGoodPriorBase
       // in classification, so trust it — the isValid/breakoutSignal gates would
       // reject it because both require volumeOk which Type1b lacks by definition.
-      // Type 3 extensions are tracked but not emailed.
       const isType1Breakout = breakoutAnalysis.breakoutType === "Type1";
       const isType1bBreakout = breakoutAnalysis.breakoutType === "Type1b";
+
+      // Grace window: detectPriorBreakout reads raw candles, so a real breakout
+      // that fired while this asset wasn't being scanned comes back as Type3
+      // (ago>0) the first time we finally observe it — and Type3 never emails, so
+      // the alert is lost. Recover it: on the FIRST observation of a Type3 whose
+      // breakout is only a bar or two old and price is still within 5% of entry
+      // (the actionable re-entry zone), fire the breakout alert once. The
+      // !isActiveStreak gate guarantees "once" — the next scan is a continuation.
+      const barsAgo = data.extensionPriorBreakoutBarsAgo || 0;
+      const pctAboveEntry =
+        entryPrice > 0 ? ((data.close - entryPrice) / entryPrice) * 100 : Infinity;
+      const isFreshlyCaughtExtension =
+        breakoutAnalysis.breakoutType === "Type3" &&
+        !isActiveStreak &&
+        breakoutAnalysis.maStack &&
+        breakoutAnalysis.liquidityOk &&
+        barsAgo >= 1 &&
+        barsAgo <= 2 &&
+        pctAboveEntry >= 0 &&
+        pctAboveEntry <= 5;
+
       const shouldAlert =
         (isType1Breakout &&
           isValid &&
           breakoutAnalysis.maStack &&
           breakoutAnalysis.breakoutSignal) ||
-        isType1bBreakout;
+        isType1bBreakout ||
+        isFreshlyCaughtExtension;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -573,26 +626,7 @@ export class BreakoutAgent {
           Math.abs(latestBreakout.resistance - result.resistance) < 0.01 &&
           Math.abs(latestBreakout.support - result.support) < 0.01 &&
           latestBreakout.shouldAlert === shouldAlert;
-
-        // Frozen trade setup: inherit entryPrice/stopLoss across a continuous
-        // Type1/Type3 streak. Recompute only on a fresh flip (no prior row, or
-        // most recent row was "unknown"). "unknown" rows are only present in the
-        // seed data; going forward they're dropped, so latestForAsset reflects
-        // the active trade state.
-        const latestForAsset = await db.breakoutSignal.findFirst({
-          where: { asset },
-          orderBy: { createdAt: "desc" },
-        });
-        const isActiveStreak =
-          latestForAsset &&
-          latestForAsset.breakoutType !== "unknown" &&
-          latestForAsset.entryPrice != null;
-        const entryPrice = isActiveStreak
-          ? (latestForAsset!.entryPrice as number)
-          : result.resistance;
-        const stopLoss = isActiveStreak
-          ? (latestForAsset!.stopLoss as number)
-          : entryPrice * 0.93;
+        // entryPrice / stopLoss / latestForAsset / isActiveStreak computed above.
 
         if (!isUnchanged) {
           // epsBeat/epsSurprisePct aren't fetched during the broad scan (cost).

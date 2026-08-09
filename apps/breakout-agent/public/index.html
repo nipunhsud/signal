@@ -1524,8 +1524,18 @@
               </div>
               ` : ''}
 
+              <!-- Export / Share -->
+              <div class="border-t border-gray-700/60 pt-4">
+                <button
+                  onclick="dashboard.exportSignal('${assetEscaped}', event);"
+                  class="w-full px-3 py-2 rounded-md text-sm font-semibold transition bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 ring-1 ring-blue-500/40"
+                >
+                  ⤴ Export / Share (PDF · HTML)
+                </button>
+              </div>
+
               <!-- Shortlist & Remove -->
-              <div class="border-t border-gray-700/60 pt-4 grid grid-cols-2 gap-2">
+              <div class="pt-3 grid grid-cols-2 gap-2">
                 <button
                   onclick="dashboard.toggleShortlist('${assetEscaped}', event);"
                   class="px-3 py-2 rounded-md text-sm font-semibold transition ring-1 ${
@@ -1579,7 +1589,7 @@
             const el = document.getElementById('chart-container');
             if (!el) return;
             el.innerHTML = ''; // Clear placeholder
-            const chart = LightweightCharts.createChart(el, {
+            const chart = this._drawerChart = LightweightCharts.createChart(el, {
               autoSize: true,
               height: 260,
               layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
@@ -1644,6 +1654,101 @@
 
       isInShortlist(asset) {
         return this.shortlist.some(item => item.asset === asset);
+      }
+
+      // Build a self-contained, light-theme, shareable HTML report of the open
+      // drawer's signal (works as-is via email, or Save-as-PDF from the button).
+      // ponytail: browser print → PDF; no server route / OG card. Add a public
+      // /share/:asset route with OG meta if social preview cards are needed.
+      exportSignal(asset, event) {
+        if (event) event.stopPropagation();
+        const s = this.selectedAsset;
+        if (!s) return;
+        const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+        const n = (v, d = 2) => this.safeNum(v, d);
+
+        // Live chart snapshot → embeddable PNG (may be absent if chart still loading)
+        let chartImg = '';
+        try {
+          if (this._drawerChart && this._drawerChart.takeScreenshot) {
+            chartImg = `<img src="${this._drawerChart.takeScreenshot().toDataURL('image/png')}" alt="${esc(asset)} price chart" style="width:100%;border-radius:8px;border:1px solid #e5e7eb"/>`;
+          }
+        } catch (_) {}
+
+        const typeLabel = s.signalType === 'breakout' ? (s.weakVolume ? 'Breakout · weak volume' : 'Actionable Breakout')
+          : s.signalType === 'setup' ? 'Pre-Breakout Setup'
+          : s.signalType === 'extension' ? 'Extension' : (s.signalType || '');
+        const buyLabel = s.signalType === 'breakout' ? 'Buy Point' : s.signalType === 'extension' ? 'Entry' : s.signalType === 'setup' ? 'MA20' : 'Level';
+        const buyVal = s.signalType === 'setup' ? s.ma20 : s.entryPrice;
+
+        const tile = (label, val, color) => `<div style="flex:1;min-width:110px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;font-weight:600">${label}</div>
+          <div style="font-size:20px;font-weight:700;color:${color || '#0f172a'};font-variant-numeric:tabular-nums;margin-top:2px">${val}</div></div>`;
+
+        const row = (k, v) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b">${k}</span><span style="font-weight:600;color:#0f172a;font-variant-numeric:tabular-nums">${v}</span></div>`;
+        let levels = '';
+        if (s.signalType === 'breakout') {
+          levels = row('Resistance (R)', '$' + n(s.resistance)) + row('Support (S)', '$' + n(s.support));
+        } else if (s.signalType === 'extension') {
+          levels = row('Entry / breakout level', s.entryResistance != null ? '$' + n(s.entryResistance) : '—')
+            + row('% gain from entry', s.pctGainFromEntry != null ? (s.pctGainFromEntry >= 0 ? '+' : '') + n(s.pctGainFromEntry) + '%' : '—')
+            + row('Days in extension', s.daysSinceBreakout != null ? n(s.daysSinceBreakout, 1) + ' days' : '—');
+        } else if (s.signalType === 'setup') {
+          levels = row('Setup type', (s.setupType || 'base').toUpperCase())
+            + row('Distance from MA20', n(s.distanceFromMA20, 1) + '%')
+            + row('Consolidation range', s.consolidationRange != null ? n(s.consolidationRange, 1) + '%' : 'N/A');
+        }
+
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(asset)} — Signal Forge</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef2f7;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+  .wrap{max-width:640px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .hd{padding:20px 24px;border-bottom:1px solid #eef2f7}
+  .ticker{font-size:30px;font-weight:800;letter-spacing:-.02em}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eff6ff;color:#2563eb;margin-left:8px;vertical-align:middle}
+  .sec{padding:16px 24px}
+  h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:0 0 8px}
+  .tiles{display:flex;flex-wrap:wrap;gap:8px}
+  .analysis{background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:12px 14px;font-size:14px;color:#334155;white-space:pre-wrap;word-break:break-word}
+  .ft{padding:14px 24px;border-top:1px solid #eef2f7;font-size:11px;color:#94a3b8;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+  a{color:#2563eb;text-decoration:none}
+  .bar{max-width:640px;margin:16px auto 0;padding:0 16px;display:flex;gap:8px}
+  .bar button{flex:1;padding:11px;border:0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff}
+  .bar button.alt{background:#e2e8f0;color:#0f172a}
+  @media print{.bar{display:none}body{background:#fff}.wrap{margin:0}.card{border:0;box-shadow:none}}
+</style></head><body>
+<div class="bar">
+  <button onclick="window.print()">Save as PDF / Print</button>
+  <button class="alt" onclick="const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='${esc(asset)}-signal.html';a.click()">Download HTML</button>
+</div>
+<div class="wrap"><div class="card">
+  <div class="hd">
+    <div><span class="ticker">${esc(asset)}</span><span class="badge">${esc(typeLabel)}</span>${s.stoppedOut ? '<span class="badge" style="background:#fef2f2;color:#dc2626">Stopped out</span>' : ''}</div>
+    <div style="color:#64748b;font-size:14px;margin-top:4px">${esc(s.sector || 'Unknown')}${s.industry && s.industry !== 'Unknown' ? ' · ' + esc(s.industry) : ''}</div>
+  </div>
+  <div class="sec"><div class="tiles">
+    ${tile('Price', '$' + n(s.currentPrice), '#0f172a')}
+    ${tile(buyLabel, buyVal != null ? '$' + n(buyVal) : '—', '#b45309')}
+    ${tile('Stop', s.stopLoss != null ? '$' + n(s.stopLoss) : '—', '#dc2626')}
+    ${tile('Confidence', s.confidence + '%', s.confidence >= 90 ? '#16a34a' : s.confidence >= 80 ? '#ca8a04' : '#ea580c')}
+  </div></div>
+  ${chartImg ? `<div class="sec"><h3>6 months · Daily</h3>${chartImg}</div>` : ''}
+  ${levels ? `<div class="sec"><h3>Levels</h3>${levels}</div>` : ''}
+  ${s.agentDecision ? `<div class="sec"><h3>Agent Analysis</h3><div class="analysis">${esc(s.agentDecision)}</div></div>` : ''}
+  <div class="ft">
+    <span>Signal Forge · ${s.createdAt ? esc(new Date(s.createdAt).toLocaleDateString()) : ''}</span>
+    <a href="${this.getTradingViewUrl(asset)}" target="_blank" rel="noopener">View on TradingView ↗</a>
+  </div>
+</div></div>
+</body></html>`;
+
+        const w = window.open('', '_blank');
+        if (!w) { this.toast('Pop-up blocked — allow pop-ups to export', { kind: 'warn' }); return; }
+        w.document.write(html);
+        w.document.close();
       }
 
       async runScan() {

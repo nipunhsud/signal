@@ -827,21 +827,33 @@ app.get('/api/beat-raise', async (req, res) => {
   }
 });
 
+// Format a Date as local YYYY-MM-DD (the same day-frame the scan-session logic uses).
+const localDay = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
 app.get('/api/unusual-volume', async (req, res) => {
   try {
-    // "Today" = the latest scan session, not wall-clock UTC-today: off-hours
-    // the UTC day rolls over before the next session runs, which would empty
-    // the panel. Anchor to the most recent signal's day instead.
+    // Latest scan session anchors "today": off-hours the UTC day rolls over
+    // before the next session runs, which would empty the panel.
     const latest = await db.breakoutSignal.findFirst({
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
-    const since = latest ? new Date(latest.createdAt) : new Date();
-    since.setHours(0, 0, 0, 0);
+    const latestDate = latest ? localDay(new Date(latest.createdAt)) : localDay(new Date());
+
+    // ?date=YYYY-MM-DD scopes to that scan day; default = latest. Parse with an
+    // explicit time so it lands on LOCAL midnight (matching the day-frame above),
+    // not UTC midnight.
+    const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : latestDate;
+    const dayStart = new Date(`${dateParam}T00:00:00`);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
     // volumeRatio = volume / avgVolume, so >= 2 means 100%+ above average.
     // bullishCandle => the move was on the upside.
     const rows = await db.breakoutSignal.findMany({
-      where: { createdAt: { gte: since }, volumeRatio: { gte: 2 }, bullishCandle: true },
+      where: { createdAt: { gte: dayStart, lt: dayEnd }, volumeRatio: { gte: 2 }, bullishCandle: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -873,7 +885,7 @@ app.get('/api/unusual-volume', async (req, res) => {
       })
       .sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0)); // biggest surge first
 
-    res.json({ generatedAt: new Date().toISOString(), count: stocks.length, stocks });
+    res.json({ generatedAt: new Date().toISOString(), date: dateParam, latestDate, count: stocks.length, stocks });
   } catch (error) {
     console.error('[/api/unusual-volume] failed:', error);
     res.status(500).json({ error: error.message });
@@ -992,19 +1004,29 @@ app.get('/api/transcript/:symbol', async (req, res) => {
   }
 });
 
+// Daily EOD candles barely move intraday, so cache them and — critically — serve
+// the stale copy when FMP rate-limits (429). Without this the endpoint competes
+// live with the 15-min scanner for FMP's budget and charts fail to load.
+const candlesCache = new Map(); // symbol -> { bars, expiresAt }
+const CANDLES_TTL_MS = 30 * 60 * 1000; // 30m
+
 app.get('/api/candles/:symbol', async (req, res) => {
+  const { symbol } = req.params;
   try {
-    const { symbol } = req.params;
     const apiKey = process.env.FMP_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'FMP_API_KEY not set' });
     }
+
+    const cached = candlesCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return res.json(cached.bars);
 
     const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`;
     console.log(`[/api/candles] Fetching: ${symbol}`);
 
     const response = await fetch(url);
     if (!response.ok) {
+      if (cached) return res.json(cached.bars); // serve stale rather than break the chart
       console.error(`[/api/candles] FMP error for ${symbol}: ${response.status}`);
       return res.status(response.status).json({ error: `FMP API error: ${response.status}` });
     }
@@ -1032,9 +1054,12 @@ app.get('/api/candles/:symbol', async (req, res) => {
       .filter(b => b.time && b.open && b.high && b.low && b.close); // Filter out incomplete bars
 
     console.log(`[/api/candles] Success: ${symbol} = ${bars.length} bars`);
+    candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
     res.json(bars);
   } catch (error) {
-    console.error(`[/api/candles] Error for ${req.params.symbol}:`, error.message);
+    const cached = candlesCache.get(symbol);
+    if (cached) return res.json(cached.bars); // serve stale on network error
+    console.error(`[/api/candles] Error for ${symbol}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });

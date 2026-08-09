@@ -95,8 +95,9 @@ export interface MarketData {
   priorBaseDays?: number; // # of days in prior consolidation (bars[-60..-6])
   priorBaseRangePercent?: number; // % range of that base
   priorBreakoutBarsAgo?: number; // bars ago since a prior high-volume breakout was detected (0 = none found)
-  // Extension detection: breakout within last 5 bars (today is a continuation, not a fresh breakout)
-  extensionPriorBreakoutBarsAgo?: number; // 1-5 if recent breakout found, 0 otherwise
+  // Extension: today still holds above a prior breakout's resistance (a continuation,
+  // not a fresh breakout). No time window — bars-ago can be large (see isExtension).
+  extensionPriorBreakoutBarsAgo?: number; // >0 = bars ago of the held breakout, 0 = none
   extensionConsolidationRangePercent?: number; // % range of the consolidation that preceded the recent breakout
   extensionConsolidationVolumePercent?: number; // vol % of that consolidation
 }

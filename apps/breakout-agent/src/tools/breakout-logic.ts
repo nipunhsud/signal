@@ -156,7 +156,16 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     priorBreakoutBarsAgo > 45 ||
     priorBaseDays >= priorBreakoutBarsAgo * 0.5;
 
-  if (isExtension && maStack && liquidityOk) {
+  // A prior breakout price never fell below stays flagged as an extension
+  // indefinitely (see market-data isExtension — no time window). That correctly
+  // suppresses a slow grinder that never re-bases, but it must NOT bury a genuine
+  // fresh breakout out of a NEW base (ZETA 2026-08-04: breakout 38 bars ago, yet a
+  // new 16-day base had formed). Same predicate the Type1 branch below trusts, so
+  // this only ever promotes cases that branch would already mint as Type1.
+  const freshBreakoutFromNewBase =
+    pineScriptGreen && liquidityOk && hasGoodPriorBase && noRecentPriorBreakout;
+
+  if (isExtension && maStack && liquidityOk && !freshBreakoutFromNewBase) {
     breakoutType = "Type3";
   } else if (pineScriptGreen && liquidityOk) {
     if (hasGoodPriorBase && noRecentPriorBreakout) {
