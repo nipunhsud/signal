@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Systematic breakout signals for individual traders. Backtested +6.9% average return, 64% win rate, 8% max risk per trade.">
+  <title>DataQuant — Systematic breakout signals. Backtested.</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --amber: #F59E0B;
+      --amber-hi: #FBBF24;
+      --bg: #0F172A;
+      --panel: #111827;
+      --panel-2: #1F2937;
+      --border: #334155;
+      --fg: #F8FAFC;
+      --muted: #94A3B8;
+      --green: #10B981;
+      --red: #EF4444;
+    }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .grid-bg {
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245, 158, 11, 0.08), transparent 60%),
+        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+      background-size: 100% 100%, 44px 44px, 44px 44px;
+      background-position: 0 0, 0 0, 0 0;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(31, 41, 55, 0.6) 0%, rgba(17, 24, 39, 0.6) 100%);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 12px;
+      backdrop-filter: blur(6px);
+    }
+    .btn-primary {
+      background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 100%);
+      color: #0F172A;
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 8px;
+      transition: transform 180ms ease, box-shadow 220ms ease, filter 180ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -8px rgba(245, 158, 11, 0.35);
+    }
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 12px 30px -8px rgba(245, 158, 11, 0.5); }
+    .btn-primary:focus-visible { outline: 2px solid #FBBF24; outline-offset: 3px; }
+    .btn-secondary {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      padding: 12px 20px;
+      border-radius: 8px;
+      transition: background 180ms ease, border-color 180ms ease;
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-secondary:hover { background: rgba(148, 163, 184, 0.08); border-color: #475569; }
+    .btn-secondary:focus-visible { outline: 2px solid #FBBF24; outline-offset: 3px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 500;
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--amber-hi);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .pill-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; box-shadow: 0 0 12px currentColor; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+    .stat-num { font-family: 'Inter', system-ui; font-weight: 700; letter-spacing: -0.02em; }
+    .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
+    .kbd { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.18); color: var(--muted); }
+    .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.2), transparent); }
+    .mini-bar { height: 6px; background: rgba(148, 163, 184, 0.15); border-radius: 999px; overflow: hidden; }
+    .mini-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--amber), var(--amber-hi)); }
+    .row-hover:hover { background: rgba(59, 130, 246, 0.04); }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
+    /* Nav focus */
+    a:focus-visible { outline: 2px solid var(--amber-hi); outline-offset: 3px; border-radius: 4px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- ─────────── NAV ─────────── -->
+  <nav class="border-b border-slate-800/60 bg-slate-950/60 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-2 font-semibold text-lg">
+        <span class="inline-flex w-7 h-7 items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/30">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+        </span>
+        <span>DataQuant<span class="text-amber-400">.ai</span></span>
+      </a>
+      <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+        <a href="#results" class="hover:text-white transition">Results</a>
+        <a href="#how" class="hover:text-white transition">How it works</a>
+        <a href="#pricing" class="hover:text-white transition">Pricing</a>
+        <a href="#faq" class="hover:text-white transition">FAQ</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="#pricing" data-cta="start-trial" class="btn-primary text-sm">
+          Start free trial
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─────────── HERO ─────────── -->
+  <section class="grid-bg relative overflow-hidden">
+    <div class="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32">
+      <div class="text-center max-w-3xl mx-auto">
+        <div class="mb-6 inline-flex">
+          <span class="pill"><span class="pill-dot"></span>Live scanning 500+ stocks every 15 min</span>
+        </div>
+        <h1 class="text-4xl md:text-6xl font-bold leading-[1.05] tracking-tight text-white">
+          Systematic breakout signals.<br>
+          <span class="text-amber-400">Every one earnings-checked by AI.</span>
+        </h1>
+        <p class="mt-6 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          DataQuant.ai catches actionable breakouts, then reads the underlying company's latest earnings call — tone, guidance, risk flags — so you know if the setup has fundamentals behind it. Delivered with entry, stop, and 8% max risk.
+        </p>
+        <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <a href="#pricing" data-cta="start-trial" class="btn-primary">
+            Start 30-day free trial
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#results" class="btn-secondary">See live results</a>
+        </div>
+        <div class="mt-6 text-xs text-slate-500 flex items-center justify-center gap-4">
+          <span>Cancel anytime</span>
+          <span class="text-slate-700">·</span>
+          <span>Secure Stripe checkout</span>
+          <span class="text-slate-700">·</span>
+          <span>Live dashboard · 15-min scans</span>
+        </div>
+      </div>
+
+      <!-- Stat strip -->
+      <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">
+        <div class="card p-5 text-center">
+          <div class="stat-label">Avg return / trade</div>
+          <div class="mt-2 text-3xl md:text-4xl stat-num text-emerald-400 tabular">+6.9%</div>
+        </div>
+        <div class="card p-5 text-center">
+          <div class="stat-label">Win rate</div>
+          <div class="mt-2 text-3xl md:text-4xl stat-num text-white tabular">64%</div>
+        </div>
+        <div class="card p-5 text-center">
+          <div class="stat-label">Signals / month</div>
+          <div class="mt-2 text-3xl md:text-4xl stat-num text-white tabular">22</div>
+        </div>
+        <div class="card p-5 text-center">
+          <div class="stat-label">Max risk / trade</div>
+          <div class="mt-2 text-3xl md:text-4xl stat-num text-red-400 tabular">-8%</div>
+        </div>
+      </div>
+      <p class="mt-4 text-center text-xs text-slate-500 max-w-2xl mx-auto">
+        First 30 days of live production (May 22 – Jun 20, 2026 · 22 signals). We publish updated numbers monthly. One market regime is not proof of a permanent edge — see <a href="#results" class="text-slate-400 underline hover:text-slate-200">methodology</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────── LIVE RESULTS ─────────── -->
+  <section id="results" class="border-t border-slate-800/60">
+    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
+      <div class="max-w-2xl">
+        <span class="pill">First 30 days · Live production</span>
+        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
+          Real results. Small sample.<br>
+          <span class="text-slate-500">We're not going to hide either.</span>
+        </h2>
+        <p class="mt-4 text-slate-400 text-lg leading-relaxed">
+          One month of live signals — not a curated backtest. Every trade capped at 8% stop-loss, which alone lifted per-trade return from +5.5% (unstopped) to <span class="text-emerald-400 font-semibold">+6.9%</span>. Stopping losers matters more than catching winners.
+        </p>
+      </div>
+
+      <div class="mt-12 grid md:grid-cols-3 gap-6">
+        <!-- Result column 1 -->
+        <div class="card p-6">
+          <div class="stat-label">Return distribution</div>
+          <div class="mt-4 space-y-3">
+            <div class="flex items-center gap-3">
+              <span class="text-emerald-400 text-sm w-14 tabular">14 win</span>
+              <div class="mini-bar flex-1"><span style="width: 64%"></span></div>
+              <span class="text-slate-500 text-xs w-10 text-right tabular">64%</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-slate-400 text-sm w-14 tabular">3 flat</span>
+              <div class="mini-bar flex-1"><span style="width: 14%; background: linear-gradient(90deg, #94A3B8, #CBD5E1);"></span></div>
+              <span class="text-slate-500 text-xs w-10 text-right tabular">14%</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-red-400 text-sm w-14 tabular">5 stop</span>
+              <div class="mini-bar flex-1"><span style="width: 22%; background: linear-gradient(90deg, #EF4444, #F87171);"></span></div>
+              <span class="text-slate-500 text-xs w-10 text-right tabular">22%</span>
+            </div>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
+            22 signals over 30 days · 20-day horizon per trade
+          </div>
+        </div>
+
+        <!-- Result column 2 -->
+        <div class="card p-6">
+          <div class="stat-label">Top 5 winners</div>
+          <div class="mt-4 space-y-2.5 text-sm">
+            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
+              <span class="font-mono text-slate-300">TXG</span>
+              <span class="text-emerald-400 font-semibold tabular">+40.1%</span>
+            </div>
+            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
+              <span class="font-mono text-slate-300">HPE</span>
+              <span class="text-emerald-400 font-semibold tabular">+30.2%</span>
+            </div>
+            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
+              <span class="font-mono text-slate-300">MOV</span>
+              <span class="text-emerald-400 font-semibold tabular">+27.6%</span>
+            </div>
+            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
+              <span class="font-mono text-slate-300">VSH</span>
+              <span class="text-emerald-400 font-semibold tabular">+24.8%</span>
+            </div>
+            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
+              <span class="font-mono text-slate-300">MOG-A</span>
+              <span class="text-emerald-400 font-semibold tabular">+18.2%</span>
+            </div>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
+            May 22 – Jun 2026 · Signal Forge production data
+          </div>
+        </div>
+
+        <!-- Result column 3 -->
+        <div class="card p-6">
+          <div class="stat-label">What we don't claim</div>
+          <ul class="mt-4 space-y-3 text-sm text-slate-300 leading-relaxed">
+            <li class="flex items-start gap-2.5">
+              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+              <span>Annualized returns from 30 days of data</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+              <span>Performance in bear or chop regimes</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+              <span>That every signal will work</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              <span>What we do: publish monthly, disclose losses, cap risk at 8%</span>
+            </li>
+          </ul>
+          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
+            Full methodology in <a href="#faq" class="underline hover:text-slate-300">FAQ</a>
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-8 text-xs text-slate-500 max-w-3xl">
+        Past performance does not guarantee future results. Sample size is 30 days across a single market regime — a real edge is proven over years, not months. We publish updated numbers on the first of every month, wins and losses both.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────── HOW IT WORKS ─────────── -->
+  <section id="how" class="border-t border-slate-800/60 bg-slate-950/40">
+    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
+      <div class="max-w-2xl">
+        <span class="pill">Under the hood</span>
+        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
+          Four steps. Every 15 minutes. Market hours only.
+        </h2>
+      </div>
+
+      <div class="mt-14 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="card p-7">
+          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+          <div class="mt-5 stat-label">Step 1 · Scan</div>
+          <h3 class="mt-2 text-xl font-semibold text-white">Wide net, tight filter.</h3>
+          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
+            500+ stocks scanned every 15 minutes. Only patterns with tight consolidation, bullish MA stack, and confirmed volume expansion advance.
+          </p>
+        </div>
+
+        <div class="card p-7">
+          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+          </div>
+          <div class="mt-5 stat-label">Step 2 · Classify</div>
+          <h3 class="mt-2 text-xl font-semibold text-white">Actionable vs. Extension.</h3>
+          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
+            Every candidate is labeled <span class="text-emerald-400">Actionable</span> (fresh breakout from a real base) or <span class="text-amber-400">Extension</span> (continuation of a recent breakout). Confidence weighted by consolidation quality, volume, and structure.
+          </p>
+        </div>
+
+        <div class="card p-7 ring-1 ring-amber-500/30">
+          <div class="w-11 h-11 rounded-lg bg-amber-500/25 border border-amber-500/40 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div class="mt-5 stat-label text-amber-400">Step 3 · Enrich</div>
+          <h3 class="mt-2 text-xl font-semibold text-white">AI reads the earnings call.</h3>
+          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
+            For every stock signal, we pull the latest earnings transcript and use AI to extract tone, guidance direction, highlights, and risk flags. You see the fundamentals behind the technical setup.
+          </p>
+        </div>
+
+        <div class="card p-7">
+          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+          </div>
+          <div class="mt-5 stat-label">Step 4 · Deliver</div>
+          <h3 class="mt-2 text-xl font-semibold text-white">Entry, stop, context.</h3>
+          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
+            Every high-confidence signal shows on your live dashboard with frozen entry, 8% stop, risk/reward, and the AI earnings summary — all in the same view.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── AI EARNINGS SHOWCASE ─────────── -->
+  <section class="border-t border-slate-800/60">
+    <div class="max-w-6xl mx-auto px-6 py-20 md:py-24">
+      <div class="grid md:grid-cols-2 gap-12 items-center">
+        <div>
+          <span class="pill">The differentiator</span>
+          <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white leading-tight">
+            Technical setups without earnings context are half a signal.
+          </h2>
+          <p class="mt-5 text-slate-400 leading-relaxed">
+            TradingView tells you a stock broke out. It won't tell you the CEO just guided down for the next two quarters. DataQuant.ai reads every relevant earnings call, so you skip the setups where the fundamentals disagree with the chart.
+          </p>
+          <ul class="mt-6 space-y-3 text-sm text-slate-300">
+            <li class="flex items-start gap-3">
+              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              <span><strong class="text-white">Tone score</strong> (bullish / neutral / bearish, -1 to +1)</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              <span><strong class="text-white">Guidance direction</strong> (raised / maintained / lowered)</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              <span><strong class="text-white">Highlights &amp; risk flags</strong> pulled straight from management's own words</span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+              <span><strong class="text-white">Shown on every dashboard row</strong> — no separate research step</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Mock earnings card -->
+        <div class="card p-6 md:p-7">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-white font-bold text-lg">TXG</span>
+              <span class="text-xs text-slate-500">·</span>
+              <span class="text-xs text-slate-500">Q1 2026 earnings</span>
+            </div>
+            <span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Bullish · +0.72</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="bg-slate-800/40 rounded-md px-3 py-2 ring-1 ring-slate-700/40">
+              <div class="stat-label">Tone</div>
+              <div class="mt-1 text-emerald-400 font-semibold">Bullish</div>
+            </div>
+            <div class="bg-slate-800/40 rounded-md px-3 py-2 ring-1 ring-slate-700/40">
+              <div class="stat-label">Guidance</div>
+              <div class="mt-1 text-emerald-400 font-semibold">Raised</div>
+            </div>
+          </div>
+          <div class="mt-4">
+            <div class="stat-label text-emerald-400">+ Highlights</div>
+            <ul class="mt-2 space-y-1.5 text-sm text-slate-300">
+              <li>Record ACV growth, +47% YoY</li>
+              <li>Gross margin expansion 380 bps</li>
+              <li>Guidance raised on FY revenue</li>
+            </ul>
+          </div>
+          <div class="mt-4">
+            <div class="stat-label text-red-400">⚠ Risk flags</div>
+            <ul class="mt-2 space-y-1.5 text-sm text-slate-300">
+              <li>Enterprise sales cycle lengthening</li>
+            </ul>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
+            Included with every Actionable + Extension signal for US-listed stocks
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── DASHBOARD PREVIEW ─────────── -->
+  <section class="border-t border-slate-800/60">
+    <div class="max-w-6xl mx-auto px-6 py-20 md:py-24">
+      <div class="text-center max-w-2xl mx-auto">
+        <span class="pill">The dashboard</span>
+        <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white">
+          Every active signal, one screen.
+        </h2>
+        <p class="mt-4 text-slate-400">
+          Sort by confidence, sector, or days since breakout. Entry, stop, and earnings tone on every row — one screen, one decision per stock.
+        </p>
+      </div>
+
+      <!-- Mock dashboard preview -->
+      <div class="mt-12 card p-6 md:p-8">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-2 text-sm text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+            Preview · Sample data
+          </div>
+          <div class="hidden md:flex items-center gap-2 text-xs text-slate-500">
+            <span class="kbd">⌘</span><span class="kbd">K</span>
+            <span>quick jump</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-slate-800/70">
+          <table class="w-full text-sm min-w-[640px]">
+            <thead class="bg-slate-800/50">
+              <tr class="text-left text-slate-400 text-xs uppercase tracking-wider">
+                <th class="px-4 py-3 font-medium">Ticker</th>
+                <th class="px-4 py-3 font-medium">Signal</th>
+                <th class="px-4 py-3 font-medium text-right">Entry</th>
+                <th class="px-4 py-3 font-medium text-right">Stop</th>
+                <th class="px-4 py-3 font-medium text-right">R/R</th>
+                <th class="px-4 py-3 font-medium text-center">Earnings</th>
+                <th class="px-4 py-3 font-medium text-right">Confidence</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              <tr class="row-hover">
+                <td class="px-4 py-3.5 font-mono font-semibold text-white">TXG</td>
+                <td class="px-4 py-3.5"><span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Actionable</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$47.82</td>
+                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$43.99</td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular">2.4</td>
+                <td class="px-4 py-3.5 text-center"><span class="text-emerald-400 text-xs font-semibold">Bullish · Raised</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-emerald-400 tabular font-semibold">99%</td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-4 py-3.5 font-mono font-semibold text-white">HPE</td>
+                <td class="px-4 py-3.5"><span class="pill">Extension</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$22.14</td>
+                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$20.37</td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular">1.8</td>
+                <td class="px-4 py-3.5 text-center"><span class="text-slate-400 text-xs font-semibold">Neutral · Maintained</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-emerald-400 tabular font-semibold">92%</td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-4 py-3.5 font-mono font-semibold text-white">MOV</td>
+                <td class="px-4 py-3.5"><span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Actionable</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$31.05</td>
+                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$28.57</td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular">2.1</td>
+                <td class="px-4 py-3.5 text-center"><span class="text-emerald-400 text-xs font-semibold">Bullish · Maintained</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular font-semibold">89%</td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-4 py-3.5 font-mono font-semibold text-white">VSH</td>
+                <td class="px-4 py-3.5"><span class="pill">Extension</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$18.44</td>
+                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$16.96</td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular">1.5</td>
+                <td class="px-4 py-3.5 text-center"><span class="text-red-400 text-xs font-semibold">Bearish · Lowered</span></td>
+                <td class="px-4 py-3.5 text-right font-mono text-white tabular font-semibold">84%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          <span><span class="text-emerald-400">Actionable</span> = fresh breakout from a real base</span>
+          <span class="text-slate-700 hidden sm:inline">·</span>
+          <span><span class="text-amber-400">Extension</span> = continuation of a recent breakout</span>
+          <span class="text-slate-700 hidden sm:inline">·</span>
+          <span>R/R vs 8% stop</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── PRICING ─────────── -->
+  <section id="pricing" class="border-t border-slate-800/60 bg-slate-950/40">
+    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
+      <div class="text-center max-w-2xl mx-auto">
+        <span class="pill">Pricing</span>
+        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
+          Built for accounts where signal quality outweighs subscription friction.
+        </h2>
+        <p class="mt-4 text-slate-400">
+          At $99/month, DataQuant.ai works for accounts deploying $25k+. The fee stays under 5% annual friction, and one avoided losing trade covers half a year of subscription.
+        </p>
+      </div>
+
+      <div class="mt-14 max-w-lg mx-auto">
+        <div class="card p-8 md:p-10 relative overflow-hidden">
+          <!-- Amber corner glow -->
+          <div class="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none"></div>
+
+          <div class="relative">
+            <div class="flex items-center gap-3">
+              <span class="pill">Pro</span>
+              <span class="text-xs text-slate-500">Single tier</span>
+            </div>
+            <div class="mt-6 flex items-baseline gap-2">
+              <span class="text-5xl md:text-6xl font-bold text-white tabular">$99</span>
+              <span class="text-slate-500 text-lg">/month</span>
+            </div>
+            <p class="mt-2 text-slate-400 text-sm">30-day free trial. Card required. Cancel anytime.</p>
+
+            <ul class="mt-8 space-y-3.5 text-sm">
+              <!-- Earnings analysis: the differentiator, elevated with amber highlight -->
+              <li class="flex items-start gap-3 bg-amber-500/5 -mx-3 px-3 py-2 rounded-md ring-1 ring-amber-500/20">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200"><strong class="text-amber-300">AI earnings-call analysis</strong> on every stock signal — tone score, guidance direction, highlights, risk flags</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200">All <strong class="text-white">Actionable &amp; Extension</strong> breakout signals</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200">Frozen entry price &amp; 8% stop-loss on every trade</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200">15-minute scans of 500+ stocks during market hours</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200">Live dashboard with sortable sector, industry &amp; setup filters</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200"><strong class="text-white">Bonus:</strong> Base setup signals (pre-breakout) on the dashboard</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
+                <span class="text-slate-200">Cancel or manage plan any time via Stripe portal</span>
+              </li>
+            </ul>
+
+            <a href="/signup" data-cta="start-trial" class="btn-primary w-full justify-center mt-8">
+              Start 30-day free trial
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </a>
+            <p class="mt-4 text-xs text-slate-500 text-center">
+              Zero charge if you cancel before day 30 · Secured by Stripe
+            </p>
+          </div>
+        </div>
+
+        <!-- The math -->
+        <div class="mt-6 max-w-lg mx-auto text-center">
+          <p class="text-xs text-slate-500 leading-relaxed">
+            <strong class="text-slate-400">The math:</strong> $99/mo = $1,188/yr. On a $50k account, that's 2.4% annual friction — less than one skipped losing trade. On a $10k account, it's 12% — probably too much. Know your account size.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── FAQ ─────────── -->
+  <section id="faq" class="border-t border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-20 md:py-24">
+      <div class="text-center">
+        <span class="pill">FAQ</span>
+        <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white">Common questions.</h2>
+      </div>
+
+      <div class="mt-12 space-y-3">
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">Why not just use TradingView or TrendSpider?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <div class="mt-3 text-slate-400 text-sm leading-relaxed space-y-2">
+            <p>Fair question. If you have the time to build multi-timeframe scanners with MA stacks + volume + consolidation filters, and then read every relevant earnings call yourself, TradingView Pro at $60/mo will get you close on the scanning side.</p>
+            <p>DataQuant is different in three ways:</p>
+            <ul class="space-y-1 pl-4 list-disc marker:text-slate-600">
+              <li><strong class="text-slate-300">Curation.</strong> You get 20-30 signals per month, not 500 alerts. Each pre-filtered to confidence &gt; 80%.</li>
+              <li><strong class="text-slate-300">AI earnings context</strong> on every signal. TradingView doesn't summarize earnings call tone, guidance, or risk flags — you'd read the transcript yourself.</li>
+              <li><strong class="text-slate-300">Frozen entry &amp; disciplined 8% stop.</strong> The trade setup is fixed at the moment of signal — no drift as prices move.</li>
+            </ul>
+            <p>If your account is $50k+ and your time is worth more than $30/hour, the math flips. If not, TradingView is honestly a better choice.</p>
+          </div>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">30 days of data isn't a real backtest. Why should I trust these numbers?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <div class="mt-3 text-slate-400 text-sm leading-relaxed space-y-2">
+            <p>You shouldn't — not as proof of a permanent edge. 30 days is a single market regime. Any breakout strategy will look good when the market is trending up.</p>
+            <p>What the 30-day sample proves is narrower: the system runs, the signals fire, the discipline holds. Treat it as evidence the mechanics work, not evidence they'll always work.</p>
+            <p>We publish updated results monthly — wins and losses both — so you can watch the sample grow across regimes. If the number drops in a chop or bear month, we'll say so. Try the free trial and evaluate on your own experience.</p>
+          </div>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">How does the AI earnings analysis work?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            For every US-listed stock signal, we fetch the most recent earnings call transcript and run it through a large language model to extract: (1) overall tone score (bullish/neutral/bearish, -1 to +1), (2) guidance direction (raised/maintained/lowered), (3) 2-4 highlights pulled from management's own language, (4) 1-3 risk flags. This appears on the dashboard row and inside the signal detail drawer. Results are cached per quarter — the same analysis powers every downstream signal.
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">Is this investment advice?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            No. DataQuant.ai provides systematic technical signals for research and educational purposes only. We are not registered investment advisors. Nothing on this site is a recommendation to buy or sell any security. Consult a licensed advisor before trading.
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">What's the methodology behind the 30-day results?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            22 signals fired between May 22 – Jun 20, 2026. Each held for 20 trading days or stopped at -8% (whichever came first). Returns averaged equal-weight. Live production data, no cherry-picking, all signals disclosed — not a curated subset. We do not annualize this data or project it forward.
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">What happens after the 30-day trial?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            If you don't cancel before day 30, your card is charged $99 and you continue on the monthly plan. Cancel any time from your Stripe billing portal.
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">What stocks do you cover?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            S&amp;P 500 plus a curated set of mid-cap growth stocks — approximately 500 tickers across all major sectors. We filter out low-liquidity names (&lt; 100k avg daily volume).
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">How do I receive signals?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            Via your live dashboard. It updates every 15 minutes during market hours and surfaces every signal with entry, 8% stop, risk/reward, and the AI earnings summary. High-confidence signals bubble to the top; sortable filters let you drill in by sector or setup type.
+          </p>
+        </details>
+
+        <details class="card p-6 group">
+          <summary class="flex items-center justify-between cursor-pointer list-none">
+            <span class="font-semibold text-white">Can I export signals to my broker?</span>
+            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
+          </summary>
+          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
+            Direct execution isn't included. Each signal links out to TradingView for chart context; you place trades manually via your own broker.
+          </p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── FINAL CTA ─────────── -->
+  <section class="border-t border-slate-800/60 grid-bg">
+    <div class="max-w-3xl mx-auto px-6 py-20 md:py-24 text-center">
+      <h2 class="text-3xl md:text-5xl font-bold tracking-tight text-white">
+        Stop watching charts. Start getting signals.
+      </h2>
+      <p class="mt-4 text-lg text-slate-400">
+        30 days free. Zero risk before the trial ends.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/signup" data-cta="start-trial" class="btn-primary">
+          Start 30-day free trial
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── FOOTER ─────────── -->
+  <footer class="border-t border-slate-800/60 bg-slate-950/60">
+    <div class="max-w-6xl mx-auto px-6 py-10">
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div class="flex items-center gap-2 text-sm font-semibold">
+          <span class="inline-flex w-6 h-6 items-center justify-center rounded bg-amber-500/15 border border-amber-500/30">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+          </span>
+          <span>DataQuant<span class="text-amber-400">.ai</span></span>
+        </div>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
+          <a href="/terms" class="hover:text-white transition">Terms</a>
+          <a href="/privacy" class="hover:text-white transition">Privacy</a>
+          <a href="/contact" class="hover:text-white transition">Contact</a>
+          <a href="mailto:hello@dataquant.ai" class="hover:text-white transition">hello@dataquant.ai</a>
+        </div>
+      </div>
+      <div class="divider mt-8"></div>
+      <p class="mt-6 text-xs text-slate-500 leading-relaxed max-w-4xl">
+        <strong class="text-slate-400">Not investment advice.</strong> DataQuant.ai provides technical breakout signals for research and educational purposes only. We are not registered investment advisors or broker-dealers. Nothing on this site constitutes a recommendation to buy or sell any security. Past performance is not indicative of future results. Trading securities involves substantial risk of loss and is not suitable for all investors. You are solely responsible for your own trading decisions.
+      </p>
+      <p class="mt-4 text-xs text-slate-600">© 2026 DataQuant.ai. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Clerk auth wiring. Publishable key is safe to embed (it's public by design;
+    // frontend-only). Secret key stays server-side in .env.
+    const CLERK_PUBLISHABLE_KEY = 'pk_test_YWN0dWFsLWplbm5ldC02Ny5jbGVyay5hY2NvdW50cy5kZXYk';
+    const CLERK_FRONTEND_API = 'actual-jennet-67.clerk.accounts.dev';
+
+    // Load the Clerk JS SDK, then wire the sign-in / sign-up CTAs. Both open the
+    // Clerk modal and redirect to /dashboard on success. If the user is already
+    // signed in when they land here, we short-circuit and send them straight to
+    // the dashboard (skip the marketing page).
+    (async () => {
+      const script = document.createElement('script');
+      script.src = `https://${CLERK_FRONTEND_API}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.dataset.clerkPublishableKey = CLERK_PUBLISHABLE_KEY;
+      document.head.appendChild(script);
+
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = reject;
+      });
+
+      // window.Clerk is exposed by the SDK once loaded.
+      const Clerk = window.Clerk;
+      await Clerk.load();
+
+      // After a successful sign-up, the visitor should go through Stripe
+      // Checkout — not straight to the dashboard. This helper is called from
+      // both the Clerk sign-up modal's afterSignUp callback and the "post-
+      // signup" branch below (for users who signed up in a different tab and
+      // land here already authenticated).
+      async function goToCheckout() {
+        try {
+          const res = await fetch('/api/create-checkout-session', { method: 'POST' });
+          if (!res.ok) {
+            // Stripe not configured (dev mode) or other error → fall back to
+            // the dashboard so the auth flow can still be tested.
+            location.href = '/dashboard';
+            return;
+          }
+          const { url } = await res.json();
+          location.href = url;
+        } catch (e) {
+          console.error('checkout redirect failed:', e);
+          location.href = '/dashboard';
+        }
+      }
+
+      // If already signed in, jump straight to the app.
+      if (Clerk.user) {
+        // Only auto-redirect when the visitor explicitly came here to sign in;
+        // otherwise let them read the marketing page.
+        if (new URLSearchParams(location.search).get('ref') === 'dashboard') {
+          location.href = '/dashboard';
+          return;
+        }
+      }
+
+      // Wire CTAs. Start-trial goes straight into Stripe Checkout (30-day trial
+      // + card capture). No sign-in surface exposed until account features are
+      // productized.
+      document.querySelectorAll('[data-cta="start-trial"]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          Clerk.openSignUp({
+            redirectUrl: '/?post-signup=1',
+            afterSignUpUrl: '/?post-signup=1',
+          });
+        });
+      });
+
+      // Post-signup return: Clerk sends the user back here with ?post-signup=1
+      // after successful account creation. Forward them into Checkout.
+      if (Clerk.user && new URLSearchParams(location.search).get('post-signup') === '1') {
+        goToCheckout();
+        return;
+      }
+    })().catch(err => {
+      // Fail open — if Clerk fails to load, the landing page still renders and
+      // CTAs fall back to their href defaults (#pricing anchors etc.).
+      console.error('Clerk failed to load:', err);
+    });
+  </script>
+</body>
+</html>

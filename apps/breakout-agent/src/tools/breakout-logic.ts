@@ -28,7 +28,11 @@ export interface BreakoutAnalysis {
   beta: number;
   fedFundsRate: number;
   // Type 1 (fresh breakout from real base) vs Type 3 (continuation)
-  breakoutType: "Type1" | "Type3" | "unknown";
+  // Type1  : fresh breakout from real base, ≥1.2x volume (green cone)
+  // Type1b : same clean breakout but volume <1.2x — UI-only, not alerted
+  // Type3  : continuation of a prior breakout (extension window or absorbed prior)
+  // unknown: everything else
+  breakoutType: "Type1" | "Type1b" | "Type3" | "unknown";
   priorBaseDays: number;
   priorBaseRangePercent: number;
   priorBreakoutBarsAgo: number;
@@ -41,6 +45,11 @@ export interface SetupAnalysis {
   distanceFromMA20: number; // % distance from 20 MA
   distancePenalty: number; // Confidence penalty for distance from MA20
   confidence: number; // Setup confidence (99% - distance penalty)
+  // True only for handles tight enough to be a pre-breakout watchlist entry:
+  // distance from MA20 < 3% AND ≥5 bars in range. "base" isSetups are counted
+  // as market breadth only — the 10-bar detector can't identify real O'Neil
+  // bases (25-35 bars), so we don't emit them as per-stock signals.
+  qualifiesAsTradableHandle: boolean;
 }
 
 /**
@@ -121,10 +130,12 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const pineScriptGreen =
     breakoutSignal && consolidationOk && maStack && barsInRange >= 5;
 
-  // Type 1 vs Type 3 classification
-  // Type 1: Fresh breakout from real prior base with no recent prior breakout
-  // Type 3: Continuation — either riding an older prior breakout, or extension of one in the last ~5 bars
-  let breakoutType: "Type1" | "Type3" | "unknown" = "unknown";
+  // Classification:
+  //   Type1  = green cone (clean consolidation + ≥1.2x volume) from a fresh base
+  //   Type1b = clean consolidation + <1.2x volume; UI-only, no email alerts
+  //   Type3  = continuation (extension detector or absorbed prior breakout)
+  //   unknown = everything else (messy patterns, no clean setup)
+  let breakoutType: "Type1" | "Type1b" | "Type3" | "unknown" = "unknown";
 
   // Extension: a breakout already happened in the last 5 bars and price is still
   // above that prior resistance. Today is a continuation regardless of whether
@@ -132,22 +143,52 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const extensionBarsAgo = data.extensionPriorBreakoutBarsAgo || 0;
   const isExtension = extensionBarsAgo > 0;
 
-  if (isExtension && maStack && liquidityOk) {
+  const hasGoodPriorBase =
+    priorBaseDays >= 15 && priorBaseRangePercent <= 30;
+  // "No recent prior breakout" is true when: no prior breakout at all, one
+  // that's already ≥45 bars old, OR a real base has since formed that spans
+  // most of the time since the prior breakout — meaning the older breakout
+  // rolled back, a new base built, and today is a fresh breakout of the new
+  // base. Caught CROX 2026-07-10 where a 32-bar base absorbed a breakout
+  // from 24 bars ago.
+  const noRecentPriorBreakout =
+    priorBreakoutBarsAgo === 0 ||
+    priorBreakoutBarsAgo > 45 ||
+    priorBaseDays >= priorBreakoutBarsAgo * 0.5;
+
+  // A prior breakout price never fell below stays flagged as an extension
+  // indefinitely (see market-data isExtension — no time window). That correctly
+  // suppresses a slow grinder that never re-bases, but it must NOT bury a genuine
+  // fresh breakout out of a NEW base (ZETA 2026-08-04: breakout 38 bars ago, yet a
+  // new 16-day base had formed). Same predicate the Type1 branch below trusts, so
+  // this only ever promotes cases that branch would already mint as Type1.
+  const freshBreakoutFromNewBase =
+    pineScriptGreen && liquidityOk && hasGoodPriorBase && noRecentPriorBreakout;
+
+  if (isExtension && maStack && liquidityOk && !freshBreakoutFromNewBase) {
     breakoutType = "Type3";
   } else if (pineScriptGreen && liquidityOk) {
-    const hasGoodPriorBase =
-      priorBaseDays >= 15 && priorBaseRangePercent <= 35;
-    const noRecentPriorBreakout =
-      priorBreakoutBarsAgo === 0 || priorBreakoutBarsAgo > 45;
-
     if (hasGoodPriorBase && noRecentPriorBreakout) {
       breakoutType = "Type1";
-    } else {
+    } else if (!noRecentPriorBreakout) {
+      // Green cone riding a prior breakout within the last 45 bars — continuation.
       breakoutType = "Type3";
     }
-  } else if (breakoutSignal && maStack) {
-    breakoutType = "Type3";
+  } else if (
+    // Type1b: clean shape + breakout above 5-bar consolidation + goodStructure,
+    // but volume <1.2x killed pineScriptGreen. Requires the same prior-base check
+    // as Type1 so we don't relabel messy continuations as weak-vol breakouts.
+    breakout &&
+    goodStructure &&
+    bullishCandle &&
+    liquidityOk &&
+    (data.cleanConsolidation ?? false) &&
+    hasGoodPriorBase &&
+    noRecentPriorBreakout
+  ) {
+    breakoutType = "Type1b";
   }
+  // Everything else (high-vol messy consolidation, non-clean breakouts) stays "unknown".
 
   // Calculate confidence
   let confidence = 0.1; // base for weak/no signal
@@ -170,6 +211,15 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
     consolidationQuality = Math.max(0.8, consolidationQuality); // Floor at 80%
     confidence = consolidationQuality;
+  } else if (breakoutType === "Type1b") {
+    // Weak-volume clean breakout: same shape math as Type1 but capped at 85%
+    // so it never outranks a true Type1 in the sorted list.
+    let consolidationQuality = 0.85;
+    const rangePercent = data.consolidationRangePercent || 0;
+    if (rangePercent > 5) consolidationQuality -= (rangePercent - 5) / 100;
+    const volumePercent = data.consolidationVolumePercent || 0;
+    if (volumePercent > 100) consolidationQuality -= (volumePercent - 100) / 100;
+    confidence = Math.max(0.6, Math.min(0.85, consolidationQuality));
   } else if (breakoutType === "Type3" && isExtension) {
     // Type 3 extension: real breakout was in the last ~5 bars. Inherit the Type 1
     // confidence by applying the same formula to the consolidation that preceded
@@ -280,7 +330,11 @@ export function analyzeSetup(
   // Setup conditions: has tight consolidation but NOT breaking out yet
   // Must have setup consolidation bars (Type 2 specific, not Type 1 breakout detection)
   const hasSetupConsolidation = setupBarsInRange >= 3;
-  const notBreakingOut = !breakoutSignal;
+  // "Not breaking out" means neither today AND not in an active Type 3 extension.
+  // Without the extension check, stocks that already broke out N days ago (and
+  // whose volume dropped back below breakout threshold) re-qualify as setups.
+  const notInExtension = (data.extensionPriorBreakoutBarsAgo || 0) === 0;
+  const notBreakingOut = !breakoutSignal && notInExtension;
   const bullishMAs = maStackTurning;
 
   // Low volume during consolidation (< 80% of average)
@@ -304,6 +358,7 @@ export function analyzeSetup(
       distanceFromMA20: 0,
       distancePenalty: 0,
       confidence: 0,
+      qualifiesAsTradableHandle: false,
     };
   }
 
@@ -345,11 +400,14 @@ export function analyzeSetup(
   // Ensure confidence is within bounds
   confidence = Math.max(0.1, Math.min(0.99, confidence));
 
+  const qualifiesAsTradableHandle = isHandle && setupBarsInRange >= 5;
+
   return {
     isSetup: true,
     setupType: isHandle ? "handle" : "base",
     distanceFromMA20,
     distancePenalty,
     confidence,
+    qualifiesAsTradableHandle,
   };
 }

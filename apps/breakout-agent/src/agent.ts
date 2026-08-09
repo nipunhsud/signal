@@ -1,58 +1,58 @@
-import { fetchMarketData } from "./tools/market-data.js";
+import { fetchMarketData, fetchEarningsSurprise } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
+import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 import { getOrAnalyzeTranscript } from "./tools/transcript-analysis.js";
+import { reviewSignal } from "./tools/ai-signal-review.js";
+import { globalRateLimiter } from "./tools/rate-limiter.js";
 
-function isMarketOpen(date: Date = new Date()): boolean {
-  // Create a date in America/New_York timezone
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: "America/New_York",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  };
-  const formatter = new Intl.DateTimeFormat("en-US", options);
-  const parts = formatter.formatToParts(date);
-  const partsMap = Object.fromEntries(
-    parts.map((p) => [p.type, p.value])
+// US market hours are always defined in America/New_York, regardless of
+// container TZ. Returns `label` so callers can log the checked ET time.
+export function marketStatus(date: Date = new Date()): {
+  open: boolean;
+  label: string;
+} {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value]),
   ) as Record<string, string>;
 
-  const weekday = partsMap.weekday;
-  const hour = parseInt(partsMap.hour, 10);
-  const minute = parseInt(partsMap.minute, 10);
-
-  // Check if trading day (Mon-Fri)
-  const tradingDays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-  if (!tradingDays.includes(weekday)) {
-    return false;
-  }
-
-  // Check if within market hours: 9:30 AM - 4:00 PM EDT
-  const timeInMinutes = hour * 60 + minute;
-  const marketOpenTime = 9 * 60 + 30; // 9:30 AM
-  const marketCloseTime = 16 * 60; // 4:00 PM
-
-  return timeInMinutes >= marketOpenTime && timeInMinutes < marketCloseTime;
+  const label = `${parts.hour}:${parts.minute} ${parts.weekday} ET`;
+  const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
+  const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday);
+  // 9:30 AM (570) - 4:00 PM (960) inclusive of 16:00 so the post-close scan
+  // captures the settling close print.
+  return { open: isWeekday && mins >= 570 && mins <= 960, label };
 }
 
+export function isMarketOpen(date: Date = new Date()): boolean {
+  return marketStatus(date).open;
+}
+
+const SECTOR_TAILWINDS: Record<string, string> = {
+  Technology: "AI adoption & cloud expansion",
+  Semiconductors: "AI chip demand cycle",
+  Healthcare: "GLP-1 drug cycle & aging demographics",
+  Energy: "Energy transition & LNG demand",
+  Financials: "Rate normalization cycle",
+  "Consumer Cyclical": "Post-rate-cut spending recovery",
+  Industrials: "Reshoring & infrastructure spend",
+};
+
 function getSectorTailwind(sector: string): string {
-  const map: Record<string, string> = {
-    Technology: "AI adoption & cloud expansion",
-    Semiconductors: "AI chip demand cycle",
-    Healthcare: "GLP-1 drug cycle & aging demographics",
-    Energy: "Energy transition & LNG demand",
-    Financials: "Rate normalization cycle",
-    "Consumer Cyclical": "Post-rate-cut spending recovery",
-    Industrials: "Reshoring & infrastructure spend",
-  };
-  for (const [key, val] of Object.entries(map)) {
-    if (sector.includes(key)) return val;
-  }
-  return "";
+  return (
+    Object.entries(SECTOR_TAILWINDS).find(([k]) => sector.includes(k))?.[1] ??
+    ""
+  );
 }
 
 export interface BreakoutResult {
@@ -70,7 +70,11 @@ export interface BreakoutResult {
 }
 
 export class BreakoutAgent {
-  constructor() {}
+  // Per-scan tallies for market-breadth reporting. Reset at the start of each
+  // analyzeMarkets call and persisted to MarketBreadth at the end.
+  private breadthBaseCount = 0;
+  private breadthHandleCount = 0;
+  private breadthTotalScanned = 0;
 
   async fetchAssetsFromFMP(mode: "stocks" | "etfs" = "stocks"): Promise<string[]> {
     const apiKey = process.env.FMP_API_KEY;
@@ -94,18 +98,10 @@ export class BreakoutAgent {
       const assetType = isEtf ? "ETFs" : "stocks";
       console.log(`  [FMP] Querying actively-traded ${assetType} with isEtf=${isEtf} filter...`);
 
-      let assetsRes;
-      if (isEtf) {
-        // ETFs: lower volume requirements, no market cap min
-        assetsRes = await fetch(
-          `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=true&isActivelyTrading=true&limit=10000&apikey=${apiKey}`,
-        );
-      } else {
-        // Stocks: standard requirements, US exchange only
-        assetsRes = await fetch(
-          `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NASDAQ,NYSE,AMEX&limit=10000&apikey=${apiKey}`,
-        );
-      }
+      const screenerUrl = isEtf
+        ? `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`
+        : `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NASDAQ,NYSE,AMEX&limit=10000&apikey=${apiKey}`;
+      const assetsRes = await globalRateLimiter.execute(() => fetch(screenerUrl));
 
       let stockSymbols: string[] = [];
       if (assetsRes.ok) {
@@ -170,6 +166,11 @@ export class BreakoutAgent {
   async analyzeMarkets(assets: string[], mode: "stocks" | "etfs" = "stocks"): Promise<BreakoutResult[]> {
     const CONCURRENCY = 15;
 
+    // Reset per-scan breadth counters
+    this.breadthBaseCount = 0;
+    this.breadthHandleCount = 0;
+    this.breadthTotalScanned = 0;
+
     // Sort assets for consistent order across all tiers (fixes sharding when FMP returns different order)
     const sortedAssets = [...assets].sort();
 
@@ -194,6 +195,22 @@ export class BreakoutAgent {
       for (const r of settled) {
         if (r.status === "fulfilled" && r.value) results.push(r.value);
       }
+    }
+
+    try {
+      await db.marketBreadth.create({
+        data: {
+          mode,
+          baseCount: this.breadthBaseCount,
+          handleCount: this.breadthHandleCount,
+          totalScanned: this.breadthTotalScanned,
+        },
+      });
+      console.log(
+        `[Breadth ${mode}] bases=${this.breadthBaseCount}, handles=${this.breadthHandleCount}, scanned=${this.breadthTotalScanned}`,
+      );
+    } catch (err: any) {
+      console.warn(`[Breadth ${mode}] persist failed:`, err?.message);
     }
 
     return results;
@@ -253,8 +270,98 @@ export class BreakoutAgent {
       const breakoutAnalysis = analyzeBreakout(data);
       const setupAnalysis = analyzeSetup(data, breakoutAnalysis);
 
+      // Breadth tally: every asset that reaches setup analysis counts as
+      // scanned. Split base vs handle so the dashboard can show both.
+      this.breadthTotalScanned += 1;
+      if (setupAnalysis.isSetup) {
+        if (setupAnalysis.setupType === "handle") {
+          this.breadthHandleCount += 1;
+        } else if (setupAnalysis.setupType === "base") {
+          this.breadthBaseCount += 1;
+        }
+      }
+
+      // MissionWinners-style fundamentals+setup screen. Independent of breakout
+      // logic — uses the same market data, no additional API calls.
+      const winnerSetup = screenSetupWinner(data);
+      if (winnerSetup.qualifies && winnerSetup.tier) {
+        try {
+          const setupData = {
+            tier: winnerSetup.tier,
+            confidence: winnerSetup.confidence,
+            currentPrice: winnerSetup.currentPrice,
+            high52w: winnerSetup.high52w,
+            distFrom52wHighPct: winnerSetup.distFrom52wHighPct,
+            ma50: winnerSetup.ma50,
+            ma200: winnerSetup.ma200,
+            maStacked: winnerSetup.maStacked,
+            epsGrowthPct: winnerSetup.epsGrowthPct,
+            revenueGrowthPct: winnerSetup.revenueGrowthPct,
+            sector: data.sector,
+            industry: data.industry,
+            signalDate: data.timestamp,
+            createdAt: new Date(),
+          };
+          await db.winnerSignal.upsert({
+            where: { asset_screenType: { asset, screenType: "setup" } },
+            create: { asset, screenType: "setup", ...setupData },
+            update: setupData,
+          });
+        } catch (err: any) {
+          console.warn(`[Winners] ${asset} persist failed:`, err?.message);
+        }
+      }
+
+      // Moving Winners: same fundamentals gate, ranked by trailing return over
+      // 1w / 1m / 3m windows. One row per qualifying window.
+      const movingWinners = screenMovingWinners(data);
+      for (const mw of movingWinners) {
+        try {
+          const screenType = `moving-${mw.window}`;
+          const movingData = {
+            tier: mw.tier,
+            confidence: mw.confidence,
+            currentPrice: mw.currentPrice,
+            returnPct: mw.returnPct,
+            high52w: mw.high52w,
+            distFrom52wHighPct: mw.distFrom52wHighPct,
+            ma50: mw.ma50,
+            ma200: mw.ma200,
+            maStacked: mw.maStacked,
+            epsGrowthPct: mw.epsGrowthPct,
+            revenueGrowthPct: mw.revenueGrowthPct,
+            sector: data.sector,
+            industry: data.industry,
+            signalDate: data.timestamp,
+            createdAt: new Date(),
+          };
+          await db.winnerSignal.upsert({
+            where: { asset_screenType: { asset, screenType } },
+            create: { asset, screenType, ...movingData },
+            update: movingData,
+          });
+        } catch (err: any) {
+          console.warn(`[Winners moving-${mw.window}] ${asset} persist failed:`, err?.message);
+        }
+      }
+
       const volumeRatio = data.volume / data.avgVolume;
       const volumeIncreasing = volumeRatio > 1.3;
+
+      // Fetch earnings transcript for Type 1/3 stock breakouts (cached per quarter).
+      // Done up-front so we can boost confidence and persist the snapshot with the signal.
+      let earnings: Awaited<ReturnType<typeof getOrAnalyzeTranscript>> = null;
+      const isBreakoutStock =
+        (breakoutAnalysis.breakoutType === "Type1" ||
+          breakoutAnalysis.breakoutType === "Type3") &&
+        data.assetType === "stock";
+      if (isBreakoutStock) {
+        try {
+          earnings = await getOrAnalyzeTranscript(asset);
+        } catch (err: any) {
+          console.warn(`[Transcript] ${asset} analysis failed:`, err?.message);
+        }
+      }
 
       let confidence = breakoutAnalysis.confidence;
 
@@ -271,9 +378,9 @@ export class BreakoutAgent {
           if (extensionFromResistance <= 3) {
             confidence -= (extensionFromResistance - 1) * 0.01; // -1% per 1% above 1%
           } else if (extensionFromResistance <= 5) {
-            confidence -= 2 + (extensionFromResistance - 3) * 0.015; // steeper
+            confidence -= 0.02 + (extensionFromResistance - 3) * 0.015; // steeper
           } else {
-            confidence -= 2.3 + (extensionFromResistance - 5) * 0.02; // even steeper for >5%
+            confidence -= 0.023 + (extensionFromResistance - 5) * 0.02; // even steeper for >5%
           }
           confidence = Math.max(0.8, confidence); // Type 1 floor at 80%
         }
@@ -323,12 +430,35 @@ export class BreakoutAgent {
             if (extensionFromResistance <= 5) {
               confidence -= (extensionFromResistance - 2) * 0.01; // -1% per 1% above 2%
             } else {
-              confidence -= 3 + (extensionFromResistance - 5) * 0.015; // steeper for >5%
+              confidence -= 0.03 + (extensionFromResistance - 5) * 0.015; // steeper for >5%
             }
           }
         }
 
         confidence = Math.min(0.95, Math.max(0.2, confidence));
+      }
+
+      // Earnings-based confidence adjustment (Type 1/3 stocks only).
+      // Strong bullish tone + raised guidance is the highest-conviction combo.
+      if (earnings) {
+        const confidenceBefore = confidence;
+        if (earnings.toneScore >= 0.8) confidence += 0.05;
+        else if (earnings.toneScore >= 0.5) confidence += 0.03;
+        else if (earnings.toneScore <= -0.3) confidence -= 0.05;
+
+        if (earnings.guidanceDirection === "raised") confidence += 0.04;
+        else if (earnings.guidanceDirection === "lowered") confidence -= 0.04;
+
+        // Respect existing floor (80% for Type 1) and cap at 99%.
+        const floor = breakoutAnalysis.breakoutType === "Type1" ? 0.8 : 0.2;
+        confidence = Math.min(0.99, Math.max(floor, confidence));
+
+        const delta = confidence - confidenceBefore;
+        if (Math.abs(delta) >= 0.005) {
+          console.log(
+            `[Earnings] ${asset} Q${earnings.quarter} ${earnings.year}: ${earnings.tone} (${earnings.toneScore.toFixed(2)}), guidance ${earnings.guidanceDirection} → confidence ${(delta * 100 >= 0 ? "+" : "")}${(delta * 100).toFixed(1)}%`,
+          );
+        }
       }
 
       const isValid = breakoutAnalysis.maStack && breakoutAnalysis.volumeOk;
@@ -368,14 +498,72 @@ export class BreakoutAgent {
         .filter(Boolean)
         .join(" | ");
 
-      // Alerts: Type 1 fresh breakouts only (>90% confidence). Type 3 extensions are tracked but not emailed.
+      // Frozen trade setup: inherit entryPrice/stopLoss across a continuous
+      // Type1/Type3 streak. Recompute only on a fresh flip. Hoisted above the
+      // alert gate so the grace window below can test distance-from-entry on
+      // first observation.
+      //
+      // A streak ENDS on a gap: a stock can break out, pull back, re-base, and
+      // break out again weeks later (AVT: late-May move, then Aug) — that second
+      // breakout is a new episode deserving its own entry and its own alert. If
+      // the last signal row is stale (>5 days — survives weekends/holidays but
+      // not a multi-week pullback or a scan outage), treat this flip as fresh:
+      // recompute entry and re-enable the grace alert. Without this the frozen
+      // entry from breakout #1 would stick forever and #2 would never notify.
+      const STREAK_MAX_GAP_MS = 5 * 24 * 60 * 60 * 1000;
+      const latestForAsset = await db.breakoutSignal.findFirst({
+        where: { asset },
+        orderBy: { createdAt: "desc" },
+      });
+      const lastRowAgeMs = latestForAsset
+        ? Date.now() - new Date(latestForAsset.createdAt).getTime()
+        : Infinity;
+      const isActiveStreak =
+        latestForAsset &&
+        latestForAsset.breakoutType !== "unknown" &&
+        latestForAsset.entryPrice != null &&
+        lastRowAgeMs <= STREAK_MAX_GAP_MS;
+      const entryPrice = isActiveStreak
+        ? (latestForAsset!.entryPrice as number)
+        : breakoutAnalysis.resistance;
+      const stopLoss = isActiveStreak
+        ? (latestForAsset!.stopLoss as number)
+        : entryPrice * 0.93;
+
+      // Alerts: Type1 (fresh breakout) and Type1b (weak-vol clean breakout).
+      // Type1b already passed goodStructure + cleanConsolidation + hasGoodPriorBase
+      // in classification, so trust it — the isValid/breakoutSignal gates would
+      // reject it because both require volumeOk which Type1b lacks by definition.
       const isType1Breakout = breakoutAnalysis.breakoutType === "Type1";
-      const shouldAlert =
-        isType1Breakout &&
-        isValid &&
-        confidence > 0.9 &&
+      const isType1bBreakout = breakoutAnalysis.breakoutType === "Type1b";
+
+      // Grace window: detectPriorBreakout reads raw candles, so a real breakout
+      // that fired while this asset wasn't being scanned comes back as Type3
+      // (ago>0) the first time we finally observe it — and Type3 never emails, so
+      // the alert is lost. Recover it: on the FIRST observation of a Type3 whose
+      // breakout is only a bar or two old and price is still within 5% of entry
+      // (the actionable re-entry zone), fire the breakout alert once. The
+      // !isActiveStreak gate guarantees "once" — the next scan is a continuation.
+      const barsAgo = data.extensionPriorBreakoutBarsAgo || 0;
+      const pctAboveEntry =
+        entryPrice > 0 ? ((data.close - entryPrice) / entryPrice) * 100 : Infinity;
+      const isFreshlyCaughtExtension =
+        breakoutAnalysis.breakoutType === "Type3" &&
+        !isActiveStreak &&
         breakoutAnalysis.maStack &&
-        breakoutAnalysis.breakoutSignal;
+        breakoutAnalysis.liquidityOk &&
+        barsAgo >= 1 &&
+        barsAgo <= 2 &&
+        pctAboveEntry >= 0 &&
+        pctAboveEntry <= 5;
+
+      const shouldAlert =
+        (isType1Breakout &&
+          isValid &&
+          breakoutAnalysis.maStack &&
+          breakoutAnalysis.breakoutSignal) ||
+        isType1bBreakout ||
+        isFreshlyCaughtExtension;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -396,8 +584,6 @@ export class BreakoutAgent {
           reasons.push(
             `invalid (maStack:${breakoutAnalysis.maStack} volumeOk:${breakoutAnalysis.volumeOk})`,
           );
-        if (confidence <= 0.9)
-          reasons.push(`confidence:${(confidence * 100).toFixed(0)}%`);
         if (!breakoutAnalysis.breakoutSignal)
           reasons.push("no breakout signal");
         if (breakoutAnalysis.breakoutType === "Type3" && !shouldAlert) {
@@ -424,9 +610,9 @@ export class BreakoutAgent {
         shouldAlert,
       };
 
-      const isMeaningfulBreakout =
-        breakoutAnalysis.breakoutType !== "unknown" ||
-        breakoutAnalysis.pineScriptGreen;
+      // Only persist classified breakouts. Green-cone signals that failed the
+      // Type 1/3 rules (e.g. bad-base fall-through) are intentionally dropped.
+      const isMeaningfulBreakout = breakoutAnalysis.breakoutType !== "unknown";
 
       if (isMeaningfulBreakout) {
         const latestBreakout = await db.breakoutSignal.findFirst({
@@ -440,8 +626,16 @@ export class BreakoutAgent {
           Math.abs(latestBreakout.resistance - result.resistance) < 0.01 &&
           Math.abs(latestBreakout.support - result.support) < 0.01 &&
           latestBreakout.shouldAlert === shouldAlert;
+        // entryPrice / stopLoss / latestForAsset / isActiveStreak computed above.
 
         if (!isUnchanged) {
+          // epsBeat/epsSurprisePct aren't fetched during the broad scan (cost).
+          // Fetch here — only for persisted, changed, meaningful breakouts —
+          // so the Beat & Raise panel has real beat data to screen on.
+          const surprise = process.env.FMP_API_KEY
+            ? await fetchEarningsSurprise(asset, process.env.FMP_API_KEY)
+            : null;
+
           await db.breakoutSignal.create({
             data: {
               asset,
@@ -452,13 +646,16 @@ export class BreakoutAgent {
               resistance: result.resistance,
               support: result.support,
               currentPrice: result.currentPrice,
+              entryPrice,
+              stopLoss,
               pineScriptGreen: breakoutAnalysis.pineScriptGreen,
               barsInRange: breakoutAnalysis.barsInRange || 0,
               bullishCandle: breakoutAnalysis.bullishCandle,
               epsGrowthPct: breakoutAnalysis.epsGrowthPct,
               revenueGrowthPct: breakoutAnalysis.revenueGrowthPct,
-              epsBeat: breakoutAnalysis.epsBeat,
-              epsSurprisePct: breakoutAnalysis.epsSurprisePct,
+              epsBeat: surprise?.epsBeat ?? breakoutAnalysis.epsBeat,
+              epsSurprisePct:
+                surprise?.epsSurprisePct ?? breakoutAnalysis.epsSurprisePct,
               sector: breakoutAnalysis.sector,
               industry: breakoutAnalysis.industry,
               fedFundsRate: breakoutAnalysis.fedFundsRate,
@@ -473,27 +670,20 @@ export class BreakoutAgent {
               extensionPriorBreakoutBarsAgo: data.extensionPriorBreakoutBarsAgo || 0,
               liquidityOk: breakoutAnalysis.liquidityOk,
               signalDate: data.timestamp,
+              earningsTone: earnings?.tone ?? null,
+              earningsToneScore: earnings?.toneScore ?? null,
+              earningsGuidance: earnings?.guidanceDirection ?? null,
+              earningsQuarter: earnings?.quarter ?? null,
+              earningsYear: earnings?.year ?? null,
             },
           });
         }
       }
 
-      // Earnings transcript analysis for Type 1 (fresh) stock breakouts.
-      // ETFs are skipped — they hold underlying stocks and have no earnings call of their own.
-      // Cached by (asset, quarter, year) so the same transcript is never re-analyzed.
-      if (
-        breakoutAnalysis.breakoutType === "Type1" &&
-        data.assetType === "stock"
-      ) {
-        try {
-          await getOrAnalyzeTranscript(asset);
-        } catch (err: any) {
-          console.warn(`[Transcript] ${asset} analysis failed:`, err?.message);
-        }
-      }
-
-      // Store setup signals (Type 2 green cone) in Signal table with metadata
-      if (setupAnalysis.isSetup) {
+      // Store setup signals (Type 2 green cone) in Signal table with metadata.
+      // Only tradable handles (tight + ≥5 bars) become per-row signals; loose
+      // "base" setups feed the market-breadth aggregate written at scan-end.
+      if (setupAnalysis.isSetup && setupAnalysis.qualifiesAsTradableHandle) {
         const setupReasoning = [
           `Setup Type: ${setupAnalysis.setupType}`,
           `MA Stack: ${breakoutAnalysis.maStack ? "Uptrend ✓" : "No uptrend ✗"}`,
@@ -570,14 +760,6 @@ export class BreakoutAgent {
   }
 
   async sendAlert(result: BreakoutResult): Promise<void> {
-    // Email Type 1 breakouts in the 90s+ confidence band (includes earnings transcript)
-    if (result.confidence < 0.9) {
-      console.log(
-        `⊘ Skip email for ${result.asset}: ${(result.confidence * 100).toFixed(0)}% < 90% threshold`,
-      );
-      return;
-    }
-
     // Verify the record was persisted to database before sending alert
     const latestRecord = await db.breakoutSignal.findFirst({
       where: { asset: result.asset },
@@ -591,8 +773,17 @@ export class BreakoutAgent {
       return;
     }
 
-    // Type 1 & Type 3 only alert during market hours (9:30am-4pm EDT, Mon-Fri)
-    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type3") && !isMarketOpen()) {
+    // Stopped out: price closed at/below the frozen stop — the trade is dead,
+    // don't alert on it (it still shows on the dashboard, flagged).
+    if (latestRecord.stopLoss != null && result.currentPrice <= latestRecord.stopLoss) {
+      console.log(
+        `⊘ Skip alert ${result.asset}: stopped out (${result.currentPrice} ≤ stop ${latestRecord.stopLoss})`,
+      );
+      return;
+    }
+
+    // Type 1/1b/3 only alert during market hours (9:30am-4pm EDT, Mon-Fri)
+    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3") && !isMarketOpen()) {
       console.log(
         `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
@@ -638,15 +829,18 @@ export class BreakoutAgent {
         ? `\nExpense Ratio: ${latestRecord.expenseRatio}%`
         : "";
 
-    const breakoutLabel = latestRecord.breakoutType === "Type1" ? "Fresh Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
+    const breakoutLabel = latestRecord.breakoutType === "Type1" ? "Fresh Breakout" : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
     const subject = `🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${result.asset}`;
 
-    // Trade setup for Type 1 & Type 3
-    const buyPoint = result.resistance > 0 ? result.resistance.toFixed(2) : "N/A";
-    const stopLoss = result.support > 0 ? (result.support * 0.98).toFixed(2) : "N/A"; // 2% below support
-    const riskReward = result.resistance > 0 && result.support > 0
-      ? ((result.currentPrice - result.support) / (result.resistance - result.support)).toFixed(2)
+    // Trade setup for Type 1 & Type 3 — read frozen entry/stop that were
+    // snapshotted at the moment breakoutType first flipped from unknown.
+    const entryPriceVal = latestRecord.entryPrice ?? result.resistance;
+    const stopLossVal = latestRecord.stopLoss ?? entryPriceVal * 0.93;
+    const buyPoint = entryPriceVal > 0 ? entryPriceVal.toFixed(2) : "N/A";
+    const stopLoss = stopLossVal > 0 ? stopLossVal.toFixed(2) : "N/A";
+    const riskReward = entryPriceVal > 0 && stopLossVal > 0
+      ? ((result.currentPrice - stopLossVal) / (entryPriceVal - stopLossVal)).toFixed(2)
       : "N/A";
 
     // Pull cached earnings transcript analysis (if any) for stock signals
@@ -669,6 +863,34 @@ ${risks.length ? "⚠ " + risks.join(" | ") : ""}
       }
     }
 
+    // AI second-opinion review (gated by AI_ASSISTANCE=true env, fails open)
+    let aiReviewSection = "";
+    if (latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type3") {
+      const review = await reviewSignal({
+        asset: result.asset,
+        breakoutType: latestRecord.breakoutType as "Type1" | "Type3",
+        currentPrice: result.currentPrice,
+        resistance: result.resistance,
+        support: result.support,
+        confidence: result.confidence,
+        volumeRatio: latestRecord.volumeRatio ?? 0,
+        sector: latestRecord.sector,
+        industry: latestRecord.industry,
+        epsGrowthPct: latestRecord.epsGrowthPct ?? null,
+        revenueGrowthPct: latestRecord.revenueGrowthPct ?? null,
+        priorBaseDays: latestRecord.priorBaseDays ?? null,
+        priorBaseRangePct: latestRecord.priorBaseRangePercent ?? null,
+        priorBreakoutBarsAgo: latestRecord.priorBreakoutBarsAgo ?? null,
+      });
+      if (review) {
+        aiReviewSection = `
+═══ AI REVIEW (${review.rating}/10) ═══
+Strength: ${review.strength}
+Watch for: ${review.watchFor}
+`;
+      }
+    }
+
     const body = `
 Asset: ${result.asset} ${assetTypeIndicator}
 Type: ${breakoutLabel}
@@ -684,7 +906,7 @@ Risk/Reward: ${riskReward}
 ═══ ANALYSIS ═══
 Resistance: $${result.resistance.toFixed(2)}
 Reasoning: ${result.reasoning}
-${transcriptSection}
+${aiReviewSection}${transcriptSection}
 TradingView: ${tradingViewUrl}
 
 Source: Signal Forge - Breakout Agent
