@@ -100,15 +100,23 @@ open /Applications/Docker.app
 
 ## Deployment
 
-### Railway
+Production runs on a **DigitalOcean droplet via docker-compose** (Postgres +
+migrations + dashboard + 5 scanner agents). Full steps, data porting, and ops
+in [docs/deployment.md](docs/deployment.md).
 
-1. Push to GitHub
-2. Connect repo to Railway
-3. Set env vars from `.env.example`
-4. Add Postgres add-on
-5. Deploy
+### Redeploy after a code change
 
-Agent runs 24/7, sends alerts as signals fire.
+Push to `main`, then on the droplet:
+
+```bash
+./scripts/deploy.sh   # git pull main + build --no-cache + up -d
+```
+
+`--no-cache` regenerates the Prisma client; the migrations service re-runs
+`prisma migrate deploy` automatically. Railway is an alternative path, also in
+the deployment doc.
+
+Agents run 24/7, sending alerts as signals fire.
 
 ### Docker (Local/VPS)
 
