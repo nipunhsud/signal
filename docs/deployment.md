@@ -1,6 +1,85 @@
 # Deployment Guide
 
-Signal Forge runs all agents (breakout, sentiment, trading, etc.) in a single Railway deployment.
+Signal Forge runs in production on a **DigitalOcean droplet via docker-compose**
+(see below). The Railway section further down is an alternative and is not the
+current setup.
+
+---
+
+## DigitalOcean Droplet (current production)
+
+The whole stack — Postgres, migration runner, dashboard, and the 5 scanner
+agents — runs from the root `docker-compose.yml`. Postgres is the container
+`signal-forge-db`; its data lives on the `postgres_data` Docker volume on the
+droplet's disk (no managed DB, no automatic backups).
+
+### Services
+
+| Service | Container | Role |
+| --- | --- | --- |
+| `postgres` | `signal-forge-db` | Postgres 15, data on `postgres_data` volume |
+| `migrations` | `signal-forge-migrations` | Runs `prisma migrate deploy`, then exits |
+| `dashboard` | `signal-forge-dashboard` | `server.js` API + UI on port 3000 |
+| `agent-tier-1..5` | — | Scanner agents, one per tier (`.env.tiers/.env.tier-N`) |
+
+### First-time setup
+
+```bash
+ssh root@<droplet-ip>
+git clone https://github.com/nipunhsud/signal.git signal-forge
+cd signal-forge
+
+# Secrets: dashboard reads Clerk/Stripe from root .env (compose auto-loads it);
+# each agent tier reads its own .env.tiers/.env.tier-N (FMP key, SCAN_ASSETS, cron).
+cp .env.example .env            # then fill in real values
+# create/populate .env.tiers/.env.tier-1 .. tier-5 (FMP_API_KEY, etc.)
+
+docker-compose build --no-cache
+docker-compose up -d            # postgres -> migrations -> dashboard + agents
+docker-compose ps
+```
+
+Dashboard is then on `http://<droplet-ip>:3000` (front it with a reverse proxy
++ TLS for a real domain).
+
+### Redeploy (after pushing to `main`)
+
+```bash
+cd signal-forge
+git pull origin main
+docker-compose build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
+docker-compose up -d
+```
+
+`--no-cache` is deliberate: it forces the Prisma client to regenerate against
+the current schema and avoids stale-client drift. The `migrations` service
+re-runs `prisma migrate deploy` automatically on `up`, so no manual migration
+step — it's a no-op when there's nothing new.
+
+### Data
+
+The DB is plain Postgres, so it ports with `pg_dump`/`pg_restore`:
+
+```bash
+# source machine
+docker exec -t signal-forge-db pg_dump -U nipunsud -Fc signal_forge > signal_forge.dump
+# copy to droplet, bring stack up (creates empty DB), then:
+docker exec -i signal-forge-db pg_restore -U nipunsud -d signal_forge --clean --if-exists < signal_forge.dump
+```
+
+You often don't need to port anything — the agents rescan on schedule and
+repopulate within a cycle or two. **But the landing page's "live trades" read
+from the DB**, so a fresh droplet shows an empty list until either the dump is
+restored or a backtrace/scan has run. Port the data (or run the backtrace)
+before pointing anyone at the new box.
+
+### Ops
+
+```bash
+docker-compose logs -f dashboard        # or agent-tier-1, etc.
+docker exec -it signal-forge-db psql -U nipunsud signal_forge   # query the real DB
+docker-compose restart dashboard
+```
 
 ---
 
