@@ -1,0 +1,3 @@
+dataquant.ai, www.dataquant.ai {
+	reverse_proxy dashboard:3000
+}

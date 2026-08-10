@@ -136,7 +136,25 @@ services:
     command: npm start
     restart: on-failure
 
+  # Reverse proxy + automatic HTTPS (Let's Encrypt) for dataquant.ai.
+  # Proxies the domain to the dashboard container over the internal network.
+  caddy:
+    image: caddy:2-alpine
+    container_name: signal-forge-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certs live here — persist so they survive rebuilds
+      - caddy_config:/config
+    depends_on:
+      - dashboard
+
 volumes:
   postgres_data:
     driver: local
+  caddy_data:
+  caddy_config:
 
