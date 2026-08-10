@@ -264,6 +264,9 @@ function displayConfidenceFor(rawConfidence, isExtension, pctGainFromEntry) {
 app.get('/api/signals', async (req, res) => {
   console.log('[/api/signals] Handler called with query:', req.query);
   const assetTypeFilter = req.query.type || 'all'; // 'stocks', 'etfs', or 'all'
+  // Lookback window (days). Default 3 (=72h, survives the Fri→Mon gap); the
+  // breakout view's slider widens it to surface older alerts. Clamp 1–90.
+  const daysBack = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 3));
 
   try {
     // Get removed assets
@@ -318,8 +321,8 @@ app.get('/api/signals', async (req, res) => {
         FROM "BreakoutSignal" bs
         LEFT JOIN first_green fg ON fg.asset = bs.asset
         WHERE bs.confidence >= 0.80
-          -- 72h window survives the Fri→Mon weekend gap (scans only run Mon-Fri 10am-3pm ET)
-          AND bs."createdAt" > NOW() - INTERVAL '72 hours'
+          -- Lookback window (default 3d survives the Fri→Mon gap; slider widens it)
+          AND bs."createdAt" > NOW() - make_interval(days => ${daysBack}::int)
       )
       SELECT
         asset,
@@ -366,7 +369,7 @@ app.get('/api/signals', async (req, res) => {
         agentName: 'BreakoutAgent',
         signalType: { startsWith: 'setup-' },
         confidence: { gte: 0.80 },
-        createdAt: { gt: new Date(Date.now() - 72 * 60 * 60 * 1000) }
+        createdAt: { gt: new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000) }
       },
       orderBy: { createdAt: 'desc' }, // most recent first for dedup
     });

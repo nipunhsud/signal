@@ -380,6 +380,7 @@
         this.scanning = false;
         this.filtering = '';
         this.minConfidence = prefs.minConfidence ?? 85;
+        this.lookbackDays = prefs.lookbackDays ?? 3; // breakout lookback window (days)
         this.sortBy = prefs.sortBy ?? 'confidence';
         this.sortDirection = prefs.sortDirection ?? 'desc';
         this.selectedAsset = null;
@@ -690,6 +691,7 @@
             assetTypeFilter: this.assetTypeFilter,
             sectorFilter: this.sectorFilter,
             minConfidence: this.minConfidence,
+            lookbackDays: this.lookbackDays,
           }));
         } catch {}
       }
@@ -1020,7 +1022,7 @@
 
       async fetchSignals() {
         try {
-          const url = `/api/signals?type=${this.assetTypeFilter}`;
+          const url = `/api/signals?type=${this.assetTypeFilter}&days=${this.lookbackDays}`;
           const res = await fetch(url);
           const data = await res.json();
 
@@ -1660,12 +1662,25 @@
       // drawer's signal (works as-is via email, or Save-as-PDF from the button).
       // ponytail: browser print → PDF; no server route / OG card. Add a public
       // /share/:asset route with OG meta if social preview cards are needed.
-      exportSignal(asset, event) {
+      async exportSignal(asset, event) {
         if (event) event.stopPropagation();
         const s = this.selectedAsset;
         if (!s) return;
+        // Open the window synchronously (inside the click gesture) so pop-up
+        // blockers allow it; we fill it in after the async transcript fetch.
+        const w = window.open('', '_blank');
+        if (!w) { this.toast('Pop-up blocked — allow pop-ups to export', { kind: 'warn' }); return; }
+        w.document.write('<!doctype html><title>Generating…</title><body style="font:15px -apple-system,sans-serif;color:#64748b;padding:40px">Generating report…</body>');
+
         const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
         const n = (v, d = 2) => this.safeNum(v, d);
+
+        // Earnings call summary is loaded lazily (not on the signal) — fetch it
+        // for stocks so the shared report carries it. ETFs have no transcript.
+        let ta = null;
+        if (s.assetType !== 'etf') {
+          try { const r = await fetch('/api/transcript/' + encodeURIComponent(asset)); if (r.ok) ta = await r.json(); } catch (_) {}
+        }
 
         // Live chart snapshot → embeddable PNG (may be absent if chart still loading)
         let chartImg = '';
@@ -1675,10 +1690,18 @@
           }
         } catch (_) {}
 
-        const typeLabel = s.signalType === 'breakout' ? (s.weakVolume ? 'Breakout · weak volume' : 'Actionable Breakout')
-          : s.signalType === 'setup' ? 'Pre-Breakout Setup'
-          : s.signalType === 'extension' ? 'Extension' : (s.signalType || '');
         const buyLabel = s.signalType === 'breakout' ? 'Buy Point' : s.signalType === 'extension' ? 'Entry' : s.signalType === 'setup' ? 'MA20' : 'Level';
+
+        // Flag badges (replaces the signal-type label): which lists this name is
+        // in — Beat & Raise, Unusual Volume — plus whether it has earnings analysis.
+        const lists = this.listsFor(asset);
+        const inList = (k) => lists.some(l => l.key === k);
+        const flagBadges = [
+          inList('beat-raise') ? '<span class="badge" style="background:#f3e8ff;color:#7e22ce">Beat &amp; Raise</span>' : '',
+          inList('unusual-volume') ? '<span class="badge" style="background:#ffedd5;color:#c2410c">Unusual Volume</span>' : '',
+          ta ? '<span class="badge" style="background:#dcfce7;color:#166534">Earnings</span>' : '',
+          s.stoppedOut ? '<span class="badge" style="background:#fef2f2;color:#dc2626">Stopped out</span>' : '',
+        ].join('');
         const buyVal = s.signalType === 'setup' ? s.ma20 : s.entryPrice;
 
         const tile = (label, val, color) => `<div style="flex:1;min-width:110px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
@@ -1697,6 +1720,28 @@
           levels = row('Setup type', (s.setupType || 'base').toUpperCase())
             + row('Distance from MA20', n(s.distanceFromMA20, 1) + '%')
             + row('Consolidation range', s.consolidationRange != null ? n(s.consolidationRange, 1) + '%' : 'N/A');
+        }
+
+        // Earnings Call section (replaces Agent Analysis in the shared report).
+        let earnings = '';
+        if (ta) {
+          const toneC = ta.tone === 'bullish' ? '#16a34a' : ta.tone === 'bearish' ? '#dc2626' : '#ca8a04';
+          const guidC = ta.guidanceDirection === 'raised' ? '#16a34a' : ta.guidanceDirection === 'lowered' ? '#dc2626' : '#64748b';
+          const chips = (arr, bg, fg, pre) => (arr || []).map(x => `<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:${bg};color:${fg};font-size:12px;margin:0 4px 4px 0">${pre}${esc(x)}</span>`).join('');
+          const hi = chips(ta.highlights, '#dcfce7', '#166534', '+ ');
+          const rk = chips(ta.riskFlags, '#fee2e2', '#991b1b', '⚠ ');
+          earnings = `<div class="sec"><h3>Earnings Call — Q${esc(ta.quarter)} ${esc(ta.year)}</h3>
+            <div style="display:flex;gap:16px;font-size:13px;margin-bottom:8px;flex-wrap:wrap">
+              <span>Tone: <b style="color:${toneC}">${esc(ta.tone)}${ta.toneScore != null ? ' (' + ta.toneScore.toFixed(2) + ')' : ''}</b></span>
+              <span>Guidance: <b style="color:${guidC}">${esc(ta.guidanceDirection)}</b></span>
+            </div>
+            <div class="analysis">${esc(ta.summary)}</div>
+            ${hi ? `<div style="margin-top:8px">${hi}</div>` : ''}
+            ${rk ? `<div style="margin-top:4px">${rk}</div>` : ''}
+            ${ta.modelUsed ? `<div style="font-size:11px;color:#94a3b8;margin-top:8px">Model: ${esc(ta.modelUsed)}${ta.createdAt ? ' · ' + esc(new Date(ta.createdAt).toLocaleDateString()) : ''}</div>` : ''}
+          </div>`;
+        } else if (s.assetType !== 'etf') {
+          earnings = `<div class="sec"><h3>Earnings Call</h3><div class="analysis" style="color:#94a3b8">No earnings call analysis available yet.</div></div>`;
         }
 
         const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1726,7 +1771,7 @@
 </div>
 <div class="wrap"><div class="card">
   <div class="hd">
-    <div><span class="ticker">${esc(asset)}</span><span class="badge">${esc(typeLabel)}</span>${s.stoppedOut ? '<span class="badge" style="background:#fef2f2;color:#dc2626">Stopped out</span>' : ''}</div>
+    <div><span class="ticker">${esc(asset)}</span>${flagBadges}</div>
     <div style="color:#64748b;font-size:14px;margin-top:4px">${esc(s.sector || 'Unknown')}${s.industry && s.industry !== 'Unknown' ? ' · ' + esc(s.industry) : ''}</div>
   </div>
   <div class="sec"><div class="tiles">
@@ -1737,7 +1782,7 @@
   </div></div>
   ${chartImg ? `<div class="sec"><h3>6 months · Daily</h3>${chartImg}</div>` : ''}
   ${levels ? `<div class="sec"><h3>Levels</h3>${levels}</div>` : ''}
-  ${s.agentDecision ? `<div class="sec"><h3>Agent Analysis</h3><div class="analysis">${esc(s.agentDecision)}</div></div>` : ''}
+  ${earnings}
   <div class="ft">
     <span>Signal Forge · ${s.createdAt ? esc(new Date(s.createdAt).toLocaleDateString()) : ''}</span>
     <a href="${this.getTradingViewUrl(asset)}" target="_blank" rel="noopener">View on TradingView ↗</a>
@@ -1745,8 +1790,7 @@
 </div></div>
 </body></html>`;
 
-        const w = window.open('', '_blank');
-        if (!w) { this.toast('Pop-up blocked — allow pop-ups to export', { kind: 'warn' }); return; }
+        w.document.open();
         w.document.write(html);
         w.document.close();
       }
@@ -1896,6 +1940,13 @@
         this.savePrefs();
         if (kind === 'assetTypeFilter') this.fetchSignals();
         else this.render();
+      }
+
+      // Lookback widens the server-side window, so it must refetch.
+      setLookback(v) {
+        this.lookbackDays = Math.min(90, Math.max(1, parseInt(v, 10) || 3));
+        this.savePrefs();
+        this.fetchSignals();
       }
 
       resetFilters() {
@@ -2721,6 +2772,24 @@
                     <span id="confidence-label" class="w-10 text-right font-mono text-gray-300">${this.minConfidence}%</span>
                   </label>
 
+                  <!-- Lookback window slider — surfaces older breakout alerts -->
+                  ${this.signalTypeFilter === 'breakout' ? `
+                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap" title="How far back to pull breakout alerts (default 3 days)">
+                    Lookback
+                    <input
+                      type="range"
+                      id="lookback-slider"
+                      min="1"
+                      max="30"
+                      value="${this.lookbackDays}"
+                      oninput="document.getElementById('lookback-label').textContent = this.value + 'd';"
+                      onchange="dashboard.setLookback(this.value);"
+                      class="w-24 accent-green-500"
+                    />
+                    <span id="lookback-label" class="w-8 text-right font-mono text-gray-300">${this.lookbackDays}d</span>
+                  </label>
+                  ` : ''}
+
                 </div>
                 <div class="text-[10px] text-gray-500 mt-1.5 font-mono">
                   shortcuts: <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
@@ -2734,6 +2803,7 @@
                 if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
                 if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
                 if (this.minConfidence !== 85) chips.push({ label: `Min: ${this.minConfidence}%`, clear: `dashboard.setFilter('minConfidence', 85)` });
+                if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Lookback: ${this.lookbackDays}d`, clear: `dashboard.setLookback(3)` });
                 if (chips.length === 0) return '';
                 return `
                 <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
