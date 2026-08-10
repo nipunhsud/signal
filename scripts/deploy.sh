@@ -8,7 +8,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# `docker compose` (v2 plugin, what get.docker.com installs) vs legacy
+# `docker-compose` (hyphen). Use whichever exists.
+DC="docker compose"; command -v docker-compose >/dev/null 2>&1 && DC="docker-compose"
+
 git pull origin main
-docker-compose build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
-docker-compose up -d
-docker-compose ps
+$DC build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
+$DC up -d
+$DC ps

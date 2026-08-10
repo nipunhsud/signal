@@ -104,6 +104,40 @@ Production runs on a **DigitalOcean droplet via docker-compose** (Postgres +
 migrations + dashboard + 5 scanner agents). Full steps, data porting, and ops
 in [docs/deployment.md](docs/deployment.md).
 
+### First-time droplet setup
+
+On a fresh Ubuntu droplet:
+
+```bash
+# 1. Clone
+cd ~
+git clone https://github.com/nipunhsud/signal.git signal-forge
+cd signal-forge
+
+# 2. Install Docker if missing (fresh droplets have none)
+docker --version && docker compose version || curl -fsSL https://get.docker.com | sh
+
+# 3. Create the root .env (gitignored — the dashboard reads secrets from it).
+#    Copy it from your machine:
+#      scp ~/github/signal-forge/.env root@<droplet-ip>:~/signal-forge/.env
+#    or `nano .env` and fill: FMP_API_KEY, CLERK_*, STRIPE_* (see .env.example).
+#    DB_USER/DB_PASSWORD are optional (default nipunsud/postgres).
+#    The 5 agent tier envs (.env.tiers/.env.tier-1..5) are committed already.
+
+# 4. Deploy
+./scripts/deploy.sh
+
+# 5. Nightly backup (self-hosted DB has no managed backups)
+mkdir -p ~/backups
+( crontab -l 2>/dev/null; echo "0 4 * * * $HOME/signal-forge/scripts/backup.sh >> $HOME/backups/backup.log 2>&1" ) | crontab -
+./scripts/backup.sh   # verify once
+```
+
+Dashboard is then on `http://<droplet-ip>:3000`. On a 1 GB droplet the
+`--no-cache` build can exhaust RAM — if it gets OOM-killed, add a 2 GB swapfile
+(`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`)
+and rerun.
+
 ### Redeploy after a code change
 
 Push to `main`, then on the droplet:
