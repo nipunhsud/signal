@@ -8,7 +8,8 @@ set -euo pipefail
 DIR="${BACKUP_DIR:-$HOME/backups}"
 mkdir -p "$DIR"
 
-docker exec -t signal-forge-db pg_dump -U "${DB_USER:-nipunsud}" -Fc signal_forge \
+# No -t: a TTY translates LF->CRLF and corrupts the binary custom-format dump.
+docker exec signal-forge-db pg_dump -U "${DB_USER:-nipunsud}" -Fc signal_forge \
   > "$DIR/sf-$(date +%F).dump"
 
 # ponytail: retain 14 days, keeps ~/backups from filling the 35GB disk.

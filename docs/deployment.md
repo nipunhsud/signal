@@ -62,7 +62,7 @@ The DB is plain Postgres, so it ports with `pg_dump`/`pg_restore`:
 
 ```bash
 # source machine
-docker exec -t signal-forge-db pg_dump -U nipunsud -Fc signal_forge > signal_forge.dump
+docker exec signal-forge-db pg_dump -U nipunsud -Fc signal_forge > signal_forge.dump  # no -t (TTY corrupts binary dump)
 # copy to droplet, bring stack up (creates empty DB), then:
 docker exec -i signal-forge-db pg_restore -U nipunsud -d signal_forge --clean --if-exists < signal_forge.dump
 ```
