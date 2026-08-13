@@ -23,6 +23,24 @@ const etDay = (ms: number) =>
 // by date only if a tier's symbol set ever churns hard.
 const histCache = new Map<string, { date: string; bars: any[] }>();
 
+// Per-ET-day cache for reference data that changes at most quarterly (income
+// statements, company profile). These were fetched every scan — ~2.5M calls/mo
+// for data that moves 4x/year — hammering the rate-limit budget. Cache the raw
+// response per key per ET-day. Results are read-only downstream, so no clone.
+// A failed fetch isn't cached (only successes set), so it retries next scan.
+const dayCache = new Map<string, { date: string; data: any }>();
+async function fetchDayCached(
+  key: string,
+  fetchFn: () => Promise<any>,
+): Promise<any> {
+  const today = etDay(Date.now());
+  const hit = dayCache.get(key);
+  if (hit && hit.date === today) return hit.data;
+  const data = await fetchFn();
+  dayCache.set(key, { date: today, data });
+  return data;
+}
+
 // Fetch EPS beat/miss vs analyst estimate for the latest *reported* quarter.
 // FMP returns rows newest-first; the newest can be a future quarter with a null
 // epsActual, so skip to the first row that actually reported.
@@ -653,16 +671,18 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       let beta: number | undefined;
 
       try {
-        const earningsData = await globalRateLimiter.execute(async () => {
-          const earningsRes = await axios.get(
-            `https://financialmodelingprep.com/stable/income-statement`,
-            {
-              params: { symbol, apikey: apiKey, limit: 2 },
-              timeout: 10000,
-            },
-          );
-          return earningsRes.data;
-        });
+        const earningsData = await fetchDayCached(`is-annual:${symbol}`, () =>
+          globalRateLimiter.execute(async () => {
+            const earningsRes = await axios.get(
+              `https://financialmodelingprep.com/stable/income-statement`,
+              {
+                params: { symbol, apikey: apiKey, limit: 2 },
+                timeout: 10000,
+              },
+            );
+            return earningsRes.data;
+          }),
+        );
 
         if (earningsData && earningsData.length >= 2) {
           const current = earningsData[0].netIncome || 0;
@@ -674,16 +694,18 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       }
 
       try {
-        const qtrEarningsData = await globalRateLimiter.execute(async () => {
-          const qtrRes = await axios.get(
-            `https://financialmodelingprep.com/stable/income-statement`,
-            {
-              params: { symbol, period: 'quarter', apikey: apiKey, limit: 5 },
-              timeout: 10000,
-            },
-          );
-          return qtrRes.data;
-        });
+        const qtrEarningsData = await fetchDayCached(`is-qtr:${symbol}`, () =>
+          globalRateLimiter.execute(async () => {
+            const qtrRes = await axios.get(
+              `https://financialmodelingprep.com/stable/income-statement`,
+              {
+                params: { symbol, period: 'quarter', apikey: apiKey, limit: 5 },
+                timeout: 10000,
+              },
+            );
+            return qtrRes.data;
+          }),
+        );
 
         if (qtrEarningsData && qtrEarningsData.length >= 2) {
           const currentEps = qtrEarningsData[0].eps || 0;
@@ -763,16 +785,18 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       } else {
         // Single /profile/ call for stocks: fetch ETF type + sector/industry in one request
         try {
-          const profileData = await globalRateLimiter.execute(async () => {
-            const profileRes = await axios.get(
-              `https://financialmodelingprep.com/stable/profile`,
-              {
-                params: { symbol, apikey: apiKey },
-                timeout: 10000,
-              },
-            );
-            return profileRes.data;
-          });
+          const profileData = await fetchDayCached(`profile:${symbol}`, () =>
+            globalRateLimiter.execute(async () => {
+              const profileRes = await axios.get(
+                `https://financialmodelingprep.com/stable/profile`,
+                {
+                  params: { symbol, apikey: apiKey },
+                  timeout: 10000,
+                },
+              );
+              return profileRes.data;
+            }),
+          );
 
           if (profileData && profileData.length > 0) {
             const profile = profileData[0];
