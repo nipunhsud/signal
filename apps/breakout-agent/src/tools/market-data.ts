@@ -4,6 +4,25 @@ import { globalRateLimiter } from "./rate-limiter.js";
 const cache = new Map<string, { data: MarketData; expires: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Local YYYY-MM-DD in US market time. Used to key the daily EOD cache and to
+// date the live-quote bar consistently.
+const etDay = (ms: number) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+
+// Daily EOD bars change once per day (after close), but the scanner runs every
+// 15min — re-downloading ~250 bars/symbol each time was ~90% of FMP bandwidth.
+// Cache the raw EOD bars per symbol per ET-day; intraday scans then skip the big
+// historical fetch and only pull the small live quote. Callers MUST clone before
+// splicing the live bar so this shared array is never mutated.
+// ponytail: unbounded Map, but bounded by the scan universe (~600/tier); prune
+// by date only if a tier's symbol set ever churns hard.
+const histCache = new Map<string, { date: string; bars: any[] }>();
+
 // Fetch EPS beat/miss vs analyst estimate for the latest *reported* quarter.
 // FMP returns rows newest-first; the newest can be a future quarter with a null
 // epsActual, so skip to the first row that actually reported.
@@ -470,38 +489,53 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
 
   while (retries > 0) {
     try {
-      const data = await globalRateLimiter.execute(async () => {
-        const priceResponse = await axios.get(
-          `https://financialmodelingprep.com/stable/historical-price-eod/full`,
-          {
-            params: { symbol, apikey: apiKey, limit: 250 },
-            timeout: 10000,
-          },
-        );
-        return priceResponse.data;
-      });
+      // Daily EOD bars only change after the close, so fetch them at most once
+      // per ET-day per symbol; reuse the cached copy for the rest of the day.
+      const today = etDay(Date.now());
+      const hc = histCache.get(symbol);
+      let eodBars: any[];
 
-      // Response is directly an array, not wrapped in {historical: [...]}
-      const historicalData = Array.isArray(data) ? data : data.historical;
-      if (!historicalData || historicalData.length === 0) {
-        throw new Error(`No data found for ${symbol}`);
+      if (hc && hc.date === today) {
+        eodBars = hc.bars;
+      } else {
+        const data = await globalRateLimiter.execute(async () => {
+          const priceResponse = await axios.get(
+            `https://financialmodelingprep.com/stable/historical-price-eod/full`,
+            {
+              params: { symbol, apikey: apiKey, limit: 250 },
+              timeout: 10000,
+            },
+          );
+          return priceResponse.data;
+        });
+
+        // Response is directly an array, not wrapped in {historical: [...]}
+        const historicalData = Array.isArray(data) ? data : data.historical;
+        if (!historicalData || historicalData.length === 0) {
+          throw new Error(`No data found for ${symbol}`);
+        }
+
+        eodBars = historicalData.reverse().map((d: any) => ({
+          date: d.date,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close,
+          volume: d.volume,
+        }));
+
+        // Skip if latest data is > 5 days old
+        const latestDate = new Date(eodBars[eodBars.length - 1].date);
+        const daysSinceLastData = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceLastData > 5) {
+          throw new Error(`[STALE] ${symbol}: last data from ${latestDate.toISOString().split('T')[0]} (${daysSinceLastData.toFixed(1)} days ago)`);
+        }
+
+        histCache.set(symbol, { date: today, bars: eodBars });
       }
 
-      const allBars = historicalData.reverse().map((d: any) => ({
-        date: d.date,
-        open: d.open,
-        high: d.high,
-        low: d.low,
-        close: d.close,
-        volume: d.volume,
-      }));
-
-      // Skip if latest data is > 5 days old
-      const latestDate = new Date(allBars[allBars.length - 1].date);
-      const daysSinceLastData = (Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceLastData > 5) {
-        throw new Error(`[STALE] ${symbol}: last data from ${latestDate.toISOString().split('T')[0]} (${daysSinceLastData.toFixed(1)} days ago)`);
-      }
+      // Clone so the live-quote splice below never mutates the cached array.
+      const allBars = eodBars.slice();
 
       // Splice in today's live quote so indicators run on current tape, not yesterday's EOD.
       // /stable/quote returns real-time price + today's OHLV during market hours.
@@ -525,13 +559,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             typeof q.dayLow === "number" &&
             typeof q.open === "number"
           ) {
-            const quoteMs = q.timestamp ? q.timestamp * 1000 : Date.now();
-            const etDateStr = new Intl.DateTimeFormat("en-CA", {
-              timeZone: "America/New_York",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-            }).format(new Date(quoteMs));
+            const etDateStr = etDay(q.timestamp ? q.timestamp * 1000 : Date.now());
 
             const todayBar = {
               date: etDateStr,
