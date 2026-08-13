@@ -29,6 +29,12 @@ const histCache = new Map<string, { date: string; bars: any[] }>();
 // response per key per ET-day. Results are read-only downstream, so no clone.
 // A failed fetch isn't cached (only successes set), so it retries next scan.
 const dayCache = new Map<string, { date: string; data: any }>();
+
+// Tracks the ET-day the caches were last populated for. On rollover we clear
+// both maps (see fetchFMPData) so memory stays bounded to one day's universe
+// and symbols that leave the dynamic set don't linger forever.
+let cacheDay: string | null = null;
+
 async function fetchDayCached(
   key: string,
   fetchFn: () => Promise<any>,
@@ -492,6 +498,16 @@ async function getFedRate(apiKey: string): Promise<number> {
 async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error("FMP_API_KEY not set");
+
+  // Clear the daily caches on ET-day rollover: caps memory at one day's universe
+  // and evicts symbols dropped from the dynamic set. Runs once per day (first
+  // scan after midnight ET); scans only run 10-16 ET so this never fires mid-session.
+  const day = etDay(Date.now());
+  if (day !== cacheDay) {
+    histCache.clear();
+    dayCache.clear();
+    cacheDay = day;
+  }
 
   // Delisting already filtered at universe level in agent.ts via filterDelistedStocks
   // Skip per-stock check to avoid rate limit exhaustion
