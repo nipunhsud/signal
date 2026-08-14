@@ -181,6 +181,11 @@ app.get('/dashboard', paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Fallback for the CTA hrefs. The landing JS normally intercepts these to open
+// the Clerk modal, but a click that lands before the Clerk SDK finishes loading
+// falls through to the raw href — so serve the landing page instead of a 404.
+app.get(['/signup', '/login'], (req, res) => res.redirect('/'));
+
 // Create a Stripe Checkout session for the signed-in user. Frontend calls this
 // after Clerk sign-up, then redirects to the returned URL.
 app.post('/api/create-checkout-session', requireAuth(), async (req, res) => {
@@ -1007,64 +1012,68 @@ app.get('/api/transcript/:symbol', async (req, res) => {
   }
 });
 
-// Daily EOD candles barely move intraday, so cache them and — critically — serve
-// the stale copy when FMP rate-limits (429). Without this the endpoint competes
-// live with the 15-min scanner for FMP's budget and charts fail to load.
+// Chart candles come from Yahoo's keyless v8 API, NOT FMP — this keeps chart
+// views off the FMP bandwidth budget (charts were 500-bar fetches competing with
+// the scanner) and keeps them working while FMP is rate-limited. FMP is the
+// fallback if Yahoo is unavailable. 30m cache, stale-on-total-failure.
 const candlesCache = new Map(); // symbol -> { bars, expiresAt }
 const CANDLES_TTL_MS = 30 * 60 * 1000; // 30m
 
+// bars: [{ time:'YYYY-MM-DD', open, high, low, close, volume }] ascending — the
+// shape lightweight-charts expects.
+async function fetchYahooCandles(symbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2y&interval=1d`;
+  const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!resp.ok) throw new Error(`Yahoo ${resp.status}`);
+  const r = (await resp.json())?.chart?.result?.[0];
+  const ts = r?.timestamp;
+  const q = r?.indicators?.quote?.[0];
+  if (!ts || !q) throw new Error('Yahoo: empty result');
+  const bars = [];
+  for (let i = 0; i < ts.length; i++) {
+    const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+    if (o == null || h == null || l == null || c == null) continue; // skip gap bars
+    bars.push({ time: new Date(ts[i] * 1000).toISOString().slice(0, 10), open: o, high: h, low: l, close: c, volume: q.volume[i] ?? 0 });
+  }
+  return bars;
+}
+
+async function fetchFmpCandles(symbol) {
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey) throw new Error('FMP_API_KEY not set');
+  const resp = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`);
+  if (!resp.ok) throw new Error(`FMP ${resp.status}`);
+  const data = await resp.json();
+  const rows = Array.isArray(data) ? data : (data.historical || data.results || []);
+  return rows
+    .reverse()
+    .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }))
+    .filter(b => b.time && b.open && b.high && b.low && b.close);
+}
+
 app.get('/api/candles/:symbol', async (req, res) => {
   const { symbol } = req.params;
+  const cached = candlesCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.bars);
+
+  let bars;
   try {
-    const apiKey = process.env.FMP_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'FMP_API_KEY not set' });
+    bars = await fetchYahooCandles(symbol);
+  } catch (yErr) {
+    console.warn(`[/api/candles] Yahoo failed for ${symbol}: ${yErr.message}; falling back to FMP`);
+    try {
+      bars = await fetchFmpCandles(symbol);
+    } catch (fErr) {
+      if (cached) return res.json(cached.bars); // stale beats a broken chart
+      console.error(`[/api/candles] both sources failed for ${symbol}: ${fErr.message}`);
+      return res.status(502).json({ error: `candles unavailable: ${fErr.message}` });
     }
-
-    const cached = candlesCache.get(symbol);
-    if (cached && cached.expiresAt > Date.now()) return res.json(cached.bars);
-
-    const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`;
-    console.log(`[/api/candles] Fetching: ${symbol}`);
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      if (cached) return res.json(cached.bars); // serve stale rather than break the chart
-      console.error(`[/api/candles] FMP error for ${symbol}: ${response.status}`);
-      return res.status(response.status).json({ error: `FMP API error: ${response.status}` });
-    }
-
-    const data = await response.json();
-
-    // Handle different FMP response formats
-    let historicalData = [];
-    if (Array.isArray(data)) {
-      historicalData = data;
-    } else if (data.historical && Array.isArray(data.historical)) {
-      historicalData = data.historical;
-    } else if (data.results && Array.isArray(data.results)) {
-      historicalData = data.results;
-    }
-
-    if (!historicalData.length) {
-      console.warn(`[/api/candles] No data for ${symbol}`);
-      return res.json([]);
-    }
-
-    const bars = historicalData
-      .reverse()
-      .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }))
-      .filter(b => b.time && b.open && b.high && b.low && b.close); // Filter out incomplete bars
-
-    console.log(`[/api/candles] Success: ${symbol} = ${bars.length} bars`);
-    candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
-    res.json(bars);
-  } catch (error) {
-    const cached = candlesCache.get(symbol);
-    if (cached) return res.json(cached.bars); // serve stale on network error
-    console.error(`[/api/candles] Error for ${symbol}:`, error.message);
-    res.status(500).json({ error: error.message });
   }
+
+  if (!bars || !bars.length) return res.json(cached ? cached.bars : []);
+  console.log(`[/api/candles] ${symbol} = ${bars.length} bars`);
+  candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
+  res.json(bars);
 });
 
 // Shared historical-closes cache reused by /api/sparklines and /api/backtest.
