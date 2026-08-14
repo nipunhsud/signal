@@ -3,6 +3,7 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: signal-forge-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-nipunsud}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
@@ -39,6 +40,7 @@ services:
       dockerfile: apps/breakout-agent/Dockerfile
       target: dashboard
     container_name: signal-forge-dashboard
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
@@ -70,7 +72,7 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
-    restart: on-failure
+    restart: unless-stopped
 
   # Breakout Agent - Tier 2
   agent-tier-2:
@@ -86,7 +88,7 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
-    restart: on-failure
+    restart: unless-stopped
 
   # Breakout Agent - Tier 3
   agent-tier-3:
@@ -102,7 +104,7 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
-    restart: on-failure
+    restart: unless-stopped
 
   # Breakout Agent - Tier 4
   agent-tier-4:
@@ -118,7 +120,7 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
-    restart: on-failure
+    restart: unless-stopped
 
   # Breakout Agent - Tier 5
   agent-tier-5:
@@ -134,7 +136,7 @@ services:
       postgres:
         condition: service_healthy
     command: npm start
-    restart: on-failure
+    restart: unless-stopped
 
   # Reverse proxy + automatic HTTPS (Let's Encrypt) for dataquant.ai.
   # Proxies the domain to the dashboard container over the internal network.
