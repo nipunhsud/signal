@@ -1422,7 +1422,7 @@
                 </h3>
                 <div class="bg-yellow-500/10 ring-1 ring-yellow-500/30 rounded-lg px-3 py-2.5 mb-3">
                   <p class="text-yellow-300 text-sm font-medium">
-                    Holding above breakout · Day <span class="font-bold">${signal.daysSinceBreakout !== null ? Math.ceil(signal.daysSinceBreakout) : '?'}</span>
+                    Holding above breakout · Day <span class="font-bold">${signal.daysSinceBreakout !== null ? Math.ceil(signal.daysSinceBreakout) : '?'}</span>${this.breakoutDateFromDays(signal.createdAt, signal.daysSinceBreakout) ? ` <span class="text-yellow-400/70 font-normal">· broke out ${this.breakoutDateFromDays(signal.createdAt, signal.daysSinceBreakout)}</span>` : ''}
                   </p>
                 </div>
                 <div class="space-y-2 text-sm">
@@ -2312,6 +2312,21 @@
         if (!iso) return '';
         const d = new Date(iso);
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      // Calendar date of the actual breakout: scan date minus N trading bars.
+      // ponytail: business-day subtraction ignores market holidays, so it can be
+      // off by one across a holiday. Fine for the 1-5 bar extension window.
+      breakoutDateFromDays(scanIso, daysSinceBreakout) {
+        if (!scanIso || daysSinceBreakout === null || daysSinceBreakout === undefined) return '';
+        const d = new Date(scanIso);
+        let bars = Math.ceil(daysSinceBreakout);
+        while (bars > 0) {
+          d.setDate(d.getDate() - 1);
+          const wd = d.getDay();
+          if (wd !== 0 && wd !== 6) bars--;
+        }
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
       render() {
