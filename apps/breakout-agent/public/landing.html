@@ -114,6 +114,7 @@
         <a href="#faq" class="hover:text-white transition">FAQ</a>
       </div>
       <div class="flex items-center gap-3">
+        <a href="/dashboard" data-cta="login" class="text-sm text-slate-300 hover:text-white transition">Log in</a>
         <a href="#pricing" data-cta="start-trial" class="btn-primary text-sm">
           Start free trial
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
@@ -790,11 +791,19 @@
         }
       }
 
-      // If already signed in, jump straight to the app.
-      if (Clerk.user) {
-        // Only auto-redirect when the visitor explicitly came here to sign in;
-        // otherwise let them read the marketing page.
-        if (new URLSearchParams(location.search).get('ref') === 'dashboard') {
+      // If already signed in, jump straight to the app — but guard against an
+      // auth redirect loop. When the server can't validate our session (usually
+      // a Clerk live/test key mismatch: frontend on pk_live_, backend on
+      // sk_test_), /dashboard bounces back here with ?ref=dashboard and we'd
+      // ping-pong forever. Allow one bounce, detect the immediate return, stop.
+      if (Clerk.user && new URLSearchParams(location.search).get('ref') === 'dashboard') {
+        const now = Date.now();
+        const lastBounce = +sessionStorage.getItem('dqAuthBounce') || 0;
+        if (now - lastBounce < 5000) {
+          sessionStorage.removeItem('dqAuthBounce');
+          console.error('Auth loop stopped: the server rejected a valid Clerk session. Check the backend CLERK_SECRET_KEY matches the live frontend key.');
+        } else {
+          sessionStorage.setItem('dqAuthBounce', String(now));
           location.href = '/dashboard';
           return;
         }
@@ -806,10 +815,25 @@
       document.querySelectorAll('[data-cta="start-trial"]').forEach(el => {
         el.addEventListener('click', (e) => {
           e.preventDefault();
+          // Already signed in? openSignUp() is a no-op for a single-session app,
+          // so the click would appear dead. Route them into the app instead —
+          // the /dashboard paywall forwards to /upgrade if they're not subscribed.
+          if (Clerk.user) { location.href = '/dashboard'; return; }
           Clerk.openSignUp({
             redirectUrl: '/?post-signup=1',
             afterSignUpUrl: '/?post-signup=1',
           });
+        });
+      });
+
+      // Log in — existing users go straight to the app (not checkout). Same
+      // single-session guard: if already signed in, openSignIn() no-ops, so
+      // route into the app instead.
+      document.querySelectorAll('[data-cta="login"]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (Clerk.user) { location.href = '/dashboard'; return; }
+          Clerk.openSignIn({ redirectUrl: '/dashboard', afterSignInUrl: '/dashboard' });
         });
       });
 

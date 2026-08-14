@@ -5,7 +5,8 @@
       "Bash(pnpm -F breakout-agent build)",
       "Bash(docker network *)",
       "Bash(node backtest-proper.js)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(docker exec *)"
     ]
   }
 }
