@@ -1088,26 +1088,38 @@ async function getHistoricalCloses(symbol, minBars = 40) {
   if (cached && cached.expiresAt > now && cached.data.length >= minBars) {
     return cached.data;
   }
-  const apiKey = process.env.FMP_API_KEY;
-  if (!apiKey) return null;
+  // Yahoo first (keyless, off the FMP budget) via the shared candle fetcher;
+  // FMP fallback. Both yield {date, close}[] oldest-first.
+  let closes = null;
   try {
-    const url = `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${minBars}&apikey=${apiKey}`;
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const data = await r.json();
-    const bars = Array.isArray(data) ? data : (data.historical || data.results || []);
-    // Newest-first from FMP → reverse to oldest-first so we can lookup by date order.
-    const closes = bars
-      .slice(0, minBars)
-      .reverse()
-      .map((b) => ({ date: String(b?.date || '').slice(0, 10), close: Number(b?.close) }))
+    const bars = await fetchYahooCandles(symbol); // ascending {time,open,...,close}
+    closes = bars
+      .map((b) => ({ date: b.time, close: Number(b.close) }))
       .filter((b) => b.date && Number.isFinite(b.close));
-    if (closes.length < 2) return null;
-    historicalCache.set(symbol, { data: closes, expiresAt: now + HISTORICAL_TTL_MS });
-    return closes;
-  } catch {
-    return null;
+  } catch { /* fall through to FMP */ }
+
+  if (!closes || closes.length < 2) {
+    const apiKey = process.env.FMP_API_KEY;
+    if (apiKey) {
+      try {
+        const r = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${minBars}&apikey=${apiKey}`);
+        if (r.ok) {
+          const data = await r.json();
+          const bars = Array.isArray(data) ? data : (data.historical || data.results || []);
+          // Newest-first from FMP → reverse to oldest-first for date-ordered lookup.
+          closes = bars
+            .slice(0, minBars)
+            .reverse()
+            .map((b) => ({ date: String(b?.date || '').slice(0, 10), close: Number(b?.close) }))
+            .filter((b) => b.date && Number.isFinite(b.close));
+        }
+      } catch { /* ignore, handled below */ }
+    }
   }
+
+  if (!closes || closes.length < 2) return null;
+  historicalCache.set(symbol, { data: closes, expiresAt: now + HISTORICAL_TTL_MS });
+  return closes;
 }
 
 // Sparklines: cached daily-close series for dashboard row micro-charts.

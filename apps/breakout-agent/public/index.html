@@ -1613,15 +1613,14 @@
               wickDownColor: '#ef4444',
             });
             series.setData(bars);
-            // Show ~6 months of daily data (≈126 trading bars)
+            // Show ~6 months of daily data (≈126 trading bars). Use a LOGICAL
+            // range extended ~10 bars PAST the last candle: setVisibleRange(to=
+            // lastBar) pins the latest candle to the right edge, so the R/Entry
+            // price-line labels cover it. The +10 keeps that blank margin.
             if (bars.length > 0) {
               const barsToShow = Math.min(126, bars.length);
               const startIdx = Math.max(0, bars.length - barsToShow);
-              const firstBar = bars[startIdx];
-              const lastBar = bars[bars.length - 1];
-              const fromTime = Math.floor(new Date(firstBar.time).getTime() / 1000);
-              const toTime = Math.floor(new Date(lastBar.time).getTime() / 1000);
-              chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
+              chart.timeScale().setVisibleLogicalRange({ from: startIdx, to: bars.length - 1 + 10 });
             } else {
               chart.timeScale().fitContent();
             }
