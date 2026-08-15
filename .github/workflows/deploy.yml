@@ -1,0 +1,26 @@
+name: Deploy to droplet
+
+# Auto-deploy on merge/push to main. SSHes into the DO droplet and runs the same
+# deploy.sh you'd run by hand (git pull + rebuild --no-cache + up -d).
+on:
+  push:
+    branches: [main]
+
+# Serialize deploys so two pushes can't rebuild on the droplet at once.
+concurrency:
+  group: droplet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run deploy.sh on droplet over SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DROPLET_SSH_KEY" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id \
+            root@142.93.150.197 'cd ~/signal-forge && ./scripts/deploy.sh'
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
