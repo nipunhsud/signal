@@ -33,6 +33,30 @@
       z-index: 5;
       background-color: rgb(55 65 81); /* gray-700 */
     }
+    /* Mobile: reflow the signals table into stacked cards so nothing hides behind
+       horizontal scroll. Desktop (>768px) keeps the full table unchanged. */
+    @media (max-width: 768px) {
+      table.signals-responsive { min-width: 0 !important; }
+      table.signals-responsive thead { display: none; }
+      table.signals-responsive,
+      table.signals-responsive tbody,
+      table.signals-responsive tr,
+      table.signals-responsive td { display: block; width: 100%; }
+      table.signals-responsive tr { margin: 0 0 12px; border: 1px solid #374151; border-radius: 10px; overflow: hidden; }
+      table.signals-responsive td {
+        display: flex; justify-content: space-between; align-items: center; gap: 12px;
+        padding: 7px 12px !important; white-space: normal !important;
+        border-bottom: 1px solid rgba(55,65,81,0.5);
+      }
+      table.signals-responsive td:last-child { border-bottom: none; }
+      table.signals-responsive td[data-label]::before {
+        content: attr(data-label);
+        color: #9ca3af; font-size: 10px; text-transform: uppercase;
+        letter-spacing: 0.06em; font-weight: 600; flex: 0 0 auto;
+      }
+      /* Asset cell = card header: full-width, emphasized, no label */
+      table.signals-responsive td.card-header { background: rgba(31,41,55,0.6); border-bottom: 1px solid #374151; }
+    }
     @keyframes pulse-alert {
       0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); }
       50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
@@ -370,6 +394,12 @@
   </script>
 
   <script>
+    // Region is decided by the URL: /in/* → Indian (NSE) view (₹, IST hours),
+    // everything else → US ($). Scopes every region-aware API call and currency.
+    const REGION = location.pathname.startsWith('/in') ? 'in' : 'us';
+    const CUR = REGION === 'in' ? '₹' : '$';
+    const REGION_Q = 'region=' + REGION;
+
     class Dashboard {
       constructor() {
         // Persisted preferences — pulled from localStorage with fallbacks
@@ -447,8 +477,8 @@
         try {
           const { screen, window } = this.winnersFilter;
           const url = screen === 'moving'
-            ? `/api/winners?type=moving&window=${window}`
-            : '/api/winners?type=setup';
+            ? `/api/winners?type=moving&window=${window}&${REGION_Q}`
+            : `/api/winners?type=setup&${REGION_Q}`;
           const res = await fetch(url);
           if (!res.ok) throw new Error('winners fetch failed');
           this.winners = await res.json();
@@ -466,7 +496,7 @@
         this.beatRaiseLoading = true;
         this.render();
         try {
-          const res = await fetch('/api/beat-raise');
+          const res = await fetch(`/api/beat-raise?${REGION_Q}`);
           if (!res.ok) throw new Error('beat-raise fetch failed');
           this.beatRaise = await res.json();
         } catch (err) {
@@ -493,7 +523,7 @@
         this.unusualVolumeLoading = true;
         this.render();
         try {
-          const url = this.unusualVolumeDate ? `/api/unusual-volume?date=${this.unusualVolumeDate}` : '/api/unusual-volume';
+          const url = this.unusualVolumeDate ? `/api/unusual-volume?date=${this.unusualVolumeDate}&${REGION_Q}` : `/api/unusual-volume?${REGION_Q}`;
           const res = await fetch(url);
           if (!res.ok) throw new Error('unusual-volume fetch failed');
           this.unusualVolume = await res.json();
@@ -1022,7 +1052,7 @@
 
       async fetchSignals() {
         try {
-          const url = `/api/signals?type=${this.assetTypeFilter}&days=${this.lookbackDays}`;
+          const url = `/api/signals?type=${this.assetTypeFilter}&days=${this.lookbackDays}&${REGION_Q}`;
           const res = await fetch(url);
           const data = await res.json();
 
@@ -2257,32 +2287,37 @@
       }
 
       renderMarketStatus() {
+        // Region-aware: US = NYSE 9:30-16:00 ET, IN = NSE 9:15-15:30 IST.
+        const isIN = REGION === 'in';
+        const tz = isIN ? 'Asia/Kolkata' : 'America/New_York';
+        const sfx = isIN ? 'IST' : 'ET';
         const now = new Date();
-        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
         const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]));
         const wd = parts.weekday;
         const h = parseInt(parts.hour, 10);
         const m = parseInt(parts.minute, 10);
         const mins = h * 60 + m;
         const isWeekday = ['Mon','Tue','Wed','Thu','Fri'].includes(wd);
-        const open = 9 * 60 + 30;   // 9:30 AM ET
-        const close = 16 * 60;      // 4:00 PM ET
-        const cronStart = 10 * 60;  // first scan 10 AM ET
-        const cronEnd = 15 * 60;    // last scan 3 PM ET
+        const open = isIN ? 9 * 60 + 15 : 9 * 60 + 30;
+        const close = isIN ? 15 * 60 + 30 : 16 * 60;
+        const openLabel = isIN ? `9:15 AM ${sfx}` : `10:00 AM ${sfx}`;
+        const cronStart = isIN ? open : 10 * 60;  // US first scan 10 AM ET; IN from open
+        const cronEnd = close - 15;               // last intraday scan ~15m before close
 
         let dot, label, nextScan;
         if (isWeekday && mins >= open && mins < close) {
           dot = 'bg-green-500';
           label = 'Market open';
-          if (mins < cronStart) nextScan = 'Next scan: 10:00 AM ET';
+          if (mins < cronStart) nextScan = `Next scan: ${openLabel}`;
           else if (mins < cronEnd) {
             const nextHour = h + 1;
-            nextScan = `Next scan: ${nextHour}:00 ET`;
+            nextScan = `Next scan: ${nextHour}:00 ${sfx}`;
           } else nextScan = 'Last intraday scan complete';
         } else {
           dot = 'bg-gray-500';
           label = isWeekday && mins < open ? 'Pre-market' : 'Market closed';
-          nextScan = isWeekday && mins < open ? 'Next scan: 10:00 AM ET today' : 'Next scan: Mon 10:00 AM ET';
+          nextScan = isWeekday && mins < open ? `Next scan: ${openLabel} today` : `Next scan: Mon ${openLabel}`;
         }
         return `
           <div class="flex items-center gap-2 justify-end">
@@ -2869,7 +2904,7 @@
                 </div>
               ` : `
                 <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60">
-                  <table class="w-full" style="min-width:1080px;">
+                  <table class="w-full signals-responsive" style="min-width:1080px;">
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
                         <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset');">
@@ -2973,7 +3008,7 @@
                             data-signal-index="${idx}"
                             onclick="if (!event.target.closest('button') && !event.target.closest('a')) dashboard.openDrawer(dashboard.getFilteredSignals()[parseInt(this.dataset.signalIndex)])"
                           >
-                            <td class="px-3 py-2.5 whitespace-nowrap">
+                            <td class="card-header px-3 py-2.5 whitespace-nowrap">
                               <div class="flex items-center gap-2">
                                 <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="hover:scale-125 transition flex-shrink-0 ${inShortlist ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}" title="Shortlist">
                                   ${inShortlist ? '★' : '☆'}
@@ -2993,7 +3028,7 @@
                                 </button>
                               </div>
                             </td>
-                            <td class="px-3 py-2.5 whitespace-nowrap">
+                            <td data-label="Confidence" class="px-3 py-2.5 whitespace-nowrap">
                               <div class="flex flex-col gap-0.5 w-[70px]">
                                 <div class="flex items-baseline gap-1">
                                   <span class="text-lg font-bold ${confTextColor} tabular-nums leading-none">${signal.confidence}</span>
@@ -3002,14 +3037,14 @@
                                 <div class="conf-bar ${confTextColor}" style="--pct: ${signal.confidence}%;"></div>
                               </div>
                             </td>
-                            <td class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
-                            <td class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
-                            <td class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
-                            <td class="px-3 py-2.5 whitespace-nowrap">${signalLabel}</td>
-                            <td class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
-                            <td class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
-                            <td class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
-                            <td class="px-3 py-2.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">${this.formatRelative(signal.createdAt)}</td>
+                            <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
+                            <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
+                            <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
+                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}</td>
+                            <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
+                            <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
+                            <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
+                            <td data-label="Updated" class="px-3 py-2.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">${this.formatRelative(signal.createdAt)}</td>
                           </tr>
                         `;
                       }).join('')}
