@@ -13,6 +13,8 @@ cd "$(dirname "$0")/.."
 DC="docker compose"; command -v docker-compose >/dev/null 2>&1 && DC="docker-compose"
 
 git pull origin main
-$DC build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2
+# migrations MUST be rebuilt too: its image bakes in prisma/migrations, and a
+# stale one makes `migrate deploy` miss new migrations (silent schema drift).
+$DC build --no-cache migrations dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2
 $DC up -d
 $DC ps
