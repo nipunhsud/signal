@@ -1038,24 +1038,96 @@ app.get('/api/unusual-volume', async (req, res) => {
   }
 });
 
-app.get('/api/shortlist', async (req, res) => {
+// Resolve the signed-in user's local row. requireAuth() guarantees a session,
+// so getAuth().userId is always present here.
+async function reqUser(req) {
+  const { userId } = getAuth(req);
+  return ensureUser(userId);
+}
+
+// Verify a list belongs to the signed-in user before any read/write on it.
+async function ownedList(req, listId) {
+  const user = await reqUser(req);
+  return db.shortlistList.findFirst({ where: { id: listId, userId: user.id } });
+}
+
+// Lists for the signed-in user. Auto-creates a default so the UI always has one.
+app.get('/api/shortlist-lists', requireAuth(), async (req, res) => {
   try {
-    const items = await db.shortlist.findMany({
-      orderBy: { addedAt: 'desc' },
+    const user = await reqUser(req);
+    let lists = await db.shortlistList.findMany({
+      where: { userId: user.id },
+      orderBy: { order: 'asc' },
+      include: { _count: { select: { items: true } } },
     });
+    if (lists.length === 0) {
+      const created = await db.shortlistList.create({ data: { userId: user.id, name: 'My List', order: 0 } });
+      lists = [{ ...created, _count: { items: 0 } }];
+    }
+    res.json(lists.map((l) => ({ id: l.id, name: l.name, order: l.order, count: l._count.items })));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/shortlist-lists', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const max = await db.shortlistList.aggregate({ where: { userId: user.id }, _max: { order: true } });
+    const list = await db.shortlistList.create({ data: { userId: user.id, name, order: (max._max.order ?? -1) + 1 } });
+    res.json(list);
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'A list with that name already exists' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/shortlist-lists/:id', requireAuth(), async (req, res) => {
+  try {
+    if (!(await ownedList(req, req.params.id))) return res.status(404).json({ error: 'not found' });
+    const data = {};
+    if (typeof req.body.name === 'string') data.name = req.body.name.trim();
+    if (typeof req.body.order === 'number') data.order = req.body.order;
+    const list = await db.shortlistList.update({ where: { id: req.params.id }, data });
+    res.json(list);
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'A list with that name already exists' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/shortlist-lists/:id', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const r = await db.shortlistList.deleteMany({ where: { id: req.params.id, userId: user.id } });
+    if (r.count === 0) return res.status(404).json({ error: 'not found' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/shortlist', requireAuth(), async (req, res) => {
+  try {
+    const { listId } = req.query;
+    if (!listId || !(await ownedList(req, listId))) return res.status(404).json({ error: 'list not found' });
+    const items = await db.shortlist.findMany({ where: { listId }, orderBy: { addedAt: 'desc' } });
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/shortlist', async (req, res) => {
+app.post('/api/shortlist', requireAuth(), async (req, res) => {
   try {
-    const { asset } = req.body;
+    const { listId, asset } = req.body;
+    if (!listId || !(await ownedList(req, listId))) return res.status(404).json({ error: 'list not found' });
     const item = await db.shortlist.upsert({
-      where: { asset },
+      where: { listId_asset: { listId, asset } },
       update: { updatedAt: new Date() },
-      create: { asset },
+      create: { listId, asset },
     });
     res.json(item);
   } catch (error) {
@@ -1063,10 +1135,11 @@ app.post('/api/shortlist', async (req, res) => {
   }
 });
 
-app.delete('/api/shortlist/:asset', async (req, res) => {
+app.delete('/api/shortlist/:listId/:asset', requireAuth(), async (req, res) => {
   try {
-    const { asset } = req.params;
-    await db.shortlist.delete({ where: { asset } });
+    const { listId, asset } = req.params;
+    if (!(await ownedList(req, listId))) return res.status(404).json({ error: 'list not found' });
+    await db.shortlist.deleteMany({ where: { listId, asset } });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

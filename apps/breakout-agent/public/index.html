@@ -418,7 +418,9 @@
         // Persisted preferences — pulled from localStorage with fallbacks
         const prefs = this.loadPrefs();
         this.signals = [];
-        this.shortlist = [];
+        this.lists = [];                                        // [{id, name, order, count}]
+        this.activeListId = localStorage.getItem('activeListId') || null;
+        this.shortlist = [];                                    // items of the active list only
         this.loading = true;
         this.scanning = false;
         this.filtering = '';
@@ -931,7 +933,7 @@
         // once signals load.
         const deepLink = decodeURIComponent(location.pathname).match(/\/\$([A-Za-z.\-]+)/);
         if (deepLink) signalsReady.then(() => this.openAsset(deepLink[1]));
-        this.fetchShortlist();
+        this.fetchShortlistLists();
         // Prefetch the other lists so cross-reference chips are accurate on
         // any tab without visiting each first. ponytail: one-shot; each list
         // refreshes via its own Refresh button, not on a timer.
@@ -1094,32 +1096,107 @@
         }
       }
 
-      async fetchShortlist() {
+      // Load the user's lists, settle on an active one, then pull its items.
+      async fetchShortlistLists() {
         try {
-          const res = await fetch('/api/shortlist');
-          this.shortlist = await res.json();
+          const res = await fetch('/api/shortlist-lists');
+          if (!res.ok) throw new Error('lists fetch failed');
+          this.lists = await res.json();
+          // Keep the remembered active list if it still exists, else the first.
+          if (!this.lists.some(l => l.id === this.activeListId)) {
+            this.activeListId = this.lists[0]?.id || null;
+          }
+          if (this.activeListId) localStorage.setItem('activeListId', this.activeListId);
+          await this.fetchShortlist();
+        } catch (error) {
+          console.error('Failed to fetch lists:', error);
+        }
+      }
+
+      async fetchShortlist() {
+        if (!this.activeListId) { this.shortlist = []; if (!this.showBacktest) this.render(); return; }
+        try {
+          const res = await fetch(`/api/shortlist?listId=${encodeURIComponent(this.activeListId)}`);
+          this.shortlist = res.ok ? await res.json() : [];
           if (!this.showBacktest) this.render();
         } catch (error) {
           console.error('Failed to fetch shortlist:', error);
         }
       }
 
+      selectList(id) {
+        this.activeListId = id;
+        localStorage.setItem('activeListId', id);
+        this.fetchShortlist();
+      }
+
+      async createList() {
+        const name = (prompt('New list name (e.g. India)') || '').trim();
+        if (!name) return;
+        try {
+          const res = await fetch('/api/shortlist-lists', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || 'create failed');
+          const list = await res.json();
+          this.activeListId = list.id;
+          localStorage.setItem('activeListId', list.id);
+          await this.fetchShortlistLists();
+          this.toast(`Created list "${name}"`, { kind: 'success' });
+        } catch (error) {
+          this.toast(error.message, { kind: 'warn' });
+        }
+      }
+
+      async renameList(id) {
+        const current = this.lists.find(l => l.id === id);
+        const name = (prompt('Rename list', current?.name || '') || '').trim();
+        if (!name || name === current?.name) return;
+        try {
+          const res = await fetch(`/api/shortlist-lists/${id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || 'rename failed');
+          await this.fetchShortlistLists();
+        } catch (error) {
+          this.toast(error.message, { kind: 'warn' });
+        }
+      }
+
+      async deleteList(id) {
+        const list = this.lists.find(l => l.id === id);
+        if (!confirm(`Delete list "${list?.name}" and its ${list?.count || 0} ticker(s)?`)) return;
+        try {
+          const res = await fetch(`/api/shortlist-lists/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('delete failed');
+          if (this.activeListId === id) this.activeListId = null;
+          await this.fetchShortlistLists();
+          this.toast('List deleted', { kind: 'info' });
+        } catch (error) {
+          this.toast(error.message, { kind: 'warn' });
+        }
+      }
+
       async toggleShortlist(asset, e) {
         e.stopPropagation();
+        if (!this.activeListId) { this.toast('Create a list first (Shortlist tab)', { kind: 'warn' }); return; }
         const isInList = this.shortlist.some(item => item.asset === asset);
+        const listName = this.lists.find(l => l.id === this.activeListId)?.name || 'list';
         try {
           if (isInList) {
-            await fetch(`/api/shortlist/${encodeURIComponent(asset)}`, { method: 'DELETE' });
-            this.toast(`${asset} removed from shortlist`, { kind: 'info' });
+            await fetch(`/api/shortlist/${encodeURIComponent(this.activeListId)}/${encodeURIComponent(asset)}`, { method: 'DELETE' });
+            this.toast(`${asset} removed from ${listName}`, { kind: 'info' });
           } else {
             await fetch('/api/shortlist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ asset }),
+              body: JSON.stringify({ listId: this.activeListId, asset }),
             });
-            this.toast(`${asset} added to shortlist`, { kind: 'success' });
+            this.toast(`${asset} added to ${listName}`, { kind: 'success' });
           }
-          await this.fetchShortlist();
+          await this.fetchShortlistLists();
         } catch (error) {
           console.error('Failed to update shortlist:', error);
           this.toast('Shortlist update failed', { kind: 'warn' });
@@ -2267,6 +2344,8 @@
       }
 
       renderShortlistPanel() {
+        const activeId = this.activeListId;
+        const activeName = this.lists.find(l => l.id === activeId)?.name || '';
         const signalsByAsset = new Map(this.signals.map(s => [s.asset, s]));
         const items = this.shortlist.map(item => {
           const signal = signalsByAsset.get(item.asset);
@@ -2282,20 +2361,33 @@
           <div class="flex-1 overflow-auto p-8 bg-gray-900">
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
-              <div class="mb-8 flex items-center gap-4">
+              <div class="mb-4 flex items-center gap-4">
                 <button onclick="dashboard.setView('dashboard')" class="text-2xl hover:text-gray-400 transition">←</button>
                 <div class="flex-1">
                   <h1 class="text-4xl font-bold">⭐ Shortlist</h1>
-                  <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}</p>
+                  <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
                 </div>
+                ${activeId ? `<button onclick="dashboard.renameList('${activeId}')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" title="Rename this list">Rename</button>` : ''}
+                ${activeId ? `<button onclick="dashboard.deleteList('${activeId}')" class="px-3 py-2 bg-red-900 hover:bg-red-800 text-red-100 rounded text-sm" title="Delete this list">Delete list</button>` : ''}
                 ${items.length ? `<button onclick="dashboard.copyTvList()" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm font-semibold" title="Copy as comma-separated tickers — paste into TradingView 'Add symbol' or Import list">Copy TV list</button>` : ''}
+              </div>
+
+              <!-- List tabs -->
+              <div class="mb-8 flex flex-wrap items-center gap-2">
+                ${this.lists.map(l => `
+                  <button onclick="dashboard.selectList('${l.id}')"
+                    class="px-4 py-1.5 rounded-full text-sm font-semibold transition ${l.id === activeId ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}">
+                    ${l.name} <span class="opacity-70">${l.count}</span>
+                  </button>
+                `).join('')}
+                <button onclick="dashboard.createList()" class="px-4 py-1.5 rounded-full text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-green-400 transition" title="New list">+ New list</button>
               </div>
 
               <!-- Content -->
               ${items.length === 0 ? `
                 <div class="text-center py-12">
-                  <p class="text-gray-400 text-lg">No assets on shortlist yet</p>
-                  <p class="text-gray-500 text-sm mt-2">Click the ☆ star next to any asset to add it</p>
+                  <p class="text-gray-400 text-lg">${activeName ? `"${activeName}" is empty` : 'No lists yet'}</p>
+                  <p class="text-gray-500 text-sm mt-2">${activeName ? 'Click the ☆ star next to any asset to add it to this list' : 'Create a list to get started'}</p>
                 </div>
               ` : `
                 <div class="bg-gray-800 rounded-lg overflow-hidden">

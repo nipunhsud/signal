@@ -149,6 +149,8 @@ model User {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  shortlistLists        ShortlistList[]
+
   @@index([subscriptionStatus])
 }
 
@@ -212,14 +214,32 @@ model Trade {
   @@index([breakoutSignalId])
 }
 
-model Shortlist {
-  id        String   @id @default(cuid())
-  asset     String   @unique
-  notes     String?
-  addedAt   DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// A named, per-user collection (e.g. "US", "India"). Tickers hang off it via
+// Shortlist. Deleting a list cascades its items.
+model ShortlistList {
+  id        String      @id @default(cuid())
+  userId    String
+  name      String
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     Shortlist[]
 
-  @@index([asset])
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Shortlist {
+  id        String        @id @default(cuid())
+  listId    String
+  asset     String
+  notes     String?
+  addedAt   DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  list      ShortlistList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, asset])
+  @@index([listId])
 }
 
 model RemovedAsset {
