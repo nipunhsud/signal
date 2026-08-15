@@ -7,6 +7,9 @@ const config = getConfig();
 const agent = new BreakoutAgent();
 const DYNAMIC_ASSETS = process.env.DYNAMIC_ASSETS === "true";
 const IMMEDIATE_SCAN = process.env.IMMEDIATE_SCAN === "true";
+const REGION = (process.env.REGION || "US") as "US" | "IN";
+// India scans NSE stocks only (no NSE ETF universe yet). fetchAssetsFromFMP reads REGION itself.
+const SCAN_MODES: ("stocks" | "etfs")[] = REGION === "IN" ? ["stocks"] : ["stocks", "etfs"];
 
 async function scan(mode: "stocks" | "etfs" = "stocks") {
   console.log(`[${new Date().toISOString()}] Starting ${mode} breakout scan...`);
@@ -45,8 +48,7 @@ async function scan(mode: "stocks" | "etfs" = "stocks") {
 if (IMMEDIATE_SCAN) {
   (async () => {
     try {
-      await scan("stocks");
-      await scan("etfs");
+      for (const m of SCAN_MODES) await scan(m);
       console.log("[EXIT] Immediate scans complete, exiting process");
       process.exit(0);
     } catch (err) {
@@ -55,25 +57,55 @@ if (IMMEDIATE_SCAN) {
     }
   })();
 } else {
-  // Schedule recurring scans (both stocks and ETFs, run sequentially to respect FMP rate limit)
-  const schedule = config.cronSchedule || "*/15 9-15 * * 1-5"; // Every 15min: 9:00am-3:45pm EDT weekdays (market hours 9:30am-4pm)
+  // Schedule recurring scans (both stocks and ETFs, run sequentially to respect FMP rate limit).
+  // CRON_SCHEDULE may hold multiple ';'-separated expressions (e.g. India runs two
+  // fixed times: "30 9 * * 1-5;0 15 * * 1-5"). US has no ';' so it stays one schedule.
+  const schedules = (config.cronSchedule || "*/15 9-15 * * 1-5")
+    .split(";").map((s) => s.trim()).filter(Boolean);
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
   // Schedule with explicit timezone enforcement (node-cron v3+)
-  cron.schedule(schedule, async () => {
-    const mkt = marketStatus();
-    if (!mkt.open) {
-      console.log(`⊘ Skip scan: Outside market hours (${mkt.label})`);
-      return;
-    }
-    try {
-      await scan("stocks");
-      await scan("etfs");
-    } catch (err) {
-      console.error("Scheduled scans failed:", err);
-    }
-  }, { timezone });
-  console.log(`Breakout agent running. Schedule: ${schedule} (Timezone: ${timezone})`);
+  for (const schedule of schedules) {
+    cron.schedule(schedule, async () => {
+      const mkt = marketStatus(new Date(), REGION);
+      if (!mkt.open) {
+        console.log(`⊘ Skip scan: Outside market hours (${mkt.label})`);
+        return;
+      }
+      try {
+        for (const m of SCAN_MODES) await scan(m);
+      } catch (err) {
+        console.error("Scheduled scans failed:", err);
+      }
+    }, { timezone });
+  }
+  console.log(`Breakout agent running. Schedule(s): ${schedules.join(" | ")} (Timezone: ${timezone})`);
+
+  // X posting: three scheduled jobs, all on the shard-0 tier only (it reads the
+  // shared DB, which holds every tier's signals) so we never fan out duplicate
+  // posts. All off unless X_POST_ENABLED=true.
+  const isXPoster =
+    process.env.X_POST_ENABLED === "true" &&
+    (process.env.SHARD_INDEX ?? "0") === "0";
+  if (isXPoster) {
+    const scheduleX = (name: string, cronExpr: string, fn: () => Promise<void>) => {
+      cron.schedule(cronExpr, async () => {
+        try {
+          await fn();
+        } catch (err) {
+          console.error(`X ${name} failed:`, err);
+        }
+      }, { timezone });
+      console.log(`X ${name} scheduled: ${cronExpr} (Timezone: ${timezone})`);
+    };
+
+    // 1) Signal teasers — noon & 4pm ET weekdays.
+    scheduleX("teasers", process.env.X_TEASER_CRON || "0 12,16 * * 1-5", () => agent.postXSignalTeasers());
+    // 2) Performance audit — 1pm ET on the 1st of each month.
+    scheduleX("audit", process.env.X_AUDIT_CRON || "0 13 1 * *", () => agent.postXPerformanceAudit());
+    // 3) Earnings breakdowns are posted manually via the dashboard admin button
+    //    (POST /api/admin/tweet-earnings), not on a schedule.
+  }
 
   console.log(
     `Asset mode: ${DYNAMIC_ASSETS ? "Dynamic (FMP)" : "Static (file)"}`,

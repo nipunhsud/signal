@@ -6,7 +6,16 @@
       "Bash(docker network *)",
       "Bash(node backtest-proper.js)",
       "Bash(node -e ' *)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(awk 'NR>=9 && /<style>/{f=1} f{print} /<\\\\/style>/{if\\(f\\)exit}' apps/breakout-agent/public/index.html)",
+      "Bash(node --experimental-vm-modules -e \"const h=require\\('fs'\\).readFileSync\\('apps/breakout-agent/public/index.html','utf8'\\); console.log\\('html length', h.length, '| tables:', \\(h.match\\(/<table/g\\)||[]\\).length\\);\")",
+      "Bash(grep -oE '\\\\\\\\?\\\\$\\\\$\\\\{' public/index.html)",
+      "Bash(grep -oE '\\\\$\\\\$\\\\{.' public/index.html)",
+      "Bash(kill 33360)",
+      "Bash(pkill -f \"PORT=3011\")",
+      "Bash(jobs -l)",
+      "Bash(docker cp *)",
+      "Bash(curl -s http://localhost:3000/index.html)"
     ]
   }
 }

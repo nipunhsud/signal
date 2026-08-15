@@ -13,6 +13,6 @@ cd "$(dirname "$0")/.."
 DC="docker compose"; command -v docker-compose >/dev/null 2>&1 && DC="docker-compose"
 
 git pull origin main
-$DC build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5
+$DC build --no-cache dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2
 $DC up -d
 $DC ps

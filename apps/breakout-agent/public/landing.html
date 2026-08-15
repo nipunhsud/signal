@@ -745,8 +745,11 @@
   <script>
     // Clerk auth wiring. Publishable key is safe to embed (it's public by design;
     // frontend-only). Secret key stays server-side in .env.
-    const CLERK_PUBLISHABLE_KEY = 'pk_live_Y2xlcmsuZGF0YXF1YW50LmFpJA';
-    const CLERK_FRONTEND_API = 'clerk.dataquant.ai';
+    // Injected by the server from CLERK_PUBLISHABLE_KEY (test locally, live in
+    // prod). The frontend-API host is base64-encoded inside the key itself
+    // (after the pk_live_/pk_test_ prefix, minus the trailing '$').
+    const CLERK_PUBLISHABLE_KEY = '__CLERK_PUBLISHABLE_KEY__';
+    const CLERK_FRONTEND_API = atob(CLERK_PUBLISHABLE_KEY.split('_').slice(2).join('_') || '').replace(/\$+$/, '');
 
     // Load the Clerk JS SDK, then wire the sign-in / sign-up CTAs. Both open the
     // Clerk modal and redirect to /dashboard on success. If the user is already

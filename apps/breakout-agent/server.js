@@ -4,10 +4,12 @@ import 'dotenv/config';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
 import Stripe from 'stripe';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { postXThread } from './dist/x-post.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -167,9 +169,19 @@ async function paywall(req, res, next) {
 
 // Public routes served explicitly BEFORE the static middleware so that "/"
 // serves the marketing landing page, not the dashboard.
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
-});
+// Serve the landing page with the Clerk publishable key injected from env, so
+// localhost (test instance) and prod (live instance) each use their own Clerk —
+// no hardcoded key, no dev/prod session mismatch. The frontend derives the Clerk
+// frontend-API host from the key itself.
+function serveLanding(req, res) {
+  const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
+  const html = fs
+    .readFileSync(path.join(__dirname, 'public', 'landing.html'), 'utf8')
+    .replaceAll('__CLERK_PUBLISHABLE_KEY__', pk);
+  res.type('html').send(html);
+}
+app.get('/', serveLanding);
+app.get('/landing.html', serveLanding);
 
 // Upgrade page — where expired trials / churned users land.
 app.get('/upgrade', (req, res) => {
@@ -178,6 +190,19 @@ app.get('/upgrade', (req, res) => {
 
 // Dashboard is behind the paywall.
 app.get('/dashboard', paywall, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// India dashboard — same SPA, same paywall. The page detects region from the
+// /in path prefix and scopes its API calls + currency (₹) accordingly.
+app.get('/in/dashboard', paywall, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/in', (req, res) => res.redirect('/in/dashboard'));
+
+// Per-ticker deep link from X posts (e.g. /$hpe). Same SPA + paywall; the client
+// reads the $SYMBOL from the path and opens that ticker's drawer.
+app.get(/^\/\$[A-Za-z.\-]+$/, paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -243,6 +268,97 @@ app.get('/api/billing-portal', requireAuth(), async (req, res) => {
   res.redirect(session.url);
 });
 
+// ── Admin: tweet a symbol's earnings breakdown to X ────────────────────────
+// Gated by Clerk private metadata { admin: "true" }. Composes a review-ready
+// thread from the symbol's cached earnings analysis and posts via the shared
+// X client. Two-step: no body.confirm returns a preview; confirm:true posts.
+const SECTOR_TAILWINDS = {
+  Technology: 'AI adoption & cloud expansion',
+  Semiconductors: 'AI chip demand cycle',
+  Healthcare: 'GLP-1 drug cycle & aging demographics',
+  Energy: 'Energy transition & LNG demand',
+  Financials: 'Rate normalization cycle',
+  'Consumer Cyclical': 'Post-rate-cut spending recovery',
+  Industrials: 'Reshoring & infrastructure spend',
+};
+const sectorTailwind = (sector = '') =>
+  Object.entries(SECTOR_TAILWINDS).find(([k]) => sector.includes(k))?.[1] || '';
+const capWord = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// One cohesive long-form tweet (Premium accounts allow up to 25k chars), built
+// as blank-line-separated sections. Returned as a single-element array so the
+// caller posts it as one tweet — no thread, no truncation.
+function composeEarningsTweets(asset, ta, sig) {
+  const emoji = ta.tone === 'bullish' ? '📈' : ta.tone === 'bearish' ? '📉' : '➖';
+  const highlights = Array.isArray(ta.highlights) ? ta.highlights : [];
+  const risks = Array.isArray(ta.riskFlags) ? ta.riskFlags : [];
+  const tailwind = sectorTailwind(sig?.sector || '');
+  const hasGuidance = ta.guidanceDirection && ta.guidanceDirection !== 'none';
+
+  const sections = [];
+  sections.push(
+    `${emoji} $${asset} Q${ta.quarter} ${ta.year} — ${capWord(ta.tone)} tone` +
+      (hasGuidance ? `, guidance ${ta.guidanceDirection}` : '') + '.',
+  );
+  if (ta.summary) sections.push(ta.summary);
+
+  const meta = [];
+  if (hasGuidance) meta.push(`🔹 Guidance: ${capWord(ta.guidanceDirection)}`);
+  if (tailwind) meta.push(`🔹 Tailwinds: ${tailwind}`);
+  if (meta.length) sections.push(meta.join('\n'));
+
+  if (highlights.length) sections.push(['✅ Highlights', ...highlights.map((h) => `• ${h}`)].join('\n'));
+  if (risks.length) sections.push(['⚠️ Risks', ...risks.map((r) => `• ${r}`)].join('\n'));
+
+  // Exactly ONE cashtag per post (X API limit) — it's already in the header, so
+  // the closing line must not repeat $ASSET.
+  sections.push(`Full breakdown & key levels → dataquant.ai 👇\nNot advice`);
+
+  return [sections.join('\n\n')];
+}
+
+async function isAdmin(req) {
+  const { userId } = getAuth(req);
+  if (!userId) return false;
+  try {
+    const flag = (await clerkClient.users.getUser(userId)).privateMetadata?.admin;
+    return flag === true || flag === 'true';
+  } catch (e) {
+    console.warn('[isAdmin] lookup failed:', e.message);
+    return false;
+  }
+}
+
+app.get('/api/admin/status', async (req, res) => {
+  res.json({ isAdmin: await isAdmin(req) });
+});
+
+// No requireAuth() here — that middleware redirects unauthenticated requests to
+// an HTML page, which breaks fetch()'s res.json(). isAdmin() (reads getAuth via
+// the global clerkMiddleware) gates it and always returns JSON.
+app.post('/api/admin/tweet-earnings', async (req, res) => {
+  if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
+  const asset = String(req.body?.asset || '').toUpperCase().trim();
+  if (!asset) return res.status(400).json({ error: 'asset required' });
+
+  const ta = await db.transcriptAnalysis.findFirst({
+    where: { asset },
+    orderBy: [{ year: 'desc' }, { quarter: 'desc' }],
+  });
+  if (!ta) return res.status(404).json({ error: `No earnings analysis cached for ${asset} — run "Analyze" first.` });
+
+  const sig = await db.breakoutSignal.findFirst({ where: { asset }, orderBy: { createdAt: 'desc' } });
+  const tweets = composeEarningsTweets(asset, ta, sig);
+
+  if (!req.body?.confirm) return res.json({ preview: true, tweets });
+
+  const ok = await postXThread(tweets);
+  if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
+  await db.transcriptAnalysis.update({ where: { id: ta.id }, data: { xPostedAt: new Date() } });
+  console.log(`✓ Admin tweeted $${asset} earnings (${tweets.length} tweets)`);
+  res.json({ ok: true, tweets });
+});
+
 // Static assets (landing.html, CSS, JS, images) remain public. Note: because
 // this comes AFTER the explicit "/" handler above, root requests go to the
 // landing page, not to index.html.
@@ -266,8 +382,27 @@ function displayConfidenceFor(rawConfidence, isExtension, pctGainFromEntry) {
   return display;
 }
 
+// Region scoping. Indian (NSE/BSE) signals carry a .NS/.BO suffix in `asset`;
+// US signals don't. This is the region discriminator — no schema column needed.
+// `region` query param: 'in' → Indian names only; anything else → US (default).
+function regionOf(req) {
+  return req.query.region === 'in' ? 'in' : 'us';
+}
+// Prisma where-fragment for findMany calls.
+function regionWhere(region) {
+  const indian = { OR: [{ asset: { endsWith: '.NS' } }, { asset: { endsWith: '.BO' } }] };
+  return region === 'in' ? indian : { NOT: indian };
+}
+// Raw-SQL predicate for $queryRaw (col defaults to bs.asset). Returns a leading AND.
+function regionSql(region, col = Prisma.raw('bs.asset')) {
+  return region === 'in'
+    ? Prisma.sql`AND (${col} LIKE '%.NS' OR ${col} LIKE '%.BO')`
+    : Prisma.sql`AND ${col} NOT LIKE '%.NS' AND ${col} NOT LIKE '%.BO'`;
+}
+
 app.get('/api/signals', async (req, res) => {
   console.log('[/api/signals] Handler called with query:', req.query);
+  const region = regionOf(req);
   const assetTypeFilter = req.query.type || 'all'; // 'stocks', 'etfs', or 'all'
   // Lookback window (days). Default 3 (=72h, survives the Fri→Mon gap); the
   // breakout view's slider widens it to surface older alerts. Clamp 1–90.
@@ -328,6 +463,7 @@ app.get('/api/signals', async (req, res) => {
         WHERE bs.confidence >= 0.80
           -- Lookback window (default 3d survives the Fri→Mon gap; slider widens it)
           AND bs."createdAt" > NOW() - make_interval(days => ${daysBack}::int)
+          ${regionSql(region)}
       )
       SELECT
         asset,
@@ -374,7 +510,8 @@ app.get('/api/signals', async (req, res) => {
         agentName: 'BreakoutAgent',
         signalType: { startsWith: 'setup-' },
         confidence: { gte: 0.80 },
-        createdAt: { gt: new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000) }
+        createdAt: { gt: new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000) },
+        ...regionWhere(region),
       },
       orderBy: { createdAt: 'desc' }, // most recent first for dedup
     });
@@ -676,7 +813,7 @@ app.get('/api/winners', async (req, res) => {
     const since = new Date();
     since.setDate(since.getDate() - 14);
 
-    const where = { screenType, createdAt: { gte: since } };
+    const where = { screenType, createdAt: { gte: since }, ...regionWhere(regionOf(req)) };
     if (tier && ['A', 'B', 'C'].includes(tier)) where.tier = tier;
 
     const rows = await db.winnerSignal.findMany({
@@ -793,7 +930,7 @@ app.get('/api/beat-raise', async (req, res) => {
     const since = new Date();
     since.setDate(since.getDate() - 14);
     const rows = await db.breakoutSignal.findMany({
-      where: { createdAt: { gte: since }, epsBeat: true, earningsGuidance: 'raised' },
+      where: { createdAt: { gte: since }, epsBeat: true, earningsGuidance: 'raised', ...regionWhere(regionOf(req)) },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -846,6 +983,7 @@ app.get('/api/unusual-volume', async (req, res) => {
     // Latest scan session anchors "today": off-hours the UTC day rolls over
     // before the next session runs, which would empty the panel.
     const latest = await db.breakoutSignal.findFirst({
+      where: regionWhere(regionOf(req)),
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
@@ -861,7 +999,7 @@ app.get('/api/unusual-volume', async (req, res) => {
     // volumeRatio = volume / avgVolume, so >= 2 means 100%+ above average.
     // bullishCandle => the move was on the upside.
     const rows = await db.breakoutSignal.findMany({
-      where: { createdAt: { gte: dayStart, lt: dayEnd }, volumeRatio: { gte: 2 }, bullishCandle: true },
+      where: { createdAt: { gte: dayStart, lt: dayEnd }, volumeRatio: { gte: 2 }, bullishCandle: true, ...regionWhere(regionOf(req)) },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -1248,16 +1386,19 @@ app.get('/api/backtest', async (req, res) => {
       );
     }
 
-    // Overall summary
+    // Overall summary. The whole panel models an 8% stop-loss, so every
+    // magnitude stat (avg/median/worst) uses returns capped at -8% — otherwise
+    // a "worst -15%" under an "8% stop" caption contradicts itself. Win rate and
+    // best are computed on raw returns (a stop caps losses, never gains).
+    const cappedReturns = evaluated.map((e) => Math.max(-8, e.returnPct));
     const totalReturn = evaluated.reduce((s, e) => s + e.returnPct, 0);
-    // Simulated avg return assuming an 8% stop-loss: cap each loss at -8%
-    const cappedTotalReturn = evaluated.reduce((s, e) => s + Math.max(-8, e.returnPct), 0);
+    const cappedTotalReturn = cappedReturns.reduce((s, r) => s + r, 0);
     const wins = evaluated.filter((e) => e.returnPct > 0).length;
-    const sortedReturns = [...evaluated].map((e) => e.returnPct).sort((a, b) => a - b);
+    const sortedReturns = [...cappedReturns].sort((a, b) => a - b);
     const median = sortedReturns.length
       ? sortedReturns[Math.floor(sortedReturns.length / 2)]
       : 0;
-    const bestReturn = sortedReturns.length ? sortedReturns[sortedReturns.length - 1] : 0;
+    const bestReturn = evaluated.length ? Math.max(...evaluated.map((e) => e.returnPct)) : 0;
     const worstReturn = sortedReturns.length ? sortedReturns[0] : 0;
 
     // By confidence tier
@@ -1270,10 +1411,11 @@ app.get('/api/backtest', async (req, res) => {
     const byTier = tiers.map((t) => {
       const rows = evaluated.filter((e) => e.confidence >= t.min && e.confidence < t.max);
       if (!rows.length) return { ...t, count: 0, avgReturn: 0, medianReturn: 0, winRate: 0 };
-      const rs = rows.map((r) => r.returnPct).sort((a, b) => a - b);
+      // Capped (8% stop) for magnitude; raw for win rate — matches the headline.
+      const rs = rows.map((r) => Math.max(-8, r.returnPct)).sort((a, b) => a - b);
       const avg = rs.reduce((a, b) => a + b, 0) / rs.length;
       const med = rs[Math.floor(rs.length / 2)];
-      const winsInTier = rs.filter((r) => r > 0).length;
+      const winsInTier = rows.filter((r) => r.returnPct > 0).length;
       return {
         ...t,
         count: rows.length,
@@ -1293,7 +1435,7 @@ app.get('/api/backtest', async (req, res) => {
       .map(([sector, returns]) => ({
         sector,
         count: returns.length,
-        avgReturn: returns.reduce((a, b) => a + b, 0) / returns.length,
+        avgReturn: returns.reduce((a, b) => a + Math.max(-8, b), 0) / returns.length,
         winRate: (returns.filter((r) => r > 0).length / returns.length) * 100,
       }))
       .filter((s) => s.count >= 2) // hide singleton sectors

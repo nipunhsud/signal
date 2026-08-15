@@ -2,21 +2,45 @@ import { fetchMarketData, fetchEarningsSurprise } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
+import { postXThread } from "./x-post.js";
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 import { getOrAnalyzeTranscript } from "./tools/transcript-analysis.js";
 import { reviewSignal } from "./tools/ai-signal-review.js";
 import { globalRateLimiter } from "./tools/rate-limiter.js";
 
-// US market hours are always defined in America/New_York, regardless of
-// container TZ. Returns `label` so callers can log the checked ET time.
-export function marketStatus(date: Date = new Date()): {
+export type Region = "US" | "IN";
+
+// Market hours are defined in the exchange's own timezone, regardless of
+// container TZ. US: 9:30-16:00 ET. IN (NSE): 9:15-15:30 IST.
+const MARKET_HOURS: Record<Region, { tz: string; open: number; close: number; suffix: string }> = {
+  // close inclusive of the last minute so the post-close scan captures the settling close print.
+  US: { tz: "America/New_York", open: 570, close: 960, suffix: "ET" },
+  IN: { tz: "Asia/Kolkata", open: 555, close: 930, suffix: "IST" },
+};
+
+// Region of a symbol: NSE/BSE tickers carry a .NS/.BO suffix; everything else is US.
+export function regionOf(symbol: string): Region {
+  return /\.(NS|BO)$/i.test(symbol) ? "IN" : "US";
+}
+
+// TradingView needs an exchange prefix for Indian tickers — FMP's .NS/.BO suffix
+// doesn't resolve there. Map .NS→NSE:, .BO→BSE:; US symbols pass through.
+export function tradingViewSymbol(symbol: string): string {
+  if (/\.NS$/i.test(symbol)) return "NSE:" + symbol.replace(/\.NS$/i, "");
+  if (/\.BO$/i.test(symbol)) return "BSE:" + symbol.replace(/\.BO$/i, "");
+  return symbol;
+}
+
+// Returns `label` so callers can log the checked exchange-local time.
+export function marketStatus(date: Date = new Date(), region: Region = "US"): {
   open: boolean;
   label: string;
 } {
+  const h = MARKET_HOURS[region];
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
+      timeZone: h.tz,
       weekday: "short",
       hour: "2-digit",
       minute: "2-digit",
@@ -26,16 +50,14 @@ export function marketStatus(date: Date = new Date()): {
       .map((p) => [p.type, p.value]),
   ) as Record<string, string>;
 
-  const label = `${parts.hour}:${parts.minute} ${parts.weekday} ET`;
+  const label = `${parts.hour}:${parts.minute} ${parts.weekday} ${h.suffix}`;
   const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
   const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday);
-  // 9:30 AM (570) - 4:00 PM (960) inclusive of 16:00 so the post-close scan
-  // captures the settling close print.
-  return { open: isWeekday && mins >= 570 && mins <= 960, label };
+  return { open: isWeekday && mins >= h.open && mins <= h.close, label };
 }
 
-export function isMarketOpen(date: Date = new Date()): boolean {
-  return marketStatus(date).open;
+export function isMarketOpen(date: Date = new Date(), region: Region = "US"): boolean {
+  return marketStatus(date, region).open;
 }
 
 const SECTOR_TAILWINDS: Record<string, string> = {
@@ -83,9 +105,12 @@ export class BreakoutAgent {
     const MIN_MARKET_CAP = parseInt(process.env.MIN_MARKET_CAP || "300000000"); // $300M default
     const MIN_VOLUME = parseInt(process.env.MIN_VOLUME || "100000"); // 100k shares default
     const MEGACAP_WATCH = ["NVDA", "MSFT", "ASML", "AMAT", "OPEN", "NBIS"];
+    // REGION selects the exchange universe. IN = NSE (symbols come back .NS-suffixed).
+    const region = (process.env.REGION || "US") as Region;
+    const EXCHANGES = region === "IN" ? "NSE" : "NASDAQ,NYSE,AMEX";
 
     try {
-      console.log(`[FMP] Fetching filtered US ${mode} (split queries for manageability)...`);
+      console.log(`[FMP] Fetching filtered ${region} ${mode} (split queries for manageability)...`);
       const startTime = Date.now();
 
       interface ScreenerResult {
@@ -100,7 +125,7 @@ export class BreakoutAgent {
 
       const screenerUrl = isEtf
         ? `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`
-        : `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=NASDAQ,NYSE,AMEX&limit=10000&apikey=${apiKey}`;
+        : `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=${EXCHANGES}&limit=10000&apikey=${apiKey}`;
       const assetsRes = await globalRateLimiter.execute(() => fetch(screenerUrl));
 
       let stockSymbols: string[] = [];
@@ -115,9 +140,9 @@ export class BreakoutAgent {
         console.warn(`  [FMP] ${assetType} query failed (${assetsRes.status}), skipping`);
       }
 
-      // Only add megacap watch for stocks mode
+      // Only add megacap watch for US stocks mode (the watchlist is US tickers)
       let allAssets = [...new Set(stockSymbols)];
-      if (mode === "stocks") {
+      if (mode === "stocks" && region === "US") {
         const megacapsInScreener = MEGACAP_WATCH.filter((m) => allAssets.includes(m));
         const megacapsMissing = MEGACAP_WATCH.filter((m) => !allAssets.includes(m));
         if (megacapsInScreener.length > 0) {
@@ -137,12 +162,14 @@ export class BreakoutAgent {
         `[FMP] Fetched ${allAssets.length} US ${assetType} (${filterDesc}) in ${elapsed}ms`,
       );
 
-      // Filter out delisted stocks
-      const activeAssets = await filterDelistedStocks(allAssets);
+      // Filter out delisted stocks. The delist check is US-shaped (FMP US endpoints),
+      // so skip it for IN — the NSE screener's isActivelyTrading already gates this.
+      // ponytail: no IN delist cleanup yet; add if stale .NS rows appear.
+      const activeAssets = region === "US" ? await filterDelistedStocks(allAssets) : allAssets;
       console.log(`[FMP AUDIT] After delisting filter: ${activeAssets.length} ${assetType} (removed ${allAssets.length - activeAssets.length})`);
 
-      // Check if any megacaps were filtered by delisting (stocks only)
-      if (mode === "stocks") {
+      // Check if any megacaps were filtered by delisting (US stocks only)
+      if (mode === "stocks" && region === "US") {
         const megacapsAfterFilter = MEGACAP_WATCH.filter((m) => activeAssets.includes(m));
         const megacapsFilteredOut = MEGACAP_WATCH.filter((m) => stockSymbols.includes(m) && !activeAssets.includes(m));
         if (megacapsFilteredOut.length > 0) {
@@ -354,7 +381,8 @@ export class BreakoutAgent {
       const isBreakoutStock =
         (breakoutAnalysis.breakoutType === "Type1" ||
           breakoutAnalysis.breakoutType === "Type3") &&
-        data.assetType === "stock";
+        data.assetType === "stock" &&
+        regionOf(asset) === "US"; // FMP has no NSE/BSE transcripts — skip the wasted call
       if (isBreakoutStock) {
         try {
           earnings = await getOrAnalyzeTranscript(asset);
@@ -782,8 +810,8 @@ export class BreakoutAgent {
       return;
     }
 
-    // Type 1/1b/3 only alert during market hours (9:30am-4pm EDT, Mon-Fri)
-    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3") && !isMarketOpen()) {
+    // Type 1/1b/3 only alert during market hours (US 9:30-16:00 ET / NSE 9:15-15:30 IST, Mon-Fri)
+    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3") && !isMarketOpen(new Date(), regionOf(result.asset))) {
       console.log(
         `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
@@ -831,7 +859,7 @@ export class BreakoutAgent {
 
     const breakoutLabel = latestRecord.breakoutType === "Type1" ? "Fresh Breakout" : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
     const subject = `🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
-    const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${result.asset}`;
+    const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Trade setup for Type 1 & Type 3 — read frozen entry/stop that were
     // snapshotted at the moment breakoutType first flipped from unknown.
@@ -927,4 +955,226 @@ Time: ${result.timestamp.toISOString()}
 
     console.log(`✓ Alert sent: ${result.asset} @ $${result.currentPrice}`);
   }
+
+  // ── X use case 1: automated signal teasers ────────────────────────────────
+  // A few times a day, post the top 1-2 fresh high-confidence breakouts as
+  // teasers: reveal the cross price + AI earnings tone/guidance (organic hook),
+  // withhold the stop/R:R (the paid product). Runs on the shard-0 tier only
+  // (gated in index.ts), reads the shared DB, so it covers every tier's signals.
+  // Pilot bar: confidence ≥ 95%, or ≥ 85% with raised guidance.
+  async postXSignalTeasers(): Promise<void> {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0); // container TZ is America/New_York
+    const maxPerDay = parseInt(process.env.X_TEASER_MAX || "2");
+
+    // Tickers already teased today — don't repeat, even though newer scan rows
+    // for the same asset carry xPostedAt = null.
+    const postedToday = await db.breakoutSignal.findMany({
+      where: { xPostedAt: { gte: startOfToday } },
+      distinct: ["asset"],
+      select: { asset: true },
+    });
+    const postedSet = new Set(postedToday.map((r) => r.asset));
+
+    // Latest alerted row per asset that fired today, best confidence first.
+    const candidates = await db.breakoutSignal.findMany({
+      where: { lastAlertAt: { gte: startOfToday } },
+      orderBy: { createdAt: "desc" },
+      distinct: ["asset"],
+    });
+
+    const qualifying = candidates
+      .filter(
+        (s) =>
+          !postedSet.has(s.asset) &&
+          (s.confidence >= 0.95 ||
+            (s.confidence >= 0.85 && s.earningsGuidance === "raised")),
+      )
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, maxPerDay);
+
+    if (qualifying.length === 0) {
+      console.log("⊘ X teasers: no qualifying signals this window");
+      return;
+    }
+
+    const tweets = qualifying.map((s) => {
+      const cross = s.entryPrice ?? s.resistance;
+      const setup = s.breakoutType === "Type3" ? "Extension" : "Actionable";
+      const earnings =
+        s.earningsTone && s.earningsToneScore != null
+          ? `AI Earnings — Tone: ${capitalize(s.earningsTone)} (${fmtScore(s.earningsToneScore)})` +
+            (s.earningsGuidance && s.earningsGuidance !== "none"
+              ? ` · Guidance: ${capitalize(s.earningsGuidance)}`
+              : "") +
+            "\n"
+          : "";
+      return (
+        `🚀 Breakout: $${s.asset} crossed $${cross.toFixed(2)} · ${setup}\n` +
+        earnings +
+        `Full entry, stop & setup → ${dqLink(s.asset)} · Not advice`
+      );
+    });
+
+    const posted = await postXThread(tweets);
+    if (posted) {
+      const assets = qualifying.map((s) => s.asset);
+      await db.breakoutSignal.updateMany({
+        where: { asset: { in: assets } },
+        data: { xPostedAt: now },
+      });
+      console.log(`✓ X teasers posted (${assets.length}): ${assets.join(", ")}`);
+    }
+  }
+
+  // ── X use case 2: transparent performance audit ───────────────────────────
+  // Monthly recap. Reuses the dashboard's /api/backtest engine (real forward
+  // returns from cached FMP closes) so we never post invented numbers — wins
+  // AND losses, capped at the 8% stop. No dedup needed (runs once a month).
+  async postXPerformanceAudit(): Promise<void> {
+    const base = process.env.DASHBOARD_URL || "http://dashboard:3000";
+    let data: any;
+    try {
+      const res = await fetch(
+        `${base}/api/backtest?type=Type1&lookback=30&horizon=20`,
+      );
+      if (!res.ok) throw new Error(`backtest HTTP ${res.status}`);
+      data = await res.json();
+    } catch (e) {
+      console.error("X audit: backtest fetch failed:", (e as Error).message);
+      return;
+    }
+
+    const s = data?.summary;
+    if (!s || !s.totalSignals) {
+      console.log("⊘ X audit: no evaluated signals in window");
+      return;
+    }
+
+    const lead =
+      `📊 DataQuant performance audit — trailing 30 days\n` +
+      `Signals: ${s.totalSignals} · Win rate: ${s.winRate.toFixed(0)}% · Avg/trade: ${fmtPct(s.avgReturn)} (8% stop)\n` +
+      `Median: ${fmtPct(s.medianReturn)}\n` +
+      `We publish wins AND losses. Not advice · dataquant.ai`;
+
+    const tierLines = (data.byTier || [])
+      .filter((t: any) => t.count > 0)
+      .map(
+        (t: any) =>
+          `${t.label}: ${t.count} signals · ${t.winRate.toFixed(0)}% win · ${fmtPct(t.avgReturn)} avg`,
+      );
+
+    const thread = [lead];
+    if (tierLines.length) {
+      thread.push(...chunkLines(["By confidence tier:", ...tierLines], 270));
+    }
+    await postXThread(thread);
+  }
+
+  // ── X use case 3: earnings breakdown thread (single best) ─────────────────
+  // Once a day, post ONE AI earnings breakdown — the highest-confidence breakout
+  // with raised guidance and the most bullish tone. Posting only the single best
+  // name keeps X quota low and sneak-peeks just our strongest pick (entry/stop
+  // still withheld) instead of leaking the whole breakout watchlist. Selection
+  // is driven by the signal (confidence lives on BreakoutSignal); the full
+  // breakdown comes from TranscriptAnalysis. Dedup via xPostedAt (once/quarter).
+  async postXEarningsThreads(): Promise<void> {
+    const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000); // last 3 days of alerts
+
+    // Best raised-guidance breakout first: confidence, then earnings tone.
+    // Exclude Type1b (clean breakout on WEAK volume) — only real volume-backed
+    // breakouts get the sneak peek.
+    const candidates = await db.breakoutSignal.findMany({
+      where: {
+        lastAlertAt: { gte: since },
+        earningsGuidance: "raised",
+        breakoutType: { not: "Type1b" },
+      },
+      orderBy: [{ confidence: "desc" }, { earningsToneScore: "desc" }],
+    });
+
+    const seen = new Set<string>();
+    for (const c of candidates) {
+      if (seen.has(c.asset)) continue;
+      seen.add(c.asset);
+
+      // Full breakdown lives on TranscriptAnalysis; skip if this asset's latest
+      // earnings was already posted (xPostedAt set) or we have no analysis.
+      const ta = await db.transcriptAnalysis.findFirst({
+        where: { asset: c.asset, xPostedAt: null },
+        orderBy: [{ year: "desc" }, { quarter: "desc" }],
+      });
+      if (!ta) continue;
+
+      const highlights = (ta.highlights as string[]) || [];
+      const risks = (ta.riskFlags as string[]) || [];
+      const guidance =
+        ta.guidanceDirection && ta.guidanceDirection !== "none"
+          ? ` · Guidance: ${capitalize(ta.guidanceDirection)}`
+          : "";
+
+      // Reveal the breakout too (this is the top pick): cross price + volume
+      // confirmation for Type1, or extension for Type3. Stop/R:R still withheld.
+      const cross = (c.entryPrice ?? c.resistance).toFixed(2);
+      const brk =
+        c.breakoutType === "Type3"
+          ? `🚀 $${ta.asset} extension — holding above $${cross}`
+          : `🚀 $${ta.asset} broke out $${cross} on strong volume`;
+      const lead =
+        `${brk}\n` +
+        `📞 Q${ta.quarter} ${ta.year} earnings — Tone: ${capitalize(ta.tone)} (${fmtScore(ta.toneScore)})${guidance}\n` +
+        `Full setup → ${dqLink(ta.asset)} · Not advice`;
+
+      const thread = [lead, truncate(ta.summary, 270)];
+      if (highlights.length) {
+        thread.push(
+          ...chunkLines(["✅ Highlights", ...highlights.map((h) => `• ${h}`)], 270),
+        );
+      }
+      if (risks.length) {
+        thread.push(
+          ...chunkLines(["⚠️ Risk flags", ...risks.map((r) => `• ${r}`)], 270),
+        );
+      }
+
+      const posted = await postXThread(thread);
+      if (posted) {
+        await db.transcriptAnalysis.update({
+          where: { id: ta.id },
+          data: { xPostedAt: new Date() },
+        });
+        console.log(
+          `✓ X earnings thread posted (best): $${ta.asset} conf ${(c.confidence * 100).toFixed(0)}% tone ${fmtScore(ta.toneScore)}`,
+        );
+      }
+      return; // one per run — the single best
+    }
+
+    console.log("⊘ X earnings: no raised-guidance breakout with a fresh analysis");
+  }
 }
+
+// Pack lines into as few tweets as possible without any tweet exceeding maxLen.
+function chunkLines(lines: string[], maxLen: number): string[] {
+  const chunks: string[] = [];
+  let cur = "";
+  for (const line of lines) {
+    if (cur && cur.length + 1 + line.length > maxLen) {
+      chunks.push(cur);
+      cur = line;
+    } else {
+      cur = cur ? `${cur}\n${line}` : line;
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const fmtScore = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(2);
+const fmtPct = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+const truncate = (s: string, n: number) =>
+  s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
+// Per-ticker deep link, e.g. dataquant.ai/$hpe
+const dqLink = (asset: string) => `dataquant.ai/$${asset.toLowerCase()}`;

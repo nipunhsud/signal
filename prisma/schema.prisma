@@ -74,6 +74,10 @@ model BreakoutSignal {
   lastAlertPrice Float?       // Price when last alert was sent
   lastAlertAt DateTime?       // Timestamp of last alert (for re-alerts)
 
+  // X (Twitter) digest tracking — set when the asset is included in a posted
+  // digest thread, so the second daily digest doesn't repeat the same ticker.
+  xPostedAt DateTime?
+
   // Timing
   signalDate DateTime?        // When the signal actually occurred (market candle date), not when logged
   createdAt DateTime @default(now())
@@ -84,6 +88,7 @@ model BreakoutSignal {
   @@index([shouldAlert, createdAt])
   @@index([pineScriptGreen, createdAt])
   @@index([asset, alertSentAt])
+  @@index([xPostedAt])
 }
 
 // Winner-model screen (MissionWinners-style): stocks with strong prior-quarter
@@ -258,8 +263,11 @@ model TranscriptAnalysis {
   inputTokens  Int
   outputTokens Int
 
+  xPostedAt DateTime? // set once this earnings breakdown has been posted to X
+
   createdAt DateTime @default(now())
 
   @@unique([asset, quarter, year])
   @@index([asset, createdAt])
+  @@index([xPostedAt])
 }

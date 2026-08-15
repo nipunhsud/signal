@@ -53,6 +53,13 @@ services:
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # X posting for the admin "Tweet earnings" button (admin gated via Clerk
+      # private metadata, so no admin env needed — just the X credentials).
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,6 +75,17 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
+      # Only this (shard-0) tier posts to X. All cron/cap knobs are optional —
+      # the code has sensible defaults; set any in root .env to override.
+      - X_TEASER_CRON=${X_TEASER_CRON:-}
+      - X_TEASER_MAX=${X_TEASER_MAX:-}
+      - X_AUDIT_CRON=${X_AUDIT_CRON:-}
+      - DASHBOARD_URL=${DASHBOARD_URL:-http://dashboard:3000}
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -84,6 +102,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -100,6 +123,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -116,6 +144,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -132,9 +165,47 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - X_POST_ENABLED=${X_POST_ENABLED:-false}
+      - X_API_KEY=${X_API_KEY:-}
+      - X_API_SECRET=${X_API_SECRET:-}
+      - X_ACCESS_TOKEN=${X_ACCESS_TOKEN:-}
+      - X_ACCESS_SECRET=${X_ACCESS_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
+    command: npm start
+    restart: unless-stopped
+
+  # India (NSE) Breakout Agent — Shard 1 of 2. REGION=IN + TZ=Asia/Kolkata come
+  # from the env_file; scans the NSE universe on IST market hours. No X posting.
+  agent-in-1:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+      target: agent
+    env_file: .env.tiers/.env.tier-in-1
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    command: npm start
+    restart: unless-stopped
+
+  # India (NSE) Breakout Agent — Shard 2 of 2.
+  agent-in-2:
+    build:
+      context: .
+      dockerfile: apps/breakout-agent/Dockerfile
+      target: agent
+    env_file: .env.tiers/.env.tier-in-2
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
     command: npm start
     restart: unless-stopped
 
