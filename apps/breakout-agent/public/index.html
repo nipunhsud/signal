@@ -1149,6 +1149,27 @@
         }
       }
 
+      // Manually add ticker(s) to the active list from the shortlist screen.
+      // Accepts comma/space-separated symbols so a whole list can be pasted.
+      async addTicker() {
+        if (!this.activeListId) { this.toast('Create a list first', { kind: 'warn' }); return; }
+        const raw = (prompt('Add ticker(s) — comma or space separated') || '').trim();
+        if (!raw) return;
+        const tickers = [...new Set(raw.toUpperCase().split(/[\s,]+/).filter(Boolean))];
+        try {
+          for (const asset of tickers) {
+            await fetch('/api/shortlist', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ listId: this.activeListId, asset }),
+            });
+          }
+          await this.fetchShortlistLists();
+          this.toast(`Added ${tickers.length} ticker${tickers.length !== 1 ? 's' : ''}`, { kind: 'success' });
+        } catch (error) {
+          this.toast('Add failed', { kind: 'warn' });
+        }
+      }
+
       async renameList(id) {
         const current = this.lists.find(l => l.id === id);
         const name = (prompt('Rename list', current?.name || '') || '').trim();
@@ -2367,6 +2388,7 @@
                   <h1 class="text-4xl font-bold">⭐ Shortlist</h1>
                   <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
                 </div>
+                ${activeId ? `<button onclick="dashboard.addTicker()" class="px-4 py-2 bg-green-700 hover:bg-green-600 rounded text-sm font-semibold" title="Add ticker(s) to this list">+ Add ticker</button>` : ''}
                 ${activeId ? `<button onclick="dashboard.renameList('${activeId}')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" title="Rename this list">Rename</button>` : ''}
                 ${activeId ? `<button onclick="dashboard.deleteList('${activeId}')" class="px-3 py-2 bg-red-900 hover:bg-red-800 text-red-100 rounded text-sm" title="Delete this list">Delete list</button>` : ''}
                 ${items.length ? `<button onclick="dashboard.copyTvList()" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm font-semibold" title="Copy as comma-separated tickers — paste into TradingView 'Add symbol' or Import list">Copy TV list</button>` : ''}
