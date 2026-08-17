@@ -1379,7 +1379,7 @@ const backtestCache = new Map(); // cacheKey -> { data, expiresAt }
 const BACKTEST_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
 app.get('/api/backtest', async (req, res) => {
-  const horizon = Math.min(30, Math.max(1, parseInt(req.query.horizon) || 10));
+  const horizon = Math.min(60, Math.max(1, parseInt(req.query.horizon) || 10));
   const lookback = Math.min(180, Math.max(7, parseInt(req.query.lookback) || 90));
   const type = req.query.type === 'Type3' ? 'Type3' : 'Type1';
 

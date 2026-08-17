@@ -2222,7 +2222,7 @@
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Horizon</span>
                   <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
-                    ${[5, 10, 20, 30].map(v => controlPill(`${v}d`, 'horizon', v, p.horizon)).join('')}
+                    ${[5, 10, 20, 30, 60].map(v => controlPill(`${v}d`, 'horizon', v, p.horizon)).join('')}
                   </div>
                 </div>
                 <button onclick="dashboard.fetchBacktest()" class="ml-auto text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">
