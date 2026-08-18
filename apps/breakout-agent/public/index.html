@@ -1255,6 +1255,39 @@
         }
       }
 
+      renderTickerPulse(d) {
+        const el = document.getElementById('pulse-content');
+        if (!el) return;
+        const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+        if (!d || (!d.sentiment && (!d.news || !d.news.length))) {
+          el.innerHTML = '<span class="text-gray-500">No social or news data for this ticker.</span>';
+          return;
+        }
+        let html = '';
+        const s = d.sentiment;
+        if (s) {
+          const barColor = s.bullishPct >= 60 ? 'bg-green-500' : s.bullishPct >= 45 ? 'bg-yellow-500' : 'bg-red-500';
+          const fmt = (n) => (Number(n) || 0).toLocaleString();
+          html += `
+            <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-3 py-2.5 mb-2">
+              <div class="flex justify-between items-center mb-1.5">
+                <span class="text-gray-400 text-[12px]" title="Share of recent StockTwits/X posts that read bullish — crowd mood, not a price move or win rate">Social sentiment</span>
+                <span class="font-mono tabular-nums">${s.bullishPct}% <span class="text-gray-500 text-[11px]">bullish</span></span>
+              </div>
+              <div class="h-1.5 rounded-full bg-gray-700 overflow-hidden"><div class="${barColor} h-full" style="width:${s.bullishPct}%"></div></div>
+              <div class="text-[11px] text-gray-500 mt-1.5">${fmt(s.posts)} posts · ${fmt(s.impressions)} impressions</div>
+            </div>`;
+        }
+        if (d.news && d.news.length) {
+          html += '<div class="space-y-1.5">' + d.news.map(n => `
+            <a href="${esc(n.url)}" target="_blank" rel="noopener" class="block bg-gray-800/40 hover:bg-gray-800/70 ring-1 ring-gray-700/50 rounded px-3 py-2 transition">
+              <div class="text-[12px] text-gray-200 leading-snug">${esc(n.title)}</div>
+              <div class="text-[10px] text-gray-500 mt-1">${esc(n.publisher || '')}</div>
+            </a>`).join('') + '</div>';
+        }
+        el.innerHTML = html;
+      }
+
       renderTranscript(ta) {
         const el = document.getElementById('transcript-content');
         if (!el) return;
@@ -1476,6 +1509,13 @@
                   ETF Details
                 </h3>
                 <div class="space-y-2">
+                  ${signal.sector && signal.sector !== 'Unknown' ? `
+                    <button onclick="dashboard.showSectorPeers('${signal.sector.replace(/'/g, "\\'")}')"
+                      class="w-full bg-amber-900/30 hover:bg-amber-900/50 ring-1 ring-amber-700/40 rounded px-2.5 py-2 flex justify-between items-center text-[13px] transition">
+                      <span class="text-amber-200">See ${signal.sector} stocks breaking out</span>
+                      <span class="text-amber-400">→</span>
+                    </button>
+                  ` : ''}
                   ${signal.expenseRatio ? `
                     <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
                       <span class="text-gray-400">Expense Ratio</span>
@@ -1716,6 +1756,19 @@
               </div>
               `}
 
+              <!-- Social sentiment & news (loaded lazily) — US-listed only -->
+              ${/\.(NS|BO)$/i.test(signal.asset) ? '' : `
+              <div id="pulse-section" class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 flex items-center gap-2 mb-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  Social &amp; News
+                </h3>
+                <div id="pulse-content" class="text-[13px] text-gray-300 leading-relaxed">
+                  <span class="text-gray-500">Loading…</span>
+                </div>
+              </div>
+              `}
+
               <!-- Export / Share -->
               <div class="border-t border-gray-700/60 pt-4">
                 <button
@@ -1763,6 +1816,17 @@
             .catch(() => {
               const el = document.getElementById('transcript-content');
               if (el) el.innerHTML = '<span class="text-gray-500">Failed to load analysis.</span>';
+            });
+        }
+
+        // Lazy load per-ticker social sentiment + news (US-listed only).
+        if (!/\.(NS|BO)$/i.test(signal.asset)) {
+          fetch('/api/ticker-pulse/' + encodeURIComponent(signal.asset))
+            .then(r => r.ok ? r.json() : null)
+            .then(d => this.renderTickerPulse(d))
+            .catch(() => {
+              const el = document.getElementById('pulse-content');
+              if (el) el.innerHTML = '<span class="text-gray-500">Failed to load.</span>';
             });
         }
 
@@ -2135,6 +2199,20 @@
         this.savePrefs();
         if (kind === 'assetTypeFilter') this.fetchSignals();
         else this.render();
+      }
+
+      // From an ETF drawer, jump to the same-sector stocks so you can see which
+      // constituents are actually breaking. Reuses sector + assetType filters.
+      showSectorPeers(sector) {
+        if (!sector || sector === 'Unknown') { this.toast('No sector for this asset', { kind: 'info' }); return; }
+        this.filtering = '';
+        this.assetTypeFilter = 'stock';
+        this.sectorFilter = sector;
+        this.savePrefs();
+        this.closeDrawer();
+        this.setView('dashboard');
+        this.fetchSignals();
+        this.toast(`${sector} stocks`, { kind: 'info' });
       }
 
       // Lookback widens the server-side window, so it must refetch.

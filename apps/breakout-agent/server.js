@@ -10,6 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { postXThread } from './dist/x-post.js';
+import { renderScorecardPng, metaFor, metaHtml } from './og-card.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -188,6 +189,13 @@ app.get('/upgrade', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upgrade.html'));
 });
 
+// Market Pulse — PUBLIC engagement/acquisition surface (no paywall, crawlable):
+// social-sentiment trending + market news, cross-referenced against our live
+// signals, teasing the setup to drive signups.
+app.get('/pulse', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'pulse.html'));
+});
+
 // Dashboard is behind the paywall.
 app.get('/dashboard', paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -200,8 +208,44 @@ app.get('/in/dashboard', paywall, (req, res) => {
 });
 app.get('/in', (req, res) => res.redirect('/in/dashboard'));
 
-// Per-ticker deep link from X posts (e.g. /$hpe). Same SPA + paywall; the client
-// reads the $SYMBOL from the path and opens that ticker's drawer.
+// Public OG scorecard image (1200×630 PNG) for X/social link previews. No
+// paywall — crawlers must be able to fetch it. Falls back to a ticker-only card
+// when no signal exists yet, so the link still previews.
+const latestSignalFor = (ticker) =>
+  db.breakoutSignal.findFirst({ where: { asset: ticker.toUpperCase() }, orderBy: { createdAt: 'desc' } });
+
+app.get(/^\/og\/([A-Za-z.\-]+)\.png$/, async (req, res) => {
+  try {
+    const ticker = req.params[0].toUpperCase();
+    const s = (await latestSignalFor(ticker)) || { asset: ticker };
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=900'); // 15 min; signals move slowly
+    res.send(renderScorecardPng(s));
+  } catch (error) {
+    console.error('[/og] failed:', error);
+    res.status(500).end();
+  }
+});
+
+const isCrawler = (ua) =>
+  /bot|crawler|spider|twitter|facebookexternalhit|slack|discord|linkedin|whatsapp|telegram|embedly|preview/i.test(ua || '');
+
+// Per-ticker deep link (e.g. /$hpe). Crawlers get a bare OG/Twitter-card shell
+// (no paywall) so the scorecard renders in the tweet; humans fall through to the
+// paywalled SPA, which reads the $SYMBOL from the path and opens the drawer.
+app.get(/^\/\$[A-Za-z.\-]+$/, async (req, res, next) => {
+  if (!isCrawler(req.get('user-agent'))) return next();
+  try {
+    const ticker = decodeURIComponent(req.path).replace(/^\/\$/, '').toUpperCase();
+    const s = (await latestSignalFor(ticker)) || { asset: ticker };
+    const proto = req.get('x-forwarded-proto') || req.protocol; // Caddy terminates TLS
+    const origin = `${proto}://${req.get('host')}`;
+    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png`, `${origin}${req.path}`)));
+  } catch (error) {
+    console.error('[deep-link og] failed:', error);
+    next();
+  }
+});
 app.get(/^\/\$[A-Za-z.\-]+$/, paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -1369,6 +1413,145 @@ app.post('/api/sparklines', async (req, res) => {
     }
   }
   res.json(result);
+});
+
+// Market Pulse: public feed of social-sentiment trending + market news, with
+// each ticker cross-referenced against our live signals. Two market-wide FMP
+// calls per cache-miss, cached server-side for ALL visitors → negligible
+// bandwidth (no per-ticker fan-out).
+let pulseCache = null; // { data, expiresAt }
+const PULSE_TTL_MS = 10 * 60 * 1000; // 10 min
+
+app.get('/api/pulse', async (req, res) => {
+  if (pulseCache && pulseCache.expiresAt > Date.now()) {
+    return res.json({ ...pulseCache.data, cached: true });
+  }
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'FMP_API_KEY not set' });
+
+  try {
+    const [trendRaw, newsRaw] = await Promise.all([
+      fetch(`https://financialmodelingprep.com/api/v4/social-sentiments/trending?type=bullish&source=stocktwits&apikey=${apiKey}`)
+        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      fetch(`https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`)
+        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    ]);
+
+    const trending = (Array.isArray(trendRaw) ? trendRaw : []).slice(0, 12).map((t) => ({
+      symbol: t.symbol,
+      name: t.name || null,
+      sentiment: Number(t.sentiment) || 0,           // 0..1
+      lastSentiment: Number(t.lastSentiment) || 0,   // prior reading → momentum
+    }));
+    const news = (Array.isArray(newsRaw) ? newsRaw : []).slice(0, 12).map((n) => ({
+      symbol: n.symbol || null,
+      title: n.title,
+      publisher: n.publisher || n.site || null,
+      image: n.image || null,
+      url: n.url || null,
+      publishedDate: n.publishedDate || null,
+    }));
+
+    // One DB pass: which of these tickers have a live signal (last 14 days)?
+    const symbols = [...new Set([
+      ...trending.map((t) => t.symbol),
+      ...news.map((n) => n.symbol),
+    ].filter(Boolean))];
+    const sigMap = {};
+    if (symbols.length) {
+      const sigs = await db.breakoutSignal.findMany({
+        where: {
+          asset: { in: symbols },
+          createdAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['asset'],
+        select: { asset: true, breakoutType: true, confidence: true },
+      });
+      for (const s of sigs) {
+        sigMap[s.asset] = { breakoutType: s.breakoutType, confidence: Number(s.confidence) };
+      }
+    }
+    const attach = (item) => ({ ...item, signal: item.symbol ? sigMap[item.symbol] || null : null });
+
+    const data = {
+      generatedAt: new Date().toISOString(),
+      trending: trending.map(attach),
+      news: news.map(attach),
+      signalCount: Object.keys(sigMap).length,
+      cached: false,
+    };
+    pulseCache = { data, expiresAt: Date.now() + PULSE_TTL_MS };
+    res.json(data);
+  } catch (error) {
+    console.error('[/api/pulse] failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Per-ticker social sentiment + recent news for the dashboard drawer. On-demand
+// (one open = one cache-miss = 2 FMP calls), cached per symbol → bandwidth-safe.
+const tickerPulseCache = new Map(); // symbol -> { data, expiresAt }
+const TICKER_PULSE_TTL_MS = 15 * 60 * 1000; // 15 min
+
+app.get('/api/ticker-pulse/:symbol', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!symbol) return res.status(400).json({ error: 'symbol required' });
+  const cached = tickerPulseCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return res.json({ ...cached.data, cached: true });
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'FMP_API_KEY not set' });
+
+  try {
+    const [sentRaw, newsRaw] = await Promise.all([
+      fetch(`https://financialmodelingprep.com/api/v4/historical/social-sentiment?symbol=${encodeURIComponent(symbol)}&page=0&apikey=${apiKey}`)
+        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      fetch(`https://financialmodelingprep.com/stable/news/stock?symbols=${encodeURIComponent(symbol)}&limit=5&apikey=${apiKey}`)
+        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    ]);
+
+    // Blend StockTwits + X bullishness, weighted by post volume.
+    const combine = (row) => {
+      if (!row) return null;
+      const st = Number(row.stocktwitsSentiment), tw = Number(row.twitterSentiment);
+      const stP = Number(row.stocktwitsPosts) || 0, twP = Number(row.twitterPosts) || 0;
+      const parts = [];
+      if (Number.isFinite(st)) parts.push([st, stP || 1]);
+      if (Number.isFinite(tw)) parts.push([tw, twP || 1]);
+      if (!parts.length) return null;
+      const wsum = parts.reduce((a, [, w]) => a + w, 0);
+      return {
+        bullish: parts.reduce((a, [v, w]) => a + v * w, 0) / wsum,
+        posts: stP + twP,
+        impressions: (Number(row.stocktwitsImpressions) || 0) + (Number(row.twitterImpressions) || 0),
+      };
+    };
+
+    // Per-ticker history is too sparse/noisy for a reliable momentum read
+    // (thin-volume hours report 0), so we surface only the latest bullish level.
+    const arr = Array.isArray(sentRaw) ? sentRaw : [];
+    const latest = combine(arr[0]);
+    const sentiment = latest ? {
+      bullishPct: Math.round(latest.bullish * 100),
+      posts: latest.posts,
+      impressions: latest.impressions,
+      asOf: arr[0]?.date || null,
+    } : null;
+
+    const news = (Array.isArray(newsRaw) ? newsRaw : []).slice(0, 5).map((n) => ({
+      title: n.title,
+      publisher: n.publisher || n.site || null,
+      url: n.url || null,
+      publishedDate: n.publishedDate || null,
+    }));
+
+    const data = { symbol, sentiment, news, cached: false };
+    tickerPulseCache.set(symbol, { data, expiresAt: Date.now() + TICKER_PULSE_TTL_MS });
+    res.json(data);
+  } catch (error) {
+    console.error('[/api/ticker-pulse] failed:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Backtest: aggregate historical signal performance.

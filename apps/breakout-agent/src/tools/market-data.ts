@@ -80,6 +80,61 @@ export async function fetchEarningsSurprise(
   }
 }
 
+// True if an FMP earnings date (YYYY-MM-DD) falls on today or yesterday in
+// America/New_York — the post window. `now` is injectable for tests.
+export function isEarningsDateFresh(repDate: string, now: Date = new Date()): boolean {
+  const etDate = (d: Date) =>
+    d.toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+  const d = String(repDate).slice(0, 10);
+  return d === etDate(now) || d === etDate(new Date(now.getTime() - 86400000));
+}
+
+// Returns this quarter's earnings numbers IFF the symbol's latest reported
+// quarter was announced today OR yesterday (America/New_York) — the signal for
+// an earnings-calendar-timed post. The yesterday grace catches after-close
+// reporters whose FMP data lands too late for the same-day run. null otherwise.
+// Reuses the same /stable/earnings endpoint as fetchEarningsSurprise.
+export async function fetchRecentEarnings(
+  symbol: string,
+  apiKey: string,
+): Promise<{
+  epsActual: number;
+  epsEstimated: number;
+  epsSurprisePct: number;
+  revenueActual: number | null;
+  revenueEstimated: number | null;
+} | null> {
+  try {
+    const data = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/stable/earnings`,
+        { params: { symbol, limit: 4, apikey: apiKey }, timeout: 10000 },
+      );
+      return res.data;
+    });
+    if (!Array.isArray(data)) return null;
+    const reported = data.find(
+      (q) => q?.epsActual != null && q?.epsEstimated != null,
+    );
+    if (!reported || !isEarningsDateFresh(String(reported.date))) return null;
+    const actual = Number(reported.epsActual);
+    const est = Number(reported.epsEstimated);
+    if (!Number.isFinite(actual) || !Number.isFinite(est) || est === 0)
+      return null;
+    const rev = Number(reported.revenueActual);
+    const revEst = Number(reported.revenueEstimated);
+    return {
+      epsActual: actual,
+      epsEstimated: est,
+      epsSurprisePct: ((actual - est) / Math.abs(est)) * 100,
+      revenueActual: Number.isFinite(rev) ? rev : null,
+      revenueEstimated: Number.isFinite(revEst) ? revEst : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function calculateMA(prices: number[], period: number): number {
   if (prices.length < period) return prices[prices.length - 1];
   const slice = prices.slice(-period);

@@ -77,6 +77,9 @@ model BreakoutSignal {
   // X (Twitter) digest tracking — set when the asset is included in a posted
   // digest thread, so the second daily digest doesn't repeat the same ticker.
   xPostedAt DateTime?
+  // Set when an earnings-calendar-timed card for this asset was posted (separate
+  // from xPostedAt so teasers and earnings-intercepts dedup independently).
+  earningsPostedAt DateTime?
 
   // Timing
   signalDate DateTime?        // When the signal actually occurred (market candle date), not when logged
@@ -89,6 +92,7 @@ model BreakoutSignal {
   @@index([pineScriptGreen, createdAt])
   @@index([asset, alertSentAt])
   @@index([xPostedAt])
+  @@index([earningsPostedAt])
 }
 
 // Winner-model screen (MissionWinners-style): stocks with strong prior-quarter

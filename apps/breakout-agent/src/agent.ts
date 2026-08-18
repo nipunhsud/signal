@@ -1,4 +1,4 @@
-import { fetchMarketData, fetchEarningsSurprise } from "./tools/market-data.js";
+import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
@@ -1010,14 +1010,11 @@ Time: ${result.timestamp.toISOString()}
               : "") +
             "\n"
           : "";
-      return (
-        `🚀 Breakout: $${s.asset} crossed $${cross.toFixed(2)} · ${setup}\n` +
-        earnings +
-        `Full entry, stop & setup → ${dqLink(s.asset)} · Not advice`
-      );
+      // No link in the lead — it moves to the final CTA reply below.
+      return `🚀 Breakout: $${s.asset} crossed $${cross.toFixed(2)} · ${setup}\n` + earnings.trimEnd();
     });
 
-    const posted = await postXThread(tweets);
+    const posted = await postXThread([...tweets, ctaReply()]);
     if (posted) {
       const assets = qualifying.map((s) => s.asset);
       await db.breakoutSignal.updateMany({
@@ -1056,7 +1053,7 @@ Time: ${result.timestamp.toISOString()}
       `📊 DataQuant performance audit — trailing 30 days\n` +
       `Signals: ${s.totalSignals} · Win rate: ${s.winRate.toFixed(0)}% · Avg/trade: ${fmtPct(s.avgReturn)} (8% stop)\n` +
       `Median: ${fmtPct(s.medianReturn)}\n` +
-      `We publish wins AND losses. Not advice · dataquant.ai`;
+      `We publish wins AND losses. Not advice`;
 
     const tierLines = (data.byTier || [])
       .filter((t: any) => t.count > 0)
@@ -1069,6 +1066,7 @@ Time: ${result.timestamp.toISOString()}
     if (tierLines.length) {
       thread.push(...chunkLines(["By confidence tier:", ...tierLines], 270));
     }
+    thread.push(ctaReply());
     await postXThread(thread);
   }
 
@@ -1123,8 +1121,7 @@ Time: ${result.timestamp.toISOString()}
           : `🚀 $${ta.asset} broke out $${cross} on strong volume`;
       const lead =
         `${brk}\n` +
-        `📞 Q${ta.quarter} ${ta.year} earnings — Tone: ${capitalize(ta.tone)} (${fmtScore(ta.toneScore)})${guidance}\n` +
-        `Full setup → ${dqLink(ta.asset)} · Not advice`;
+        `📞 Q${ta.quarter} ${ta.year} earnings — Tone: ${capitalize(ta.tone)} (${fmtScore(ta.toneScore)})${guidance}`;
 
       const thread = [lead, truncate(ta.summary, 270)];
       if (highlights.length) {
@@ -1137,6 +1134,7 @@ Time: ${result.timestamp.toISOString()}
           ...chunkLines(["⚠️ Risk flags", ...risks.map((r) => `• ${r}`)], 270),
         );
       }
+      thread.push(ctaReply(ta.asset));
 
       const posted = await postXThread(thread);
       if (posted) {
@@ -1152,6 +1150,64 @@ Time: ${result.timestamp.toISOString()}
     }
 
     console.log("⊘ X earnings: no raised-guidance breakout with a fresh analysis");
+  }
+
+  // ── X use case 4: earnings-calendar-timed intercept ───────────────────────
+  // When a ticker we already have a recent signal on reports earnings TODAY,
+  // post a fast EPS/revenue beat-miss card timed to the print (attention peaks
+  // then). Watchlist = our own recent signals — no whole-market calendar pull,
+  // so it stays cheap on FMP bandwidth. Dedup via earningsPostedAt (once/asset/day).
+  async postXEarningsCalendar(): Promise<void> {
+    const apiKey = process.env.FMP_API_KEY;
+    if (!apiKey) return;
+    const now = new Date();
+    const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    // Earnings are quarterly, so dedup per-quarter (not per-day): once we've
+    // posted a card for an asset, don't post another for ~30 days. This also
+    // stops the yesterday-grace match from double-posting across two runs.
+    const dedupBefore = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const maxPerRun = parseInt(process.env.X_EARNINGS_CAL_MAX || "3");
+
+    // Watchlist: distinct assets alerted in the last 10 days we haven't already
+    // posted an earnings card for this quarter.
+    const rows = await db.breakoutSignal.findMany({
+      where: {
+        lastAlertAt: { gte: since },
+        OR: [{ earningsPostedAt: null }, { earningsPostedAt: { lt: dedupBefore } }],
+      },
+      orderBy: [{ confidence: "desc" }],
+      distinct: ["asset"],
+    });
+
+    let posted = 0;
+    for (const s of rows) {
+      if (posted >= maxPerRun) break;
+      const e = await fetchRecentEarnings(s.asset, apiKey);
+      if (!e) continue; // hasn't reported today
+
+      const beat = e.epsActual >= e.epsEstimated;
+      const revLine =
+        e.revenueActual != null && e.revenueEstimated != null
+          ? `\n• Revenue: ${fmtB(e.revenueActual)} vs ${fmtB(e.revenueEstimated)} est (${e.revenueActual >= e.revenueEstimated ? "Beat" : "Miss"})`
+          : "";
+      const card =
+        `${beat ? "📈" : "📉"} $${s.asset} reported earnings — EPS ${beat ? "Beat" : "Miss"} ${fmtPct(e.epsSurprisePct)}\n` +
+        `• EPS: ${e.epsActual.toFixed(2)} vs ${e.epsEstimated.toFixed(2)} est` +
+        revLine +
+        `\nWe flagged this breakout.`;
+
+      const ok = await postXThread([card, ctaReply(s.asset)]);
+      if (ok) {
+        await db.breakoutSignal.updateMany({
+          where: { asset: s.asset },
+          data: { earningsPostedAt: now },
+        });
+        posted++;
+        console.log(`✓ X earnings-calendar card posted: $${s.asset} EPS ${beat ? "Beat" : "Miss"}`);
+      }
+    }
+    if (posted === 0)
+      console.log("⊘ X earnings-calendar: no watchlist ticker reported today");
   }
 }
 
@@ -1174,7 +1230,14 @@ function chunkLines(lines: string[], maxLen: number): string[] {
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const fmtScore = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(2);
 const fmtPct = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+const fmtB = (v: number) => "$" + (v / 1e9).toFixed(1) + "B";
 const truncate = (s: string, n: number) =>
   s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 // Per-ticker deep link, e.g. dataquant.ai/$hpe
 const dqLink = (asset: string) => `dataquant.ai/$${asset.toLowerCase()}`;
+// Final reply for a thread: bookmark CTA + the link kept OUT of the lead tweet
+// (link-in-reply preserves lead-tweet reach — the strongest lever in X ranking).
+// asset omitted → homepage link.
+const ctaReply = (asset?: string) =>
+  `🔖 Bookmark this for market open.\n` +
+  `Full entry, stop & R:R → ${asset ? dqLink(asset) : "dataquant.ai"} · Not advice`;

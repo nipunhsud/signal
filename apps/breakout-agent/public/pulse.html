@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Live market pulse — where social attention is heating up right now, and which moves DataQuant's breakout signals already flagged.">
+  <title>Market Pulse — DataQuant</title>
+  <meta property="og:title" content="Market Pulse — DataQuant">
+  <meta property="og:description" content="Social heat + market news, cross-referenced with live breakout signals.">
+  <meta name="twitter:card" content="summary_large_image">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --amber: #F59E0B; --amber-hi: #FBBF24;
+      --bg: #0F172A; --panel: #111827; --panel-2: #1F2937; --border: #334155;
+      --fg: #F8FAFC; --muted: #94A3B8; --green: #10B981; --red: #EF4444;
+    }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--fg);
+      font-feature-settings: 'cv02','cv03','cv04','cv11';
+    }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .grid-bg {
+      background-image:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245,158,11,0.08), transparent 60%),
+        linear-gradient(rgba(148,163,184,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,0.04) 1px, transparent 1px);
+      background-size: 100% 100%, 44px 44px, 44px 44px;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(31,41,55,0.6) 0%, rgba(17,24,39,0.6) 100%);
+      border: 1px solid rgba(51,65,85,0.6); border-radius: 12px; backdrop-filter: blur(6px);
+    }
+    .card-link { transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+    .card-link:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.5); box-shadow: 0 12px 30px -12px rgba(245,158,11,0.25); }
+    .btn-primary {
+      background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 100%); color: #0F172A; font-weight: 600;
+      padding: 12px 22px; border-radius: 8px; transition: transform 180ms ease, filter 180ms ease;
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -8px rgba(245,158,11,0.35);
+    }
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    .signal-badge {
+      background: rgba(16,185,129,0.14); color: #6EE7B7; border: 1px solid rgba(16,185,129,0.4);
+    }
+    .heat-track { background: rgba(148,163,184,0.15); border-radius: 999px; overflow: hidden; }
+    .heat-fill { background: linear-gradient(90deg, #F59E0B, #FBBF24); height: 100%; border-radius: 999px; }
+    :focus-visible { outline: 2px solid var(--amber-hi); outline-offset: 2px; border-radius: 6px; }
+    .skel { background: linear-gradient(90deg, rgba(148,163,184,0.06), rgba(148,163,184,0.14), rgba(148,163,184,0.06)); background-size: 200% 100%; animation: sh 1.4s infinite; }
+    @keyframes sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body class="grid-bg min-h-screen">
+  <!-- Nav -->
+  <header class="sticky top-0 z-20 backdrop-blur border-b border-[color:var(--border)]/60 bg-[color:var(--bg)]/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+        <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:var(--amber)"></span>
+        DataQuant
+      </a>
+      <nav class="flex items-center gap-3 text-sm">
+        <a href="/" class="text-[color:var(--muted)] hover:text-white transition hidden sm:inline">How it works</a>
+        <a href="/?ref=pulse" class="btn-primary text-sm" style="padding:9px 16px">Get the signals →</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+    <!-- Hero -->
+    <section class="mb-10 sm:mb-14">
+      <div class="inline-flex items-center gap-2 text-xs font-medium text-[color:var(--amber-hi)] bg-[color:var(--amber)]/10 border border-[color:var(--amber)]/25 rounded-full px-3 py-1 mb-4">
+        <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span></span>
+        Live market pulse
+      </div>
+      <h1 class="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.05] max-w-3xl">
+        Where the market's attention is <span style="color:var(--amber-hi)">right now</span>.
+      </h1>
+      <p class="mt-4 text-[color:var(--muted)] text-base sm:text-lg max-w-2xl">
+        Social heat and breaking news — cross-referenced with our live breakout signals.
+        When the crowd's buzz meets a confirmed technical setup, you'll see the
+        <span class="text-[#6EE7B7] font-medium">Signal</span> badge. That's the edge.
+      </p>
+      <p class="mt-3 text-xs text-[color:var(--muted)] tabular" id="meta"></p>
+    </section>
+
+    <!-- Trending -->
+    <section class="mb-14" aria-labelledby="trending-h">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 id="trending-h" class="text-xl font-semibold flex items-center gap-2">🔥 Trending on social</h2>
+        <span class="text-xs text-[color:var(--muted)]">StockTwits + X</span>
+      </div>
+      <p class="text-xs text-[color:var(--muted)] -mt-2 mb-4">
+        % = share of recent social posts that read <span class="text-[#6EE7B7]">bullish</span> — a crowd-mood gauge, <span class="text-slate-300">not</span> a price move or win rate. ▲ means rising vs the prior reading.
+      </p>
+      <div id="trending" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" role="list"></div>
+    </section>
+
+    <!-- News -->
+    <section class="mb-16" aria-labelledby="news-h">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 id="news-h" class="text-xl font-semibold flex items-center gap-2">📰 Market news</h2>
+        <span class="text-xs text-[color:var(--muted)]">Latest headlines</span>
+      </div>
+      <div id="news" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" role="list"></div>
+    </section>
+
+    <!-- CTA band -->
+    <section class="card p-8 sm:p-10 text-center">
+      <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">Buzz is noise. A confirmed setup is a plan.</h2>
+      <p class="mt-3 text-[color:var(--muted)] max-w-xl mx-auto">
+        See every breakout signal with its exact entry, stop, and risk/reward —
+        backtested, not vibes. Start free.
+      </p>
+      <a href="/?ref=pulse-cta" class="btn-primary mt-6">See the signals →</a>
+    </section>
+  </main>
+
+  <footer class="border-t border-[color:var(--border)]/60">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 text-xs text-[color:var(--muted)] flex flex-wrap gap-x-4 gap-y-1 justify-between">
+      <span>© DataQuant · Not investment advice.</span>
+      <span>Sentiment &amp; news via Financial Modeling Prep.</span>
+    </div>
+  </footer>
+
+  <script>
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    const pct = (v) => Math.round((Number(v) || 0) * 100);
+    const timeAgo = (d) => {
+      if (!d) return '';
+      const t = new Date(String(d).replace(' ', 'T') + 'Z').getTime();
+      if (!Number.isFinite(t)) return '';
+      const m = Math.round((Date.now() - t) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      const h = Math.round(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.round(h / 24) + 'd ago';
+    };
+
+    function signalBadge(sig) {
+      if (!sig) return '';
+      const label = sig.breakoutType === 'Type3' ? 'Extension' : 'Breakout';
+      const conf = Math.round((sig.confidence || 0) * 100);
+      return `<span class="signal-badge text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1">⚡ Signal · ${label} ${conf}%</span>`;
+    }
+
+    function trendingCard(t) {
+      const p = pct(t.sentiment);
+      const momo = t.sentiment - t.lastSentiment;
+      const arrow = momo > 0.02 ? '<span style="color:var(--green)">▲</span>' : momo < -0.02 ? '<span style="color:var(--red)">▼</span>' : '<span class="text-[color:var(--muted)]">–</span>';
+      const inner = `
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="font-bold tabular text-lg">$${esc(t.symbol)}</span>
+            ${t.name ? `<span class="text-xs text-[color:var(--muted)] truncate">${esc(t.name)}</span>` : ''}
+          </div>
+          <span class="text-sm tabular whitespace-nowrap" title="Share of recent social posts that read bullish">${arrow} ${p}% <span class="text-xs font-normal text-[color:var(--muted)]">bullish</span></span>
+        </div>
+        <div class="heat-track h-1.5 mt-3"><div class="heat-fill" style="width:${p}%"></div></div>
+        ${t.signal ? `<div class="mt-3">${signalBadge(t.signal)}</div>` : ''}`;
+      // Only signal-backed tickers link into the (paywalled) product — honest funnel.
+      return t.signal
+        ? `<a href="/$${esc(t.symbol)}" role="listitem" class="card card-link p-4 block" aria-label="$${esc(t.symbol)} has a live signal — view setup">${inner}</a>`
+        : `<div role="listitem" class="card p-4">${inner}</div>`;
+    }
+
+    function newsCard(n) {
+      const img = n.image
+        ? `<img src="${esc(n.image)}" alt="" loading="lazy" class="w-full h-36 object-cover rounded-t-[11px]" onerror="this.style.display='none'">`
+        : '';
+      const tag = n.symbol
+        ? `<span class="text-[11px] font-semibold tabular ${n.signal ? 'text-[#6EE7B7]' : 'text-[color:var(--muted)]'}">$${esc(n.symbol)}</span>`
+        : '';
+      const body = `
+        <div class="p-4">
+          <div class="flex items-center gap-2 mb-2">
+            ${tag}
+            ${n.signal ? signalBadge(n.signal) : ''}
+            <span class="text-[11px] text-[color:var(--muted)] ml-auto">${esc(timeAgo(n.publishedDate))}</span>
+          </div>
+          <p class="text-sm font-medium leading-snug line-clamp-3">${esc(n.title)}</p>
+          ${n.publisher ? `<p class="text-[11px] text-[color:var(--muted)] mt-2">${esc(n.publisher)}</p>` : ''}
+        </div>`;
+      return n.url
+        ? `<a href="${esc(n.url)}" target="_blank" rel="noopener" role="listitem" class="card card-link overflow-hidden block">${img}${body}</a>`
+        : `<div role="listitem" class="card overflow-hidden">${img}${body}</div>`;
+    }
+
+    function skeletons(el, n, h) {
+      el.innerHTML = Array.from({ length: n }).map(() => `<div class="card skel" style="height:${h}px"></div>`).join('');
+    }
+
+    async function load() {
+      const tEl = document.getElementById('trending');
+      const nEl = document.getElementById('news');
+      skeletons(tEl, 6, 96);
+      skeletons(nEl, 6, 220);
+      try {
+        const r = await fetch('/api/pulse');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        tEl.innerHTML = (d.trending || []).map(trendingCard).join('') ||
+          '<p class="text-[color:var(--muted)] text-sm col-span-full">No trending data right now.</p>';
+        nEl.innerHTML = (d.news || []).map(newsCard).join('') ||
+          '<p class="text-[color:var(--muted)] text-sm col-span-full">No news right now.</p>';
+        const n = d.signalCount || 0;
+        document.getElementById('meta').textContent =
+          `${n} of the tickers below have a live DataQuant signal · updated ${new Date(d.generatedAt).toLocaleTimeString()}`;
+      } catch (e) {
+        tEl.innerHTML = nEl.innerHTML = `<p class="text-[color:var(--muted)] text-sm col-span-full">Pulse is catching its breath — try again in a moment.</p>`;
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

@@ -105,6 +105,9 @@ if (IMMEDIATE_SCAN) {
     scheduleX("audit", process.env.X_AUDIT_CRON || "0 13 1 * *", () => agent.postXPerformanceAudit());
     // 3) Earnings breakdowns are posted manually via the dashboard admin button
     //    (POST /api/admin/tweet-earnings), not on a schedule.
+    // 4) Earnings-calendar intercept — pre-open (8:35am) & after-close (4:15pm)
+    //    ET weekdays, when a watchlist ticker's print has landed on FMP.
+    scheduleX("earnings-cal", process.env.X_EARNINGS_CAL_CRON || "35 8,16 * * 1-5", () => agent.postXEarningsCalendar());
   }
 
   console.log(
