@@ -64,6 +64,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     ma200,
     close,
     open,
+    high,
     volume,
     avgVolume,
     highs,
@@ -109,8 +110,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const aboveMA50 = close > ma50;
   const aboveMA200 = close > ma200;
 
-  // Breakout: close above resistance
-  const breakout = close > resistance;
+  // Breakout: high breaches resistance (intrabar breach counts — a wick through
+  // the level on volumeOk-confirmed volume is treated as the trigger, not just
+  // a close above it).
+  const breakout = high > resistance;
 
   // Bullish candle: close > open
   const bullishCandle = close > open;
