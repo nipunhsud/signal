@@ -763,10 +763,13 @@ app.get('/api/signals', async (req, res) => {
 
     // Stopped-out names never count as high-confidence, whatever their score —
     // they stay visible but drop into the medium group (frontend sinks them last).
+    // No lower bound here: every signal already passed the raw >=0.80 gate in
+    // SQL; display confidence only dips below 80 via the extension distance
+    // penalty, and those should stay visible (penalized), not vanish.
     const highConfidence = sorted.filter(s => s.confidence >= 95 && !s.stoppedOut);
     const mediumConfidence = [
-      ...sorted.filter(s => s.confidence >= 80 && s.confidence < 95 && !s.stoppedOut),
-      ...sorted.filter(s => s.stoppedOut && s.confidence >= 80),
+      ...sorted.filter(s => s.confidence < 95 && !s.stoppedOut),
+      ...sorted.filter(s => s.stoppedOut),
     ];
 
     const breakoutCount = formattedBreakouts.filter(s => s.signalType === 'breakout').length;
