@@ -33,6 +33,36 @@
       z-index: 5;
       background-color: rgb(55 65 81); /* gray-700 */
     }
+    /* Desktop: pin the Asset column so horizontal scroll keeps the ticker in view.
+       Cells need a solid background (rows use translucent tints) or scrolled
+       content bleeds through underneath. */
+    @media (min-width: 769px) {
+      table.signals-responsive th:first-child,
+      table.signals-responsive td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        background-color: rgb(31 41 55); /* gray-800 solid */
+      }
+      table.signals-responsive thead.sticky-head th:first-child {
+        z-index: 6; /* above both scrolling rows and the sticky header row */
+        background-color: rgb(55 65 81);
+      }
+      .signal-row:hover td:first-child {
+        background-color: rgb(38 49 68); /* matches the row hover tint over gray-800 */
+      }
+      table.signals-responsive th:first-child::after,
+      table.signals-responsive td:first-child::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: -10px;
+        bottom: 0;
+        width: 10px;
+        background: linear-gradient(to right, rgba(0,0,0,0.3), transparent);
+        pointer-events: none;
+      }
+    }
     /* Mobile: reflow the signals table into stacked cards so nothing hides behind
        horizontal scroll. Desktop (>768px) keeps the full table unchanged. */
     @media (max-width: 768px) {
@@ -345,7 +375,7 @@
     </div>
   </nav>
   <div id="container" class="flex flex-1 min-h-0 bg-gray-900">
-    <div id="app" class="flex-1 overflow-auto"></div>
+    <div id="app" class="flex-1 overflow-auto" data-keep-scroll="app"></div>
     <div id="drawer" class="relative bg-gray-800 border-l border-gray-700 shadow-lg" style="width: 0px; overflow: hidden; transition: width 0.2s ease;"></div>
   </div>
   <div id="toast-stack" aria-live="polite" role="status"></div>
@@ -2637,6 +2667,14 @@
           try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) {}
         }
 
+        // innerHTML re-renders destroy the scroll containers (or collapse their
+        // content), zeroing scroll positions. Snapshot every [data-keep-scroll]
+        // element by key and restore after the panel re-renders.
+        const scrollKeep = {};
+        document.querySelectorAll('[data-keep-scroll]').forEach(el => {
+          scrollKeep[el.dataset.keepScroll] = { left: el.scrollLeft, top: el.scrollTop };
+        });
+
         this.renderNavBar();
         if (this.view === 'backtest') {
           this.renderBacktestPanel();
@@ -2651,6 +2689,11 @@
         } else {
           this.renderMainDashboard();
         }
+
+        document.querySelectorAll('[data-keep-scroll]').forEach(el => {
+          const s = scrollKeep[el.dataset.keepScroll];
+          if (s) { el.scrollLeft = s.left; el.scrollTop = s.top; }
+        });
 
         if (activeId) {
           const el = document.getElementById(activeId);
@@ -2943,7 +2986,7 @@
         const extensionCount = validSignals.filter(s => s.signalType === 'extension').length;
 
         document.getElementById('app').innerHTML = `
-          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+          <div class="flex-1 overflow-auto p-8 bg-gray-900" data-keep-scroll="main-y">
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
@@ -3169,7 +3212,7 @@
                   </button>
                 </div>
               ` : `
-                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60">
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="signals-x">
                   <table class="w-full signals-responsive" style="min-width:1080px;">
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
