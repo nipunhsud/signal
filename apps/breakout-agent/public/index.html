@@ -3251,7 +3251,9 @@
                         const signalLabel = signal.signalType === 'breakout'
                           ? (signal.weakVolume
                               ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
-                              : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
+                              : signal.isVcp
+                                ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" title="Volatility Contraction Pattern: tight base (ATR<2.5%), volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>'
+                                : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
                           : signal.signalType === 'extension'
                             ? `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
                             : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>';
