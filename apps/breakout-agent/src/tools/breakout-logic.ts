@@ -37,6 +37,13 @@ export interface BreakoutAnalysis {
   priorBaseRangePercent: number;
   priorBreakoutBarsAgo: number;
   liquidityOk: boolean;
+  // VCP mark (Minervini Volatility Contraction Pattern): a Type1 whose base was
+  // tight in absolute terms, whose volatility was still contracting into the
+  // pivot, and whose breakout bar expanded upward closing near its high.
+  isVcp: boolean;
+  atrPercent: number; // base ATR(14) as % of close (today's bar excluded)
+  contractionRatio: number; // base ATR(5) / ATR(20) — <1 = contracting
+  expansionRatio: number; // today's true range / base ATR(14)
 }
 
 export interface SetupAnalysis {
@@ -65,6 +72,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     close,
     open,
     high,
+    low,
     volume,
     avgVolume,
     highs,
@@ -83,6 +91,9 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     priorBaseDays = 0,
     priorBaseRangePercent = 0,
     priorBreakoutBarsAgo = 0,
+    atrPercent = 0,
+    contractionRatio = 0,
+    expansionRatio = 0,
   } = data;
   const MIN_STRUCTURE_BARS = 5;
   const MIN_AVG_VOLUME = 100_000; // Liquidity filter
@@ -192,6 +203,21 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     breakoutType = "Type1b";
   }
   // Everything else (high-vol messy consolidation, non-clean breakouts) stays "unknown".
+
+  // VCP mark: only Type1 qualifies. Three gates on top of the Type1 rules —
+  //   tight base:      ATR% < 2.5 (absolute, so an always-wild tape can't pass)
+  //   contracting:     ATR(5)/ATR(20) < 0.75 — volatility shrinking INTO the pivot
+  //   upside expansion: breakout bar's range ≥1.5x base ATR, close in top third
+  // Metrics are 0 when <22 bars of history — a 0 fails the gates, never passes.
+  const closeInTopThird = high > low ? (close - low) / (high - low) >= 0.67 : bullishCandle;
+  const isVcp =
+    breakoutType === "Type1" &&
+    atrPercent > 0 &&
+    atrPercent < 2.5 &&
+    contractionRatio > 0 &&
+    contractionRatio < 0.75 &&
+    expansionRatio >= 1.5 &&
+    closeInTopThird;
 
   // Calculate confidence
   let confidence = 0.1; // base for weak/no signal
@@ -308,6 +334,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     priorBaseRangePercent,
     priorBreakoutBarsAgo,
     liquidityOk,
+    isVcp,
+    atrPercent,
+    contractionRatio,
+    expansionRatio,
   };
 }
 

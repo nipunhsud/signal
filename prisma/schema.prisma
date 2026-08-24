@@ -63,6 +63,7 @@ model BreakoutSignal {
 
   // Type 1 vs Type 3 classification
   breakoutType String @default("unknown") // "Type1" (fresh), "Type3" (continuation), "unknown"
+  isVcp Boolean @default(false) // Type1 VCP: tight base (ATR%<2.5), contracting (ATR5/ATR20<0.75), upside expansion (TR≥1.5x ATR)
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout

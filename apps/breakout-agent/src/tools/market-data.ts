@@ -198,6 +198,11 @@ export interface MarketData {
   extensionPriorBreakoutBarsAgo?: number; // >0 = bars ago of the held breakout, 0 = none
   extensionConsolidationRangePercent?: number; // % range of the consolidation that preceded the recent breakout
   extensionConsolidationVolumePercent?: number; // vol % of that consolidation
+  // VCP volatility metrics (base ATRs exclude today's bar, so the breakout bar's
+  // expansion never inflates the base volatility it's measured against)
+  atrPercent?: number; // ATR(14) as % of close — absolute base tightness
+  contractionRatio?: number; // ATR(5) / ATR(20) — <1 = volatility shrinking into the pivot
+  expansionRatio?: number; // today's true range / base ATR(14) — breakout-bar expansion
 }
 
 /**
@@ -247,6 +252,55 @@ function countInflections(bars: any[]): number {
   }
 
   return inflections;
+}
+
+interface VolatilityMetrics {
+  atrPercent: number;
+  contractionRatio: number;
+  expansionRatio: number;
+}
+
+/**
+ * VCP volatility metrics (Minervini Volatility Contraction Pattern).
+ * Base ATRs exclude today's bar so the breakout bar's own expansion never
+ * inflates the base volatility it's being compared against.
+ */
+function calculateVolatilityMetrics(allBars: any[]): VolatilityMetrics {
+  const empty: VolatilityMetrics = {
+    atrPercent: 0,
+    contractionRatio: 0,
+    expansionRatio: 0,
+  };
+  // Need 20 base TRs + today's TR, each TR needs a prior close
+  if (allBars.length < 22) return empty;
+
+  const trueRanges: number[] = [];
+  for (let i = 1; i < allBars.length; i++) {
+    const bar = allBars[i];
+    const prevClose = allBars[i - 1].close;
+    trueRanges.push(
+      Math.max(
+        bar.high - bar.low,
+        Math.abs(bar.high - prevClose),
+        Math.abs(bar.low - prevClose),
+      ),
+    );
+  }
+
+  const avg = (arr: number[]) => arr.reduce((s, v) => s + v, 0) / arr.length;
+
+  const baseTrueRanges = trueRanges.slice(0, -1); // exclude today
+  const atr14 = avg(baseTrueRanges.slice(-14));
+  const atr5 = avg(baseTrueRanges.slice(-5));
+  const atr20 = avg(baseTrueRanges.slice(-20));
+  const todayTrueRange = trueRanges[trueRanges.length - 1];
+  const close = allBars[allBars.length - 1].close;
+
+  return {
+    atrPercent: close > 0 ? (atr14 / close) * 100 : 0,
+    contractionRatio: atr20 > 0 ? atr5 / atr20 : 0,
+    expansionRatio: atr14 > 0 ? todayTrueRange / atr14 : 0,
+  };
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
@@ -702,6 +756,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const priorBaseResult = detectPriorBase(allBars);
       const priorBreakoutResult = detectPriorBreakout(allBars);
 
+      // ATR-based VCP metrics (base tightness, contraction, breakout expansion)
+      const volatilityMetrics = calculateVolatilityMetrics(allBars);
+
       // Extension = prior breakout exists AND today still closes above its resistance.
       // No time window — a breakout stays an extension for as long as price holds it.
       const currentClose = allBars[allBars.length - 1].close;
@@ -961,6 +1018,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         extensionPriorBreakoutBarsAgo,
         extensionConsolidationRangePercent,
         extensionConsolidationVolumePercent,
+        atrPercent: volatilityMetrics.atrPercent,
+        contractionRatio: volatilityMetrics.contractionRatio,
+        expansionRatio: volatilityMetrics.expansionRatio,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });
