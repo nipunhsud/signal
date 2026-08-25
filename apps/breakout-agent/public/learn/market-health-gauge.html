@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A 0-100 regime score built from benchmark trend, distribution days, and universe breadth — answering the one question every breakout trader must ask before the ticker: does this tape reward my kind of trade?">
+  <title>The Market Health Gauge — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/market-health-gauge">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="The Market Health Gauge — DataQuant Learn">
+  <meta property="og:description" content="A 0-100 regime score built from benchmark trend, distribution days, and universe breadth — answering the one question every breakout trader must ask before the ticker: does this tape reward my kind of trade?">
+  <meta property="og:url" content="https://dataquant.ai/learn/market-health-gauge">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The Market Health Gauge — DataQuant Learn">
+  <meta name="twitter:description" content="A 0-100 regime score built from benchmark trend, distribution days, and universe breadth — answering the one question every breakout trader must ask before the ticker: does this tape reward my kind of trade?">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "The Market Health Gauge: Scoring Whether Breakouts Can Work Right Now",
+      "description": "A 0-100 regime score built from benchmark trend, distribution days, and universe breadth \u2014 answering the one question every breakout trader must ask before the ticker: does this tape reward my kind of trade?",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "author": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "mainEntityOfPage": "https://dataquant.ai/learn/market-health-gauge"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is the Market Health gauge a leading or lagging indicator?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Its ingredients are lagging or coincident \u2014 nothing sees the future. But distribution days detect institutional selling before price breaks, and breadth degrades before cap-weighted indexes do, so in practice the gauge tends to warn days to weeks before a trend-only view would."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why benchmark SPY and QQQ together?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Because an S&P at highs can hide a Nasdaq already breaking down, and growth stocks are where breakout setups live. The gauge averages the two trends and takes the worse distribution count."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What should I do differently in each regime?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Risk-on: normal sizing. Caution: only the best setups, smaller size, fast stops. Risk-off: avoid new entries and protect open positions. The gauge sizes risk; it never picks stocks."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can the gauge be wrong?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes \u2014 it stays cautious through healthy pullbacks and can be late on sharp V-shaped recoveries. It is regime context, not a timing signal, which is why DataQuant ships it as advisory rather than auto-blocking signals."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
+    .metric b { color:var(--fg); }
+    .metric span { color:var(--muted); font-size:0.95rem; }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">The Market Health Gauge: Scoring Whether Breakouts Can Work Right Now</h1>
+      <p class="text-lg text-slate-400 mt-4">O'Neil put an M in CANSLIM for a reason: the best setup in the world fails in the wrong market. The Market Health gauge turns 'what kind of market is this?' into a number you can check in two seconds.</p>
+      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
+      
+      <h2>Three components, one score</h2>
+      <p>The gauge is a 0–100 sum of three measurements, recomputed throughout the day:</p>
+      <div class="metric"><b>Trend — up to 50 points.</b> <span>The benchmarks against their 50-day and 200-day averages, plus whether the 50-day itself is rising. For the US, SPY and QQQ are scored separately and averaged — because an S&amp;P at highs can hide a Nasdaq already breaking down, and growth stocks are where breakouts live.</span></div>
+      <div class="metric"><b>Distribution days — up to 25 points.</b> <span>Sessions where an index fell at least 0.2% on rising volume, counted over 25 sessions, five points lost per day — taking the worse of SPY and QQQ. This is the institutional-selling counter, explained fully in <a href="/learn/distribution-days-explained">its own guide</a>.</span></div>
+      <div class="metric"><b>Breadth — up to 25 points.</b> <span>The share of DataQuant's entire scanned universe (~1,466 US stocks) positive over the last month, blended with the last week. When the weekly share runs 10+ points below the monthly, the gauge flags breadth as deteriorating — the average stock is rolling over before the index shows it.</span></div>
+      <h2>The three regimes</h2>
+      <ul>
+        <li><strong>70–100 · Risk-on.</strong> The tape supports breakouts — normal position sizing.</li>
+        <li><strong>45–69 · Caution.</strong> Mixed tape — take only the best setups, size down, honor stops fast.</li>
+        <li><strong>Below 45 · Risk-off.</strong> Defensive — avoid new entries; breakouts fail in this tape. Protect open positions.</li>
+      </ul>
+      <h2>Lagging ingredients, early warnings</h2>
+      <p>Be clear about what this is: every component is computed from data that already happened. Moving averages are the most lagging — their job is to stop you fighting a confirmed downtrend, not to predict one. But the other two components fire early in practice. Distribution days detect institutions selling <em>into strength, before price breaks</em>. And breadth degrades before cap-weighted indexes do, because the average stock rolls over first — and breakout signals come from average stocks, not from the index.</p>
+      <p>August 2026 made the case concretely: SPY's trend was perfect while the gauge sat in deep caution — QQQ below its 50-day, six distribution days, breadth softening. A trend-only view said all clear; the gauge said size down. The July signal results sided with the gauge.</p>
+      <h2>A day with the gauge, in practice</h2>
+      <p>The workflow costs seconds. The colored pill sits next to the Signals header — green, amber, or red with the score — and one click opens the breakdown: each benchmark's trend spelled out in words, the distribution count with its per-index split, breadth with its week-versus-month direction. On a risk-on morning you scan the list normally. On a caution reading you raise your bar — perhaps only VCP-marked breakouts from RS-70+ leaders — and cut position size. On risk-off you mostly watch. The gauge never tells you <em>what</em> to buy; it calibrates <em>how much</em> conviction any buy deserves today. The same reading, with the same breakdown, is public on the <a href="https://dataquant.ai/pulse">Market Pulse</a> page.</p>
+      <h2>How to use it (and how not to)</h2>
+      <p>The gauge is <strong>advisory context for position sizing</strong>, not an entry-exit oracle. It will stay in caution through healthy pullbacks, and it has no follow-through-day logic to call V-shaped bottoms early. Use it the way the checklist intends: setup quality first (<a href="/learn/volatility-contraction-pattern">a real base</a>, <a href="/learn/relative-strength-explained">a real leader</a>), then let the regime decide how much risk that setup deserves — full size in risk-on, reduced in caution, standing aside in risk-off.</p>
+      <p>It's live on every dashboard page and on the free <a href="https://dataquant.ai/pulse">Market Pulse</a>, with the component breakdown one click away.</p>
+    
+      
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2"><details><summary>Is the Market Health gauge a leading or lagging indicator?</summary><p class="text-slate-400">Its ingredients are lagging or coincident — nothing sees the future. But distribution days detect institutional selling before price breaks, and breadth degrades before cap-weighted indexes do, so in practice the gauge tends to warn days to weeks before a trend-only view would.</p></details><details><summary>Why benchmark SPY and QQQ together?</summary><p class="text-slate-400">Because an S&P at highs can hide a Nasdaq already breaking down, and growth stocks are where breakout setups live. The gauge averages the two trends and takes the worse distribution count.</p></details><details><summary>What should I do differently in each regime?</summary><p class="text-slate-400">Risk-on: normal sizing. Caution: only the best setups, smaller size, fast stops. Risk-off: avoid new entries and protect open positions. The gauge sizes risk; it never picks stocks.</p></details><details><summary>Can the gauge be wrong?</summary><p class="text-slate-400">Yes — it stays cautious through healthy pullbacks and can be late on sharp V-shaped recoveries. It is regime context, not a timing signal, which is why DataQuant ships it as advisory rather than auto-blocking signals.</p></details></div>
+    </section>
+      
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/distribution-days-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Distribution Days</div><div class="text-xs text-slate-400 mt-1">The institutional-selling count behind the gauge's most forward-looking component.</div></a><a href="/learn/relative-strength-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Relative Strength, Explained</div><div class="text-xs text-slate-400 mt-1">The stock-level leadership filter that pairs with the market-level gauge.</div></a></div>
+    </section>
+      
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+    
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+</body>
+</html>

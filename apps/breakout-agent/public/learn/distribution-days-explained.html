@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A distribution day is an index falling on rising volume — institutions selling into strength. Four or more in 25 sessions is a warning that fires while price still looks fine, as August 2026 demonstrated.">
+  <title>Distribution Days, Explained — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/distribution-days-explained">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="Distribution Days, Explained — DataQuant Learn">
+  <meta property="og:description" content="A distribution day is an index falling on rising volume — institutions selling into strength. Four or more in 25 sessions is a warning that fires while price still looks fine, as August 2026 demonstrated.">
+  <meta property="og:url" content="https://dataquant.ai/learn/distribution-days-explained">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Distribution Days, Explained — DataQuant Learn">
+  <meta name="twitter:description" content="A distribution day is an index falling on rising volume — institutions selling into strength. Four or more in 25 sessions is a warning that fires while price still looks fine, as August 2026 demonstrated.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Distribution Days: Reading Institutional Selling Before Price Breaks",
+      "description": "A distribution day is an index falling on rising volume \u2014 institutions selling into strength. Four or more in 25 sessions is a warning that fires while price still looks fine, as August 2026 demonstrated.",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "author": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "mainEntityOfPage": "https://dataquant.ai/learn/distribution-days-explained"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What exactly counts as a distribution day?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A session where the index closes down at least 0.2% on higher volume than the prior session, counted over a rolling 25-session window. Four or more is the classic warning threshold."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can the market look strong while under distribution?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes \u2014 that is the whole point. In August 2026 SPY was above both its key moving averages with 5 distribution days on the count, and breakout win rates had already halved. Institutions sell into strength precisely because price still looks fine."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why watch QQQ as well as SPY?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Growth stocks \u2014 where most breakout setups live \u2014 often come under distribution before the broad market. DataQuant's gauge counts both and takes the worse reading."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do distribution days predict a crash?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. They flag elevated risk, not a timetable. Clusters precede corrections more often than chance, but some clusters simply expire as the window rolls forward. Use the count for position sizing, not prophecy."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
+    .metric b { color:var(--fg); }
+    .metric span { color:var(--muted); font-size:0.95rem; }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">Distribution Days: Reading Institutional Selling Before Price Breaks</h1>
+      <p class="text-lg text-slate-400 mt-4">The most dangerous market is the one that looks healthy. Indexes at highs, trend intact — while underneath, the biggest holders are quietly handing their shares to the crowd. Distribution days are how you count that happening.</p>
+      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
+      
+      <h2>The definition</h2>
+      <p>A <strong>distribution day</strong> is a session where a major index falls at least 0.2% on <em>higher volume than the previous day</em>. The falling price says sellers won the day; the rising volume says the selling was big — institutional-sized. One is noise. A cluster is a message. The classic O'Neil rule of thumb: <strong>four or more distribution days within about 25 sessions</strong> means institutions are distributing — selling into strength — and the rally is on borrowed time.</p>
+      <h2>Why it fires before price breaks</h2>
+      <p>Large funds cannot exit a position in a day without crushing the price, so they sell gradually, into rallies, while the index still looks fine. The <em>price</em> damage comes later; the <em>volume</em> signature is visible immediately. That is what makes distribution days the closest thing to a leading indicator in a toolkit otherwise built from lagging averages: they detect the behavior that precedes the decline.</p>
+      <h2>Why these exact thresholds</h2>
+      <p>Each piece of the definition earns its place. The <strong>0.2% decline</strong> floor keeps flat, drifting sessions out of the count — a day that closed a few cents lower on heavy volume is churn, not distribution. The <strong>higher-volume</strong> requirement is the heart of it: price falling on <em>lighter</em> volume than yesterday means sellers were timid; falling on <em>heavier</em> volume means someone large needed out badly enough to accept worse prices. And the <strong>25-session window</strong> matches how institutions actually operate — a fund trimming a major position works the order over roughly a month, so that's the span over which the footprints cluster before the decline they foreshadow.</p>
+      <p>The count also heals: each new session pushes the oldest one out of the window, so a distribution day "expires" after about five weeks. A market can absorb two or three and move on. What it rarely absorbs is a cluster that keeps refreshing faster than it expires.</p>
+      <h2>A live worked example: August 2026</h2>
+      <p>In late August 2026, SPY sat above both its 50-day and 200-day moving averages with both rising — by trend measures, a perfect tape. Yet SPY was carrying <strong>5 distribution days</strong> in its last 25 sessions, and QQQ <strong>6</strong>. And the damage was already measurable where it matters: DataQuant's own breakout win rate had fallen to roughly <strong>37% in the July window, from 64% in May–June</strong>. The index held up. The tape under it did not — and breakout traders trade the tape, not the index.</p>
+      <h2>Why DataQuant scores it separately — and watches two benchmarks</h2>
+      <p>This is exactly why the <a href="/learn/market-health-gauge">Market Health gauge</a> scores distribution days as their own component (0–25 points, minus five per distribution day) instead of folding them into trend. A trend-only gauge would have read "all clear" through July while breakouts failed. The gauge also counts distribution on <strong>both SPY and QQQ and takes the worse of the two</strong> — growth stocks, where breakouts live, often come under distribution first, and in August 2026 QQQ was indeed the weaker tape.</p>
+      <h2>How to use the count</h2>
+      <ul>
+        <li><strong>0–2 days:</strong> normal give-and-take. No signal.</li>
+        <li><strong>3 days:</strong> attention. Tighten stops on extended positions.</li>
+        <li><strong>4–6 days:</strong> institutions are selling into strength. Size down, demand only the best setups, and expect breakouts to fail more often — whatever the index chart looks like.</li>
+      </ul>
+      <p>Distribution days age out: as sessions roll past the 25-day window, old ones drop off the count. A market can also repair itself — a cluster that never becomes a correction simply expires. The count is context, not prophecy.</p>
+    
+      
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2"><details><summary>What exactly counts as a distribution day?</summary><p class="text-slate-400">A session where the index closes down at least 0.2% on higher volume than the prior session, counted over a rolling 25-session window. Four or more is the classic warning threshold.</p></details><details><summary>Can the market look strong while under distribution?</summary><p class="text-slate-400">Yes — that is the whole point. In August 2026 SPY was above both its key moving averages with 5 distribution days on the count, and breakout win rates had already halved. Institutions sell into strength precisely because price still looks fine.</p></details><details><summary>Why watch QQQ as well as SPY?</summary><p class="text-slate-400">Growth stocks — where most breakout setups live — often come under distribution before the broad market. DataQuant's gauge counts both and takes the worse reading.</p></details><details><summary>Do distribution days predict a crash?</summary><p class="text-slate-400">No. They flag elevated risk, not a timetable. Clusters precede corrections more often than chance, but some clusters simply expire as the window rolls forward. Use the count for position sizing, not prophecy.</p></details></div>
+    </section>
+      
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/market-health-gauge" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Market Health Gauge</div><div class="text-xs text-slate-400 mt-1">Trend, distribution, and breadth combined into one 0-100 regime score.</div></a><a href="/learn/honest-backtest" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Honest Backtest</div><div class="text-xs text-slate-400 mt-1">How DataQuant measures its own results — down months included.</div></a></div>
+    </section>
+      
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+    
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -10,7 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { postXThread } from './dist/x-post.js';
-import { renderScorecardPng, metaFor, metaHtml } from './og-card.js';
+import { renderScorecardPng, renderMarketHealthPng, metaFor, metaHtml } from './og-card.js';
 import { detectBases } from './base-detect.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -158,7 +158,11 @@ async function ensureUser(clerkUserId) {
 // When Stripe is disabled (dev mode), the second check is skipped.
 async function paywall(req, res, next) {
   const { userId } = getAuth(req);
-  if (!userId) return res.redirect('/?ref=dashboard');
+  // Anonymous: send to the landing with the intended destination preserved, so
+  // the landing can open Clerk sign-in and return the user to where they were
+  // headed (e.g. a /$TICKER deep link from the pulse page) instead of dumping
+  // them on the homepage.
+  if (!userId) return res.redirect('/?ref=dashboard&next=' + encodeURIComponent(req.originalUrl));
 
   if (!STRIPE_ENABLED) return next();
 
@@ -407,7 +411,9 @@ app.post('/api/admin/tweet-earnings', async (req, res) => {
 // Static assets (landing.html, CSS, JS, images) remain public. Note: because
 // this comes AFTER the explicit "/" handler above, root requests go to the
 // landing page, not to index.html.
-app.use(express.static('public'));
+// extensions: ['html'] serves /learn/<slug> from learn/<slug>.html — clean
+// article URLs without a route per page.
+app.use(express.static('public', { extensions: ['html'] }));
 
 // Extension distance penalty: a heavily-extended Type3 is a valid breakout but a
 // bad re-entry, so its DISPLAY confidence is discounted from the raw db value.
@@ -1432,11 +1438,10 @@ app.get('/api/candles/:symbol', async (req, res) => {
 //                        return (from the same store RS ranks on)
 // >=70 risk-on · 45-69 caution · <45 risk-off (avoid new entries).
 const marketHealthCache = new Map(); // region -> { data, expiresAt }
-app.get('/api/market-health', async (req, res) => {
-  const region = req.query.region === 'in' ? 'IN' : 'US';
+async function computeMarketHealth(region) {
   const cached = marketHealthCache.get(region);
-  if (cached && cached.expiresAt > Date.now()) return res.json(cached.data);
-  try {
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+  {
     // Per-benchmark gauge: trend vs 50/200MA + slope, and O'Neil distribution
     // days over the last 25 sessions. Index volume can be missing (^NSEI often
     // reports 0) — fall back to a price-only proxy: down days of >=1%.
@@ -1546,10 +1551,31 @@ app.get('/api/market-health', async (req, res) => {
       },
     };
     marketHealthCache.set(region, { data, expiresAt: Date.now() + 15 * 60 * 1000 });
-    res.json(data);
+    return data;
+  }
+}
+
+app.get('/api/market-health', async (req, res) => {
+  try {
+    res.json(await computeMarketHealth(req.query.region === 'in' ? 'IN' : 'US'));
   } catch (err) {
     console.error('[/api/market-health]', err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// Shareable OG card for /pulse: today's market-health reading as a 1200×630
+// PNG, so a shared pulse link previews with live data. 15-min cache matches
+// the underlying gauge.
+app.get('/og/pulse.png', async (req, res) => {
+  try {
+    const mh = await computeMarketHealth(req.query.region === 'in' ? 'IN' : 'US');
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=900');
+    res.send(renderMarketHealthPng(mh));
+  } catch (err) {
+    console.error('[/og/pulse.png]', err.message);
+    res.status(502).end();
   }
 });
 

@@ -209,6 +209,8 @@
         </a>
         <a href="#results" class="hover:text-white transition">Results</a>
         <a href="#how" class="hover:text-white transition">How it works</a>
+        <a href="/learn" class="hover:text-white transition">Learn</a>
+        <a href="/pulse" class="hover:text-white transition">Pulse</a>
         <a href="#pricing" class="hover:text-white transition">Pricing</a>
         <a href="#faq" class="hover:text-white transition">FAQ</a>
       </div>
@@ -917,7 +919,13 @@
       // a Clerk live/test key mismatch: frontend on pk_live_, backend on
       // sk_test_), /dashboard bounces back here with ?ref=dashboard and we'd
       // ping-pong forever. Allow one bounce, detect the immediate return, stop.
-      if (Clerk.user && new URLSearchParams(location.search).get('ref') === 'dashboard') {
+      // Deep-link preservation: the paywall forwards the intended destination
+      // as ?next= (e.g. /$RELY from the pulse page). Only same-origin paths.
+      const qp = new URLSearchParams(location.search);
+      const rawNext = qp.get('next') || '';
+      const nextDest = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard';
+
+      if (Clerk.user && qp.get('ref') === 'dashboard') {
         const now = Date.now();
         const lastBounce = +sessionStorage.getItem('dqAuthBounce') || 0;
         if (now - lastBounce < 5000) {
@@ -925,9 +933,15 @@
           console.error('Auth loop stopped: the server rejected a valid Clerk session. Check the backend CLERK_SECRET_KEY matches the live frontend key.');
         } else {
           sessionStorage.setItem('dqAuthBounce', String(now));
-          location.href = '/dashboard';
+          location.href = nextDest;
           return;
         }
+      }
+
+      // Anonymous arrival from the paywall: open sign-in immediately with the
+      // destination wired in, instead of leaving them staring at the homepage.
+      if (!Clerk.user && qp.get('ref') === 'dashboard') {
+        Clerk.openSignIn({ redirectUrl: nextDest, afterSignInUrl: nextDest });
       }
 
       // Wire CTAs. Start-trial goes straight into Stripe Checkout (30-day trial

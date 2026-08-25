@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="First signal per stock, close-to-close, 20 trading days or a -8% stop, equal weight, every signal disclosed, never annualized — and the down months published next to the good ones.">
+  <title>The Honest Backtest — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/honest-backtest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="The Honest Backtest — DataQuant Learn">
+  <meta property="og:description" content="First signal per stock, close-to-close, 20 trading days or a -8% stop, equal weight, every signal disclosed, never annualized — and the down months published next to the good ones.">
+  <meta property="og:url" content="https://dataquant.ai/learn/honest-backtest">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The Honest Backtest — DataQuant Learn">
+  <meta name="twitter:description" content="First signal per stock, close-to-close, 20 trading days or a -8% stop, equal weight, every signal disclosed, never annualized — and the down months published next to the good ones.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "The Honest Backtest: How DataQuant Measures Itself",
+      "description": "First signal per stock, close-to-close, 20 trading days or a -8% stop, equal weight, every signal disclosed, never annualized \u2014 and the down months published next to the good ones.",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "author": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "mainEntityOfPage": "https://dataquant.ai/learn/honest-backtest"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What exactly does the +6.9% / 64% figure describe?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The May 22 - June 20, 2026 window: 22 signals, each entered at the signal-day close and exited at the close 20 trading days later or at -8%, whichever came first, averaged equal-weight. All signals disclosed; nothing annualized."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why did July's numbers fall so far?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Regime change. Indexes stayed in uptrends while institutions distributed underneath \u2014 the exact tape where breakouts fail most. Same rules produced roughly a 37% win rate and a slightly negative average. Breakout systems are regime-dependent, which is why DataQuant publishes down months and built a Market Health gauge."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happened to the signals that weren't evaluated?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "In one window, 41 candidates yielded 19 evaluable trades \u2014 the rest lacked complete price history (delistings, data gaps) or hadn't finished the 20-day forward window. The attrition is disclosed because silently dropping unmeasurable trades flatters a backtest."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why not annualize the returns?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Because multiplying a single-regime sample across a year it didn't experience manufactures a number no one earned. Windows are reported as-is and accumulate month by month."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
+    .metric b { color:var(--fg); }
+    .metric span { color:var(--muted); font-size:0.95rem; }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">The Honest Backtest: How DataQuant Measures Itself</h1>
+      <p class="text-lg text-slate-400 mt-4">Every signal service shows you its winners. The only numbers worth your attention are the ones computed by a rule that couldn't cherry-pick — and published in the months they look bad.</p>
+      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
+      
+      <h2>The measurement rule</h2>
+      <p>DataQuant's backtest is deliberately simple enough to audit in one paragraph. Take the <strong>first signal per stock</strong> in the window (no doubling up when a name re-fires). Enter at the <strong>closing price on the signal date</strong> — not an idealized intraday fill. Exit at the close <strong>20 trading days later</strong>, or at <strong>-8%</strong>, whichever comes first. Weight every trade <strong>equally</strong>. Disclose <strong>every signal</strong> — not a curated subset. And never annualize: a 30-day sample is a 30-day sample.</p>
+      <h2>The good window — and the bad one</h2>
+      <p>The window of May 22 – June 20, 2026: <strong>22 signals, +6.9% average return, 64% win rate</strong>. Live production data, all signals disclosed.</p>
+      <p>Then July: roughly a <strong>37% win rate with a slightly negative average return</strong>. Same rules, same discipline, same scanner. What changed was the market — a choppy tape where indexes held up while institutions distributed underneath, precisely the regime where breakout entries fail most. Breakout systems are regime-dependent. That isn't a flaw to hide; it's the central fact of the strategy, and it's why the <a href="/learn/market-health-gauge">Market Health gauge</a> exists: to tell you which regime you're in <em>before</em> the month's results do.</p>
+      <h2>The parts most services don't mention</h2>
+      <ul>
+        <li><strong>Survivorship honesty.</strong> In one recent window, 41 candidate signals produced only 19 evaluable trades — the rest lacked complete price history (delistings, data gaps) or hadn't finished their 20-day forward window. That attrition is stated, not hidden, because silently dropping unmeasurable trades is how backtests flatter themselves.</li>
+        <li><strong>The stop is part of the arithmetic.</strong> Capping every loss at -8% is what lets a strategy survive a 37% win-rate month. The edge of breakout trading was never accuracy — it's asymmetry: losses capped small, winners given 20 days of room.</li>
+        <li><strong>Closes, not wishes.</strong> Entries and exits at real closing prices mean the numbers include gaps and slippage-adjacent reality, not perfect fills at the exact pivot.</li>
+      </ul>
+      <h2>The asymmetry that makes it work</h2>
+      <p>It's worth spelling out why a strategy can survive — even prosper through — win rates that would sink a coin-flip bettor. The -8% stop puts a hard floor under every loss, while winners get twenty trading days of unbounded room. When the average winner is several times the size of the average capped loss, a win rate well under 50% still compounds; when the tape trends, a 64% month is a windfall. The discipline isn't decoration on the strategy — the discipline <em>is</em> the strategy. Accuracy fluctuates with the regime; the asymmetry is the part you control.</p>
+      <h2>How to read any backtest (including this one)</h2>
+      <p>Ask three questions. <em>Could the rule cherry-pick?</em> (First-signal-per-stock, all-disclosed answers that.) <em>Is the sample one regime?</em> (30 days always is — which is why months are published as they accumulate, wins and losses both.) <em>Does the method survive its own bad month?</em> (The -8% cap is the answer here — a losing month costs little; a trending month pays.) A service that shows its worst window next to its best is offering you evidence. One that shows only the best is offering you marketing.</p>
+    
+      
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2"><details><summary>What exactly does the +6.9% / 64% figure describe?</summary><p class="text-slate-400">The May 22 - June 20, 2026 window: 22 signals, each entered at the signal-day close and exited at the close 20 trading days later or at -8%, whichever came first, averaged equal-weight. All signals disclosed; nothing annualized.</p></details><details><summary>Why did July's numbers fall so far?</summary><p class="text-slate-400">Regime change. Indexes stayed in uptrends while institutions distributed underneath — the exact tape where breakouts fail most. Same rules produced roughly a 37% win rate and a slightly negative average. Breakout systems are regime-dependent, which is why DataQuant publishes down months and built a Market Health gauge.</p></details><details><summary>What happened to the signals that weren't evaluated?</summary><p class="text-slate-400">In one window, 41 candidates yielded 19 evaluable trades — the rest lacked complete price history (delistings, data gaps) or hadn't finished the 20-day forward window. The attrition is disclosed because silently dropping unmeasurable trades flatters a backtest.</p></details><details><summary>Why not annualize the returns?</summary><p class="text-slate-400">Because multiplying a single-regime sample across a year it didn't experience manufactures a number no one earned. Windows are reported as-is and accumulate month by month.</p></details></div>
+    </section>
+      
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/market-health-gauge" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Market Health Gauge</div><div class="text-xs text-slate-400 mt-1">The regime indicator built because of months like July.</div></a><a href="/learn/distribution-days-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Distribution Days</div><div class="text-xs text-slate-400 mt-1">The institutional-selling count that fired while July's indexes still looked fine.</div></a></div>
+    </section>
+      
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+    
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+</body>
+</html>

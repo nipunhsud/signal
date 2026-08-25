@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="DataQuant's Base X-ray dissects every consolidation a stock built in two years — pivot, depth, coil, volume dry-up, failed pokes, and what happened after the breakout. Here's how to read it.">
+  <title>Reading a Base X-ray — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/reading-a-base-xray">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="Reading a Base X-ray — DataQuant Learn">
+  <meta property="og:description" content="DataQuant's Base X-ray dissects every consolidation a stock built in two years — pivot, depth, coil, volume dry-up, failed pokes, and what happened after the breakout. Here's how to read it.">
+  <meta property="og:url" content="https://dataquant.ai/learn/reading-a-base-xray">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Reading a Base X-ray — DataQuant Learn">
+  <meta name="twitter:description" content="DataQuant's Base X-ray dissects every consolidation a stock built in two years — pivot, depth, coil, volume dry-up, failed pokes, and what happened after the breakout. Here's how to read it.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Reading a Base X-ray: Every Base a Stock Ever Built, Measured",
+      "description": "DataQuant's Base X-ray dissects every consolidation a stock built in two years \u2014 pivot, depth, coil, volume dry-up, failed pokes, and what happened after the breakout. Here's how to read it.",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "author": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "mainEntityOfPage": "https://dataquant.ai/learn/reading-a-base-xray"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What qualifies as a base on the X-ray?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A consolidation of at least two weeks, at most 35% deep, beneath a swing-high pivot. Intraday wicks above the pivot don't resolve it \u2014 only a close above the pivot turns a base into a breakout."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is a failed poke?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A bar whose high reached within 0.5% of the pivot but closed more than 1% below it. Each failed poke is a seller defending the level; two or more inside a base signals supply overhead."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why do long bases matter?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The longer a stock consolidates, the more impatient holders leave and the less overhead supply remains. SEIC's X-ray shows the pattern: a 49-week base broke out and ran +18%, and the structure it built eventually supported a 3.2-week base that ran +62.5%."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does 'blue sky' mean on a base card?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The base's pivot sits within 2% of the 52-week high, so a breakout clears essentially every holder from the past year \u2014 nobody is waiting above to sell at break-even."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
+    .metric b { color:var(--fg); }
+    .metric span { color:var(--muted); font-size:0.95rem; }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">Reading a Base X-ray: Every Base a Stock Ever Built, Measured</h1>
+      <p class="text-lg text-slate-400 mt-4">A single chart pattern is an anecdote. Two years of a stock's bases — each measured the same way, with its outcome attached — is evidence. That's what the Base X-ray is for.</p>
+      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
+      
+      <h2>What counts as a base</h2>
+      <p>DataQuant defines a base mechanically: a consolidation of <strong>at least two weeks</strong>, no more than <strong>35% deep</strong>, sitting beneath a swing-high <strong>pivot</strong> — the ceiling price must clear to resolve the pattern. Wicks that poke above the pivot don't end a base (they get counted, as you'll see); only a close above the pivot resolves it as a breakout. And once a trade's stop is breached, that episode is over — any later signal starts a fresh base with a fresh entry, so old failures never haunt new setups.</p>
+      <h2>The lifecycle</h2>
+      <p>Every base on the X-ray is in one of two states: <strong>forming</strong> (still building under its pivot — at most the newest base can be forming) or <strong>broke out</strong>, with the outcome attached: the breakout date, the volume ratio on the breakout day, and how far the stock ran afterward.</p>
+      <h2>The card metrics, one sentence each</h2>
+      <div class="metric"><b>Pivot.</b> <span>The base's ceiling — the price that turns a pause into a breakout when cleared on volume.</span></div>
+      <div class="metric"><b>Depth &amp; duration.</b> <span>How far price pulled back inside the base, and how many weeks it spent there — "5 wks &middot; 9% deep" reads at a glance.</span></div>
+      <div class="metric"><b>Coil ratio.</b> <span>The range of the base's second half divided by its first half — below 1.0 the swings are tightening into the pivot, the volatility contraction that precedes strong breakouts.</span></div>
+      <div class="metric"><b>Volume dry-up.</b> <span>Base volume versus the volume before the base — below 1.0 means sellers are running out while price holds.</span></div>
+      <div class="metric"><b>Up &divide; down volume.</b> <span>Volume on up days divided by volume on down days inside the base — the accumulation tell; strong bases often run 2&times; or better.</span></div>
+      <div class="metric"><b>Failed pokes.</b> <span>Bars that wicked to within 0.5% of the pivot but closed more than 1% below it — each one is a seller defending the ceiling; 0 is clean, 2+ means supply overhead.</span></div>
+      <div class="metric"><b>Blue sky.</b> <span>The pivot sits within 2% of the 52-week high — a breakout clears every holder from the past year, leaving no trapped sellers overhead.</span></div>
+      <h2>Why measure every base, not just the current one</h2>
+      <p>A single setup, however pretty, is an anecdote. Two years of a stock's bases — detected by one rule, measured with one yardstick, each with its outcome attached — is evidence about <em>how this particular stock behaves</em>. Some names habitually build clean, tight bases and follow through; others poke, fail, and churn. The X-ray also reveals the classic <strong>base-on-base</strong> structure: a stock that breaks out, runs, then calmly builds its next base higher is showing you institutional accumulation in successive installments. And because a breached stop formally ends each episode, the analysis stays honest — a base that failed is recorded as a failure, never quietly absorbed into the next attempt's history.</p>
+      <h2>Two real X-rays</h2>
+      <p><strong>SEIC</strong> is a study in how bases compound. Its X-ray shows a marathon <strong>49.2-week base, 20% deep, under a $93.82 pivot</strong> — which broke out and ran +18%. The stock then built a 26.2-week base and ran +27.8% from it. Later, higher up, came the payoff of all that structure: a tight <strong>3.2-week base just 4.5% deep under $68.14</strong> (post-split prices) that broke out and ran <strong>+62.5%</strong>. Long bases build the launch pad; short, tight, late-stage bases deliver the sharpest moves.</p>
+      <p><strong>CRON</strong> shows what a decisive release looks like: a 7.6-week base, 14.4% deep, that broke out on <strong>14&times; average volume</strong> and ran +22.7%. When a quiet base ends that loudly, the volume is the confirmation.</p>
+      <h2>Reading it like a trader</h2>
+      <p>Look for the sequence, not a single card: a leader (<a href="/learn/relative-strength-explained">high RS</a>) whose successive bases get tighter (coil below 1), quieter (dry-up below 1), and cleaner (few failed pokes), forming at or near blue-sky territory. That stack of evidence is what the <a href="/learn/volatility-contraction-pattern">VCP</a> looks like when you can see two years of it at once.</p>
+    
+      
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2"><details><summary>What qualifies as a base on the X-ray?</summary><p class="text-slate-400">A consolidation of at least two weeks, at most 35% deep, beneath a swing-high pivot. Intraday wicks above the pivot don't resolve it — only a close above the pivot turns a base into a breakout.</p></details><details><summary>What is a failed poke?</summary><p class="text-slate-400">A bar whose high reached within 0.5% of the pivot but closed more than 1% below it. Each failed poke is a seller defending the level; two or more inside a base signals supply overhead.</p></details><details><summary>Why do long bases matter?</summary><p class="text-slate-400">The longer a stock consolidates, the more impatient holders leave and the less overhead supply remains. SEIC's X-ray shows the pattern: a 49-week base broke out and ran +18%, and the structure it built eventually supported a 3.2-week base that ran +62.5%.</p></details><details><summary>What does 'blue sky' mean on a base card?</summary><p class="text-slate-400">The base's pivot sits within 2% of the 52-week high, so a breakout clears essentially every holder from the past year — nobody is waiting above to sell at break-even.</p></details></div>
+    </section>
+      
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/volatility-contraction-pattern" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">What Is a VCP?</div><div class="text-xs text-slate-400 mt-1">The tightening-base pattern the X-ray's coil and dry-up metrics quantify.</div></a><a href="/learn/honest-backtest" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Honest Backtest</div><div class="text-xs text-slate-400 mt-1">What the signals actually returned — measured plainly, down months included.</div></a></div>
+    </section>
+      
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+    
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+</body>
+</html>

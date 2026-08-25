@@ -23,6 +23,15 @@
 
 The published backtest is deliberately narrow: 22 signals over a 30-day window (May 22 – Jun 20, 2026), each held 20 trading days or stopped at -8%, averaged equal-weight (+6.9% average return, 64% win rate). This is live production data with all signals disclosed, but it is one market regime — a choppier July window ran well below it, which DataQuant reports rather than hides. Results update monthly, wins and losses both; the Market Health gauge exists precisely because breakout systems are regime-dependent.
 
+## Guides (plain-English, grounded in DataQuant's live data)
+
+- [What Is a Volatility Contraction Pattern (VCP)?](https://dataquant.ai/learn/volatility-contraction-pattern): The quiet base before a stock's biggest move — DataQuant's exact machine definition of the VCP, and an honest example of a pattern that passed every gate but wasn't tradeable.
+- [Relative Strength (RS), Explained](https://dataquant.ai/learn/relative-strength-explained): The 1-99 leadership rank — how DataQuant computes it per market, why leaders lead, and why RS is a filter, not a trigger.
+- [Distribution Days, Explained](https://dataquant.ai/learn/distribution-days-explained): Institutional selling into strength — the definition, the 4+ warning threshold, and the August 2026 case where a perfect-looking index hid a failing tape.
+- [Reading a Base X-ray](https://dataquant.ai/learn/reading-a-base-xray): Every metric on DataQuant's base cards — pivot, depth, coil, volume dry-up, accumulation, failed pokes, blue sky — with real worked examples.
+- [The Honest Backtest](https://dataquant.ai/learn/honest-backtest): How DataQuant measures itself — methodology, the good month and the bad month, and why the numbers are never annualized.
+- [The Market Health Gauge](https://dataquant.ai/learn/market-health-gauge): The "M" in market direction — trend, distribution days, and breadth rolled into one 0-100 regime score.
+
 ## Key pages
 
 - [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ

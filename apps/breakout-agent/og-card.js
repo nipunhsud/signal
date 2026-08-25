@@ -117,6 +117,51 @@ function svg(s) {
 </svg>`;
 }
 
+// Market-health card for the /pulse share link: today's regime front and
+// center, the three components underneath. Same hand-rolled SVG approach.
+function healthSvg(mh) {
+  const C = { bg: '#0F172A', card: '#111827', line: '#334155', dim: '#94A3B8', fg: '#F8FAFC', accent: '#F59E0B' };
+  const regimeColor = mh.regime === 'risk-on' ? '#34D399' : mh.regime === 'caution' ? '#FBBF24' : '#F87171';
+  const label = mh.regime === 'risk-on' ? 'RISK-ON' : mh.regime === 'caution' ? 'CAUTION' : 'RISK-OFF';
+  const c = mh.components || {};
+  const dd = c.distribution?.days ?? 0;
+  const ddPer = c.distribution?.perBenchmark
+    ? Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${esc(b)} ${d}`).join(' · ')
+    : '';
+  const br1m = c.breadth?.pctPositive1m;
+  const br1w = c.breadth?.pctPositive1w;
+  const T = (x, y, text, { size = 32, weight = 400, fill = C.fg, anchor = 'start' } = {}) =>
+    text ? `<text x="${x}" y="${y}" font-family="Inter" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${esc(text)}</text>` : '';
+  const compCol = (x, title, value, sub, valueFill = C.fg) =>
+    T(x, 300, title, { size: 24, fill: C.dim }) +
+    T(x, 356, value, { size: 42, weight: 700, fill: valueFill }) +
+    T(x, 398, sub, { size: 22, fill: C.dim });
+  return `<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="${C.bg}"/>
+  <rect x="40" y="40" width="1120" height="550" rx="24" fill="${C.card}"/>
+  ${T(80, 130, 'Market Health', { size: 44, weight: 700 })}
+  ${T(80, 172, `${mh.region === 'IN' ? 'India · ' + mh.benchmark : 'US · ' + mh.benchmark} · ${mh.asOf}`, { size: 26, fill: C.dim })}
+  ${T(1120, 150, `${mh.score}`, { size: 96, weight: 700, fill: regimeColor, anchor: 'end' })}
+  ${T(1120, 190, label, { size: 34, weight: 700, fill: regimeColor, anchor: 'end' })}
+  <line x1="80" y1="225" x2="1120" y2="225" stroke="${C.line}" stroke-width="2"/>
+  ${compCol(80, 'TREND', `${c.trend?.score ?? '—'} / 50`, c.trend?.aboveMA50 ? 'above the 50-day' : 'below the 50-day', (c.trend?.score ?? 0) >= 35 ? '#34D399' : '#FBBF24')}
+  ${compCol(440, 'DISTRIBUTION DAYS', `${dd} / 25 sessions`, ddPer || 'selling on rising volume', dd >= 4 ? '#F87171' : '#34D399')}
+  ${compCol(800, 'BREADTH', br1m != null ? `${br1m}% 1m${br1w != null ? ` · ${br1w}% 1w` : ''}` : 'populating', `${c.breadth?.universe ?? 0} stocks positive share`, (br1m ?? 50) >= 55 ? '#34D399' : '#FBBF24')}
+  ${T(80, 490, mh.advice, { size: 27, fill: C.fg })}
+  <line x1="80" y1="548" x2="1120" y2="548" stroke="${C.line}" stroke-width="2"/>
+  ${T(80, 578, 'dataquant.ai/pulse', { size: 26, weight: 700, fill: C.accent })}
+  ${T(1120, 578, 'Updated every 15 min · Not advice', { size: 24, fill: C.dim, anchor: 'end' })}
+</svg>`;
+}
+
+export function renderMarketHealthPng(mh) {
+  const r = new Resvg(healthSvg(mh), {
+    fitTo: { mode: 'width', value: 1200 },
+    font: { fontBuffers, defaultFontFamily: 'Inter', loadSystemFonts: false },
+  });
+  return r.render().asPng();
+}
+
 export function renderScorecardPng(s) {
   const r = new Resvg(svg(s), {
     fitTo: { mode: 'width', value: 1200 },

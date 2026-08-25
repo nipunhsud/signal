@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="RS ranks every stock's price performance against every other stock, 1-99. Here's exactly how DataQuant computes it, why leaders tend to keep leading, and how to use RS without fooling yourself.">
+  <title>Relative Strength (RS), Explained — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/relative-strength-explained">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="Relative Strength (RS), Explained — DataQuant Learn">
+  <meta property="og:description" content="RS ranks every stock's price performance against every other stock, 1-99. Here's exactly how DataQuant computes it, why leaders tend to keep leading, and how to use RS without fooling yourself.">
+  <meta property="og:url" content="https://dataquant.ai/learn/relative-strength-explained">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Relative Strength (RS), Explained — DataQuant Learn">
+  <meta name="twitter:description" content="RS ranks every stock's price performance against every other stock, 1-99. Here's exactly how DataQuant computes it, why leaders tend to keep leading, and how to use RS without fooling yourself.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Relative Strength (RS), Explained",
+      "description": "RS ranks every stock's price performance against every other stock, 1-99. Here's exactly how DataQuant computes it, why leaders tend to keep leading, and how to use RS without fooling yourself.",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "author": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      },
+      "mainEntityOfPage": "https://dataquant.ai/learn/relative-strength-explained"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is a good RS rating?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Leadership methods generally look for RS of 70 or higher \u2014 outperforming at least 70% of the market \u2014 with the strongest setups typically in the 80s and 90s. Below about 50 you are looking at a laggard, whatever the story."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is DataQuant's RS different from RSI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "They are unrelated despite the similar name. Relative Strength ranks a stock against other stocks. RSI is a momentum oscillator comparing a stock to its own recent prices. This guide is about the first one."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why rank US and Indian stocks separately?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Because leadership is relative to a market. An NSE stock outperforming 85% of Indian stocks is a leader in the market where it actually trades \u2014 mixing markets would make both rankings meaningless."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does a high RS mean I should buy?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. High RS narrows the field to leaders. You still need a sound entry \u2014 a base and breakout \u2014 and a risk plan. RS answers which stocks, not buy now."
+          }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
+    .metric b { color:var(--fg); }
+    .metric span { color:var(--muted); font-size:0.95rem; }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">Relative Strength (RS), Explained</h1>
+      <p class="text-lg text-slate-400 mt-4">Before asking whether a stock is cheap, well-run, or well-loved, there's a simpler question: is the market already voting for it with real money? Relative Strength answers that in one number.</p>
+      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
+      
+      <h2>What RS actually measures</h2>
+      <p>Relative Strength ranks a stock's <em>price performance</em> against every other stock in the market on a scale of 1 to 99. An RS of 90 means the stock has outperformed 90% of the market over the measuring period. It says nothing about fundamentals, valuation, or story — it measures one thing: where the money already went.</p>
+      <h2>DataQuant's formula</h2>
+      <p>Every stock DataQuant scans gets a weighted trailing return — <strong>50% weight on the 3-month return, 30% on the 1-month, 20% on the 1-week</strong> — so durable strength dominates but recent momentum still counts. That score is then percentile-ranked against the <em>entire scanned universe</em>, roughly 1,466 US stocks at present. Crucially, the ranking is per-market: a US stock is ranked against US stocks and an Indian stock against the Indian universe, because "leading" only means something relative to the pond you swim in.</p>
+      <h2>How the percentile actually works</h2>
+      <p>Percentile ranking is what makes the number honest. Line up all ~1,466 scanned US stocks by their weighted trailing return, worst to best, and each stock's position in that line — expressed 1 to 99 — is its RS. An RS of 80 means the stock outran roughly 1,170 of its peers; an RS of 45 means most of the market did better. Because it's a rank, not a raw return, RS is self-calibrating: in a roaring market an RS of 90 demands spectacular performance, and in a falling market a stock that merely declines <em>less</em> than everyone else can still rank as a leader. That last property matters more than it sounds — the names that fall least in a correction are disproportionately the ones that lead the next advance, and RS spots them while their charts still look unimpressive.</p>
+      <h2>Why leaders lead</h2>
+      <p>The uncomfortable, well-documented market truth behind RS is that <strong>strength persists</strong>. The stocks with the highest relative strength at the start of an advance disproportionately become its biggest winners. William O'Neil built the "L" of his CANSLIM method on it — Leader, defined by a high RS rating. Mark Minervini simply refuses to buy a stock that isn't already showing relative strength.</p>
+      <p>The mechanism is human: institutions cannot build a meaningful position overnight. They accumulate the best names over weeks and months, and that sustained buying is exactly what a high RS detects. You are not predicting leadership — you are reading the footprints of money already moving.</p>
+      <h2>The classic bar: RS &ge; 70</h2>
+      <p>There is no magic line, but leadership-based methods generally want a stock outperforming at least 70% of the market before considering it — and the biggest winners typically set up in the 80s and 90s. DataQuant's dashboard has a one-click <strong>RS &ge; 70</strong> filter that reduces the signal list to leaders only.</p>
+      <h2>How to avoid fooling yourself</h2>
+      <ul>
+        <li><strong>RS is a filter, not a trigger.</strong> It tells you which stocks deserve attention, never when to buy. Pair it with a proper setup — a base and a breakout — and a predefined stop.</li>
+        <li><strong>Beware extreme readings late in a move.</strong> A stock that has already run for a year can carry a blistering RS precisely because the easy gains are behind it.</li>
+        <li><strong>High RS &ne; safe.</strong> RS measures price, not risk. Leaders fall too — which is why every DataQuant signal ships with a stop.</li>
+      </ul>
+      <p>RS works best combined with the rest of the toolkit: a leader (<strong>RS &ge; 70</strong>) building a quiet base (<a href="/learn/volatility-contraction-pattern">a VCP</a>) in a market that rewards breakouts (<a href="/learn/market-health-gauge">the Market Health gauge</a>).</p>
+    
+      
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2"><details><summary>What is a good RS rating?</summary><p class="text-slate-400">Leadership methods generally look for RS of 70 or higher — outperforming at least 70% of the market — with the strongest setups typically in the 80s and 90s. Below about 50 you are looking at a laggard, whatever the story.</p></details><details><summary>How is DataQuant's RS different from RSI?</summary><p class="text-slate-400">They are unrelated despite the similar name. Relative Strength ranks a stock against other stocks. RSI is a momentum oscillator comparing a stock to its own recent prices. This guide is about the first one.</p></details><details><summary>Why rank US and Indian stocks separately?</summary><p class="text-slate-400">Because leadership is relative to a market. An NSE stock outperforming 85% of Indian stocks is a leader in the market where it actually trades — mixing markets would make both rankings meaningless.</p></details><details><summary>Does a high RS mean I should buy?</summary><p class="text-slate-400">No. High RS narrows the field to leaders. You still need a sound entry — a base and breakout — and a risk plan. RS answers which stocks, not buy now.</p></details></div>
+    </section>
+      
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/volatility-contraction-pattern" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">What Is a VCP?</div><div class="text-xs text-slate-400 mt-1">The quiet, tightening base that precedes big moves — and the exact detection rules.</div></a><a href="/learn/market-health-gauge" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Market Health Gauge</div><div class="text-xs text-slate-400 mt-1">Does the current tape reward breakouts at all? A 0-100 answer.</div></a></div>
+    </section>
+      
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+    
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+</body>
+</html>
