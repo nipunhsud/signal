@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Data Quant — Breakouts confirmed by earnings tone</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="/vendor/klinecharts.min.js"></script>
   <style>
     body.resizing {
       user-select: none;
@@ -461,6 +461,23 @@
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
+        // KLineCharts instances: drawer thumbnail + full chart page. Elements are
+        // tracked so klinecharts.dispose(el) can run before innerHTML wipes them.
+        this._drawerKline = null; this._drawerKlineEl = null;
+        this._pageKline = null; this._pageKlineEl = null;
+        this._pageChartToken = 0;
+        this.chartAsset = null;
+        this._chartKey = null;          // asset|range|tf|ma50|ma200 — rebuild guard
+        this._chartReturnView = 'dashboard';
+        let cr = '6m', ctf = 'd';
+        try {
+          cr = localStorage.getItem('dq-chart-range') || '6m';
+          ctf = localStorage.getItem('dq-chart-tf') || 'd';
+        } catch (e) {}
+        this.chartRange = ['3m', '6m', '1y', '2y'].includes(cr) ? cr : '6m';
+        this.chartTf = ['d', 'w'].includes(ctf) ? ctf : 'd';
+        this.chartMA50 = true;
+        this.chartMA200 = true;
         // Admin (Clerk private metadata admin:"true") — gates the "Tweet" button.
         this.isAdmin = false;
         fetch('/api/admin/status').then(r => r.json()).then(d => { this.isAdmin = !!d.isAdmin; }).catch(() => {});
@@ -1412,6 +1429,7 @@
       renderDrawer() {
         const drawer = document.getElementById('drawer');
         const app = document.getElementById('app');
+        this._disposeDrawerChart(); // innerHTML is about to wipe the chart element
         if (!this.selectedAsset) {
           drawer.style.width = '0px';
           drawer.innerHTML = '';
@@ -1452,6 +1470,7 @@
                   ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Price closed at/below the stop — trade is stopped out"><span class="badge-dot"></span>Stopped out</span>' : ''}
                   ${signal.confidence >= 90 && !signal.stoppedOut ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
                   <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition ml-1" title="Open on TradingView">↗</a>
+                  <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-sm text-gray-400 hover:text-white transition" title="Full chart">⤢</button>
                 </div>
                 <button onclick="dashboard.closeDrawer();" class="text-gray-500 hover:text-white transition text-xl leading-none flex-shrink-0" title="Close">✕</button>
               </div>
@@ -1526,7 +1545,7 @@
               <div>
                 <div class="text-xs text-gray-400 mb-1.5 flex justify-between">
                   <span>6 months · Daily</span>
-                  <span class="text-gray-500">${signal.asset}</span>
+                  <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
                 </div>
                 <div id="chart-container" style="height:260px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
               </div>
@@ -1907,117 +1926,364 @@
         }
 
         const chartToken = ++this._chartToken;
-        fetch('/api/candles/' + encodeURIComponent(signal.asset))
+        // Server slices to 6 months so the whole dataset fits the thumbnail —
+        // no client-side visible-range math needed.
+        fetch('/api/candles/' + encodeURIComponent(signal.asset) + '?range=6m')
           .then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
           })
           .then(bars => {
             if (chartToken !== this._chartToken) return; // drawer navigated away
-            if (!bars || !bars.length) {
-              const el = document.getElementById('chart-container');
-              if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400">No price data available</div>';
-              return;
-            }
             const el = document.getElementById('chart-container');
             if (!el) return;
+            if (!bars || !bars.length) {
+              el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400">No price data available</div>';
+              return;
+            }
             el.innerHTML = ''; // Clear placeholder
-            const chart = this._drawerChart = LightweightCharts.createChart(el, {
-              autoSize: true,
-              height: 260,
-              layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
-              grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
-              crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-              rightPriceScale: {
-                borderColor: '#374151',
-                // breathing room above/below so price lines don't crowd the candles
-                scaleMargins: { top: 0.12, bottom: 0.12 },
-              },
-              // rightOffset adds blank bars on the right so the latest candle isn't covered by R/S price-line labels
-              timeScale: { borderColor: '#374151', timeVisible: false, rightOffset: 10 },
-            });
-            const series = chart.addCandlestickSeries({
-              upColor: '#10b981',
-              downColor: '#ef4444',
-              borderVisible: false,
-              wickUpColor: '#10b981',
-              wickDownColor: '#ef4444',
-            });
-            series.setData(bars);
-            // Show ~6 months of daily data (≈126 trading bars). Use a LOGICAL
-            // range extended ~10 bars PAST the last candle: setVisibleRange(to=
-            // lastBar) pins the latest candle to the right edge, so the R/Entry
-            // price-line labels cover it. The +10 keeps that blank margin.
-            if (bars.length > 0) {
-              const barsToShow = Math.min(126, bars.length);
-              const startIdx = Math.max(0, bars.length - barsToShow);
-              chart.timeScale().setVisibleLogicalRange({ from: startIdx, to: bars.length - 1 + 10 });
-            } else {
-              chart.timeScale().fitContent();
+            const chart = this._initKline(el);
+            if (!chart) {
+              el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>';
+              return;
             }
-
-            // Breakout: show resistance/support
-            if (signal.signalType === 'breakout') {
-              if (signal.resistance) {
-                series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
-              }
-              if (signal.support) {
-                series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
-              }
-              // Frozen entry — skip when it coincides with R (labels would collide)
-              if (signal.entryPrice != null && (!signal.resistance || Math.abs(signal.entryPrice - signal.resistance) / signal.resistance > 0.001)) {
-                series.createPriceLine({ price: signal.entryPrice, color: '#eab308', lineWidth: 1, lineStyle: 2, title: 'entry' });
-              }
-            }
-            // Extension: show entry resistance (yellow) + current resistance (red)
-            else if (signal.signalType === 'extension' && signal.entryResistance) {
-              series.createPriceLine({ price: signal.entryResistance, color: '#eab308', lineWidth: 2, lineStyle: 2, title: 'Entry' });
-              if (signal.resistance && signal.resistance !== signal.entryResistance) {
-                series.createPriceLine({ price: signal.resistance, color: '#ef4444', lineWidth: 1, lineStyle: 2, title: 'R' });
-              }
-            }
-            // Setup: show MA20
-            else if (signal.signalType === 'setup' && signal.ma20) {
-              series.createPriceLine({ price: signal.ma20, color: '#3b82f6', lineWidth: 1, lineStyle: 2, title: 'MA20' });
-            }
-            // Frozen stop for breakouts and extensions
-            if ((signal.signalType === 'breakout' || signal.signalType === 'extension') && signal.stopLoss != null) {
-              series.createPriceLine({ price: signal.stopLoss, color: '#ef4444', lineWidth: 1, lineStyle: 3, title: 'stop' });
-            }
-
-            // Base box: shade the consolidation that preceded the breakout — the
-            // barsInRange bars before the breakout candle, support → resistance.
-            // Positioned as an absolute div over the chart; re-anchored on every
-            // visible-range change (pan/zoom/resize).
-            const nBase = signal.barsInRange || 0;
-            if (signal.signalType === 'breakout' && nBase >= 3 && signal.resistance && signal.support && bars.length > nBase + 1) {
-              el.style.position = 'relative';
-              const box = document.createElement('div');
-              box.style.cssText = 'position:absolute;pointer-events:none;border:1px dashed rgba(148,163,184,0.5);background:rgba(148,163,184,0.07);border-radius:2px;z-index:3;display:none;';
-              el.appendChild(box);
-              const startBar = bars[bars.length - 1 - nBase];
-              const endBar = bars[bars.length - 2]; // last bar before the breakout candle
-              const positionBox = () => {
-                const x1 = chart.timeScale().timeToCoordinate(startBar.time);
-                const x2 = chart.timeScale().timeToCoordinate(endBar.time);
-                const y1 = series.priceToCoordinate(signal.resistance);
-                const y2 = series.priceToCoordinate(signal.support);
-                if (x1 == null || x2 == null || y1 == null || y2 == null) { box.style.display = 'none'; return; }
-                box.style.display = 'block';
-                box.style.left = Math.min(x1, x2) + 'px';
-                box.style.top = Math.min(y1, y2) + 'px';
-                box.style.width = Math.abs(x2 - x1) + 'px';
-                box.style.height = Math.abs(y2 - y1) + 'px';
-              };
-              // rAF retry: coordinates aren't final until the chart's first layout pass
-              positionBox();
-              requestAnimationFrame(positionBox);
-              chart.timeScale().subscribeVisibleTimeRangeChange(positionBox);
-            }
+            this._drawerKline = chart;
+            this._drawerKlineEl = el;
+            chart.applyNewData(this._toKlineBars(bars));
+            // Blank margin on the right so the level labels don't cover the latest candle
+            chart.setOffsetRightDistance(60);
+            this._applySignalOverlays(chart, signal, bars, { daily: true });
           })
           .catch(err => {
             const el = document.getElementById('chart-container');
             if (el) el.innerHTML = `<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>`;
+            console.error('Chart error:', err);
+          });
+      }
+
+      // ── KLineCharts shared helpers (drawer thumbnail + full chart page) ──
+
+      _disposeDrawerChart() {
+        if (this._drawerKlineEl) { try { klinecharts.dispose(this._drawerKlineEl); } catch (e) {} }
+        this._drawerKline = null;
+        this._drawerKlineEl = null;
+      }
+
+      _disposePageChart() {
+        if (this._pageKlineEl) { try { klinecharts.dispose(this._pageKlineEl); } catch (e) {} }
+        this._pageKline = null;
+        this._pageKlineEl = null;
+      }
+
+      _toKlineBars(bars) {
+        return bars.map(b => ({
+          timestamp: new Date(b.time + 'T00:00:00Z').getTime(),
+          open: b.open, high: b.high, low: b.low, close: b.close,
+          volume: b.volume || 0,
+        }));
+      }
+
+      // Register custom overlays once: dqLevel (labeled horizontal level),
+      // dqBaseBox (dashed consolidation rect), dqMark (per-bar glyph).
+      _ensureKlineOverlays() {
+        if (window.__dqKlineOverlaysReady) return;
+        klinecharts.registerOverlay({
+          name: 'dqLevel',
+          totalStep: 2,
+          lock: true,
+          createPointFigures: ({ coordinates, bounding, overlay }) => {
+            if (!coordinates.length) return [];
+            const y = coordinates[0].y;
+            const d = overlay.extendData || {};
+            const figures = [{
+              type: 'line',
+              attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+              styles: { style: 'dashed', color: d.color || '#9ca3af', size: d.size || 1, dashedValue: [4, 4] },
+              ignoreEvent: true,
+            }];
+            if (d.label) {
+              figures.push({
+                type: 'text',
+                attrs: { x: bounding.width - 4, y: y - 3, text: d.label, align: 'right', baseline: 'bottom' },
+                styles: { color: d.color || '#9ca3af', size: 10, family: 'ui-monospace, monospace', backgroundColor: 'rgba(17,24,39,0.75)', paddingLeft: 3, paddingRight: 3, paddingTop: 1, paddingBottom: 1 },
+                ignoreEvent: true,
+              });
+            }
+            return figures;
+          },
+        });
+        klinecharts.registerOverlay({
+          name: 'dqBaseBox',
+          totalStep: 3,
+          lock: true,
+          createPointFigures: ({ coordinates }) => {
+            if (coordinates.length < 2) return [];
+            const [a, b] = coordinates;
+            return [{
+              type: 'rect',
+              attrs: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) },
+              styles: { style: 'stroke_fill', color: 'rgba(148,163,184,0.08)', borderColor: 'rgba(148,163,184,0.35)', borderStyle: 'dashed', borderSize: 1, borderDashedValue: [4, 4] },
+              ignoreEvent: true,
+            }];
+          },
+        });
+        klinecharts.registerOverlay({
+          name: 'dqMark',
+          totalStep: 2,
+          lock: true,
+          createPointFigures: ({ coordinates, overlay }) => {
+            if (!coordinates.length) return [];
+            const d = overlay.extendData || {};
+            return [{
+              type: 'text',
+              attrs: { x: coordinates[0].x, y: coordinates[0].y + (d.dy || 0), text: d.text || '', align: 'center', baseline: d.baseline || 'bottom' },
+              styles: { color: d.color || '#e5e7eb', size: d.size || 10, family: 'ui-monospace, monospace', backgroundColor: 'transparent' },
+              ignoreEvent: true,
+            }];
+          },
+        });
+        window.__dqKlineOverlaysReady = true;
+      }
+
+      _initKline(el) {
+        if (!window.klinecharts) return null;
+        this._ensureKlineOverlays();
+        const chart = klinecharts.init(el);
+        if (!chart) return null;
+        chart.setStyles({
+          grid: {
+            horizontal: { color: 'rgba(148,163,184,0.08)' },
+            vertical: { color: 'rgba(148,163,184,0.08)' },
+          },
+          candle: {
+            bar: {
+              upColor: '#10b981', downColor: '#ef4444',
+              upBorderColor: '#10b981', downBorderColor: '#ef4444',
+              upWickColor: '#10b981', downWickColor: '#ef4444',
+              noChangeColor: '#9ca3af', noChangeBorderColor: '#9ca3af', noChangeWickColor: '#9ca3af',
+            },
+            priceMark: {
+              last: { upColor: '#10b981', downColor: '#ef4444', noChangeColor: '#9ca3af' },
+              high: { color: '#9ca3af' },
+              low: { color: '#9ca3af' },
+            },
+            tooltip: { text: { color: '#d1d5db' } },
+          },
+          indicator: {
+            tooltip: { text: { color: '#9ca3af' } },
+            lines: [
+              { color: '#3b82f6' },
+              { color: '#f59e0b' },
+              { color: '#a855f7' },
+            ],
+          },
+          xAxis: { axisLine: { color: '#374151' }, tickText: { color: '#9ca3af' }, tickLine: { color: '#374151' } },
+          yAxis: { axisLine: { color: '#374151' }, tickText: { color: '#9ca3af' }, tickLine: { color: '#374151' } },
+          crosshair: {
+            horizontal: { line: { color: '#6b7280' }, text: { backgroundColor: '#374151' } },
+            vertical: { line: { color: '#6b7280' }, text: { backgroundColor: '#374151' } },
+          },
+          separator: { color: '#374151' },
+        });
+        return chart;
+      }
+
+      // Draw signal context onto a chart: labeled levels always; base box, poke
+      // ✗ marks and breakout ▲ only on daily bars (weekly window semantics differ).
+      _applySignalOverlays(chart, signal, bars, opts = {}) {
+        if (!chart || !signal) return;
+        const daily = opts.daily !== false;
+        const ts = (t) => new Date(t + 'T00:00:00Z').getTime();
+        // Every point needs an x anchor even for horizontal lines — use the last bar.
+        const anchorTs = bars && bars.length ? ts(bars[bars.length - 1].time) : Date.now();
+        const level = (value, color, label, size) => {
+          if (value == null || !(value > 0)) return;
+          chart.createOverlay({ name: 'dqLevel', lock: true, points: [{ timestamp: anchorTs, value }], extendData: { color, label, size } });
+        };
+
+        if (signal.signalType === 'breakout') {
+          if (signal.resistance) level(signal.resistance, '#ef4444', 'R');
+          if (signal.support) level(signal.support, '#10b981', 'S');
+          // Frozen entry — skip when it coincides with R (labels would collide)
+          if (signal.entryPrice != null && (!signal.resistance || Math.abs(signal.entryPrice - signal.resistance) / signal.resistance > 0.001)) {
+            level(signal.entryPrice, '#eab308', 'entry');
+          }
+        } else if (signal.signalType === 'extension' && signal.entryResistance) {
+          level(signal.entryResistance, '#eab308', 'Entry', 2);
+          if (signal.resistance && signal.resistance !== signal.entryResistance) {
+            level(signal.resistance, '#ef4444', 'R');
+          }
+        } else if (signal.signalType === 'setup' && signal.ma20) {
+          level(signal.ma20, '#3b82f6', 'MA20');
+        }
+        if ((signal.signalType === 'breakout' || signal.signalType === 'extension') && signal.stopLoss != null) {
+          level(signal.stopLoss, '#ef4444', 'stop');
+        }
+
+        if (!daily || !bars || bars.length < 22) return;
+
+        // Base box: the barsInRange consolidation before the breakout candle.
+        const nBase = signal.barsInRange || 0;
+        if (signal.signalType === 'breakout' && nBase >= 3 && signal.resistance && signal.support && bars.length > nBase + 1) {
+          const startBar = bars[bars.length - 1 - nBase];
+          const endBar = bars[bars.length - 2]; // last bar before the breakout candle
+          chart.createOverlay({
+            name: 'dqBaseBox',
+            lock: true,
+            points: [
+              { timestamp: ts(startBar.time), value: signal.resistance },
+              { timestamp: ts(endBar.time), value: signal.support },
+            ],
+          });
+        }
+
+        // Failed pokes: same rule the backend uses — last 20 bars excluding the
+        // latest; wicked within 0.5% of the window pivot, closed >1% below it.
+        const win = bars.slice(-21, -1);
+        if (win.length) {
+          const pivot = Math.max(...win.map(b => b.high));
+          win.forEach(b => {
+            if (b.high >= pivot * 0.995 && b.close <= pivot * 0.99) {
+              chart.createOverlay({
+                name: 'dqMark', lock: true,
+                points: [{ timestamp: ts(b.time), value: b.high }],
+                extendData: { text: '✗', color: '#ef4444', baseline: 'bottom', dy: -2, size: 10 },
+              });
+            }
+          });
+        }
+
+        // Breakout ▲ under the bar the signal fired on
+        const sd = signal.signalDate ? String(signal.signalDate).slice(0, 10) : null;
+        if (sd) {
+          const bar = bars.find(b => b.time === sd);
+          if (bar) {
+            chart.createOverlay({
+              name: 'dqMark', lock: true,
+              points: [{ timestamp: ts(bar.time), value: bar.low }],
+              extendData: { text: '▲', color: '#eab308', baseline: 'top', dy: 4, size: 10 },
+            });
+          }
+        }
+      }
+
+      // ── Full chart page (this.view === 'chart') ──
+
+      openChartView(asset) {
+        if (!asset) return;
+        if (this.view !== 'chart') this._chartReturnView = this.view;
+        this.chartAsset = asset;
+        this.view = 'chart';
+        this._chartKey = null; // force rebuild
+        this.closeDrawer();
+        this.render();
+      }
+
+      backFromChart() {
+        this._disposePageChart();
+        this._chartKey = null;
+        const valid = ['dashboard', 'backtest', 'shortlist', 'winners', 'beat-raise', 'unusual-volume'];
+        this.view = valid.includes(this._chartReturnView) ? this._chartReturnView : 'dashboard';
+        this.render();
+      }
+
+      setChartRange(r) {
+        this.chartRange = r;
+        try { localStorage.setItem('dq-chart-range', r); } catch (e) {}
+        this._chartKey = null;
+        this.render();
+      }
+
+      setChartTf(tf) {
+        this.chartTf = tf;
+        try { localStorage.setItem('dq-chart-tf', tf); } catch (e) {}
+        this._chartKey = null;
+        this.render();
+      }
+
+      toggleChartMA(which) {
+        if (which === 50) this.chartMA50 = !this.chartMA50;
+        else this.chartMA200 = !this.chartMA200;
+        this._chartKey = null;
+        this.render();
+      }
+
+      renderChartPanel() {
+        // Auto-refresh guard: fetchSignals() re-renders every 5s — leave the live
+        // chart DOM alone unless asset/range/tf/MA state actually changed.
+        const key = [this.chartAsset, this.chartRange, this.chartTf, this.chartMA50, this.chartMA200].join('|');
+        if (key === this._chartKey && document.getElementById('chart-page-container')) return;
+        this._chartKey = key;
+
+        const sig = (this.signals || []).find(s => s.asset === this.chartAsset) || null;
+        const price = sig && sig.currentPrice ? CUR + this.safeNum(sig.currentPrice, 2) : '';
+        const pill = (active) => active
+          ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40'
+          : 'bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60';
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-4 md:p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3 flex-wrap min-w-0">
+                  <button onclick="dashboard.backFromChart()" class="px-3 py-1.5 rounded-md text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">← Signals</button>
+                  <h1 class="text-2xl font-bold font-mono tracking-tight text-white">${this.chartAsset}</h1>
+                  ${price ? `<span class="font-mono text-lg text-gray-300 tabular-nums">${price}</span>` : ''}
+                  <a href="${this.getTradingViewUrl(this.chartAsset)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">TradingView ↗</a>
+                </div>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  ${['3m', '6m', '1y', '2y'].map(r => `<button onclick="dashboard.setChartRange('${r}')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartRange === r)}">${r.toUpperCase()}</button>`).join('')}
+                  <span class="w-px h-4 bg-gray-700 mx-1"></span>
+                  <button onclick="dashboard.setChartTf('d')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartTf === 'd')}">D</button>
+                  <button onclick="dashboard.setChartTf('w')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartTf === 'w')}">W</button>
+                  <span class="w-px h-4 bg-gray-700 mx-1"></span>
+                  <button onclick="dashboard.toggleChartMA(50)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA50)}">MA50</button>
+                  <button onclick="dashboard.toggleChartMA(200)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA200)}">MA200</button>
+                </div>
+              </div>
+              <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
+              <div class="mt-2 text-[11px] text-gray-500 font-mono">${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}</div>
+            </div>
+          </div>
+        `;
+        this._buildPageChart(sig);
+      }
+
+      _buildPageChart(sig) {
+        const token = ++this._pageChartToken;
+        this._disposePageChart();
+        fetch(`/api/candles/${encodeURIComponent(this.chartAsset)}?range=${this.chartRange}&tf=${this.chartTf}`)
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+          })
+          .then(bars => {
+            if (token !== this._pageChartToken || this.view !== 'chart') return;
+            const el = document.getElementById('chart-page-container');
+            if (!el) return;
+            if (!bars || !bars.length) {
+              el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400">No price data available</div>';
+              return;
+            }
+            const chart = this._initKline(el);
+            if (!chart) {
+              el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>';
+              return;
+            }
+            this._pageKline = chart;
+            this._pageKlineEl = el;
+            chart.applyNewData(this._toKlineBars(bars));
+            chart.setOffsetRightDistance(80);
+            const maParams = [this.chartMA50 ? 50 : null, this.chartMA200 ? 200 : null].filter(Boolean);
+            if (maParams.length) {
+              chart.createIndicator({ name: 'MA', calcParams: maParams }, true, { id: 'candle_pane' });
+            }
+            chart.createIndicator('VOL', false, { height: 90 });
+            this._applySignalOverlays(chart, sig, bars, { daily: this.chartTf !== 'w' });
+          })
+          .catch(err => {
+            const el = document.getElementById('chart-page-container');
+            if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>';
             console.error('Chart error:', err);
           });
       }
@@ -2053,8 +2319,8 @@
         // Live chart snapshot → embeddable PNG (may be absent if chart still loading)
         let chartImg = '';
         try {
-          if (this._drawerChart && this._drawerChart.takeScreenshot) {
-            chartImg = `<img src="${this._drawerChart.takeScreenshot().toDataURL('image/png')}" alt="${esc(asset)} price chart" style="width:100%;border-radius:8px;border:1px solid #e5e7eb"/>`;
+          if (this._drawerKline && this._drawerKline.getConvertPictureUrl) {
+            chartImg = `<img src="${this._drawerKline.getConvertPictureUrl(true, 'png', '#111827')}" alt="${esc(asset)} price chart" style="width:100%;border-radius:8px;border:1px solid #e5e7eb"/>`;
           }
         } catch (_) {}
 
@@ -2759,8 +3025,16 @@
           scrollKeep[el.dataset.keepScroll] = { left: el.scrollLeft, top: el.scrollTop };
         });
 
+        // Leaving the chart view via any other navigation: release the chart.
+        if (this.view !== 'chart' && this._pageKline) {
+          this._disposePageChart();
+          this._chartKey = null;
+        }
+
         this.renderNavBar();
-        if (this.view === 'backtest') {
+        if (this.view === 'chart') {
+          this.renderChartPanel();
+        } else if (this.view === 'backtest') {
           this.renderBacktestPanel();
         } else if (this.view === 'shortlist') {
           this.renderShortlistPanel();

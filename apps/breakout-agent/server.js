@@ -1329,10 +1329,53 @@ async function fetchFmpCandles(symbol) {
     .filter(b => b.time && b.open && b.high && b.low && b.close);
 }
 
+// Aggregate daily bars into calendar weeks (Monday-anchored). Assumes input
+// is ascending; each output bar keeps the first day's date as its time.
+function resampleWeekly(bars) {
+  const out = [];
+  let cur = null;
+  let curKey = null;
+  for (const b of bars) {
+    const d = new Date(b.time + 'T00:00:00Z');
+    if (Number.isNaN(d.getTime())) continue;
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    const key = monday.toISOString().slice(0, 10);
+    if (key !== curKey) {
+      if (cur) out.push(cur);
+      curKey = key;
+      cur = { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume || 0 };
+    } else {
+      cur.high = Math.max(cur.high, b.high);
+      cur.low = Math.min(cur.low, b.low);
+      cur.close = b.close;
+      cur.volume += b.volume || 0;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// Cache always holds the full 2y daily set; range/tf are applied per request so
+// every view shares one upstream fetch. Query: ?range=3m|6m|1y|2y (default all)
+// and ?tf=d|w (default daily). Response stays a plain bar array.
+const RANGE_DAYS = { '3m': 93, '6m': 186, '1y': 366, '2y': 740 };
+function shapeCandles(bars, range, tf) {
+  let out = bars;
+  const days = RANGE_DAYS[range];
+  if (days) {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    out = out.filter((b) => b.time >= cutoff);
+  }
+  if (tf === 'w') out = resampleWeekly(out);
+  return out;
+}
+
 app.get('/api/candles/:symbol', async (req, res) => {
   const { symbol } = req.params;
+  const { range, tf } = req.query;
   const cached = candlesCache.get(symbol);
-  if (cached && cached.expiresAt > Date.now()) return res.json(cached.bars);
+  if (cached && cached.expiresAt > Date.now()) return res.json(shapeCandles(cached.bars, range, tf));
 
   let bars;
   try {
@@ -1342,16 +1385,16 @@ app.get('/api/candles/:symbol', async (req, res) => {
     try {
       bars = await fetchFmpCandles(symbol);
     } catch (fErr) {
-      if (cached) return res.json(cached.bars); // stale beats a broken chart
+      if (cached) return res.json(shapeCandles(cached.bars, range, tf)); // stale beats a broken chart
       console.error(`[/api/candles] both sources failed for ${symbol}: ${fErr.message}`);
       return res.status(502).json({ error: `candles unavailable: ${fErr.message}` });
     }
   }
 
-  if (!bars || !bars.length) return res.json(cached ? cached.bars : []);
+  if (!bars || !bars.length) return res.json(cached ? shapeCandles(cached.bars, range, tf) : []);
   console.log(`[/api/candles] ${symbol} = ${bars.length} bars`);
   candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
-  res.json(bars);
+  res.json(shapeCandles(bars, range, tf));
 });
 
 // Shared historical-closes cache reused by /api/sparklines and /api/backtest.
