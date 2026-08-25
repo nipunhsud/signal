@@ -1,8 +1,10 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Install system dependencies (OpenSSL for Prisma)
-RUN apk add --no-cache openssl
+# Install system dependencies (OpenSSL for Prisma; Inter + fontconfig so
+# resvg's system-font path can render OG-card text even if buffer loading
+# misbehaves on musl)
+RUN apk add --no-cache openssl fontconfig font-inter
 
 # Install pnpm
 RUN npm install -g pnpm

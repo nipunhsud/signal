@@ -12,6 +12,11 @@ const fontBuffers = [
   fs.readFileSync(path.join(__dirname, 'assets', 'Inter-Regular.ttf')),
   fs.readFileSync(path.join(__dirname, 'assets', 'Inter-Bold.ttf')),
 ];
+// Text went missing on the droplet (musl) while identical code rendered fine
+// on macOS — log what the container actually loaded, and allow system fonts
+// (the image installs font-inter) as the fallback matching path.
+console.log('[og-card] font buffers:', fontBuffers.map((b) => b.length).join(', '), 'bytes');
+const FONT_OPTS = { fontBuffers, defaultFontFamily: 'Inter', loadSystemFonts: true };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -157,7 +162,7 @@ function healthSvg(mh) {
 export function renderMarketHealthPng(mh) {
   const r = new Resvg(healthSvg(mh), {
     fitTo: { mode: 'width', value: 1200 },
-    font: { fontBuffers, defaultFontFamily: 'Inter', loadSystemFonts: false },
+    font: FONT_OPTS,
   });
   return r.render().asPng();
 }
@@ -165,7 +170,7 @@ export function renderMarketHealthPng(mh) {
 export function renderScorecardPng(s) {
   const r = new Resvg(svg(s), {
     fitTo: { mode: 'width', value: 1200 },
-    font: { fontBuffers, defaultFontFamily: 'Inter', loadSystemFonts: false },
+    font: FONT_OPTS,
   });
   return r.render().asPng();
 }
