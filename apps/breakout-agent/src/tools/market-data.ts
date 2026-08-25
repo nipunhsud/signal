@@ -203,6 +203,10 @@ export interface MarketData {
   atrPercent?: number; // ATR(14) as % of close — absolute base tightness
   contractionRatio?: number; // ATR(5) / ATR(20) — <1 = volatility shrinking into the pivot
   expansionRatio?: number; // today's true range / base ATR(14) — breakout-bar expansion
+  // Base-quality metrics (20-bar base window, today's bar excluded)
+  upDownVolumeRatio?: number; // up-day volume / down-day volume — >1.5 = accumulation
+  failedPokes?: number; // bars that wicked within 0.5% of the pivot but closed >1% below it
+  coilRatio?: number; // 2nd-half range / 1st-half range — <1 = tightening into the pivot
 }
 
 /**
@@ -301,6 +305,55 @@ function calculateVolatilityMetrics(allBars: any[]): VolatilityMetrics {
     contractionRatio: atr20 > 0 ? atr5 / atr20 : 0,
     expansionRatio: atr14 > 0 ? todayTrueRange / atr14 : 0,
   };
+}
+
+interface BaseQualityMetrics {
+  upDownVolumeRatio: number;
+  failedPokes: number;
+  coilRatio: number;
+}
+
+/**
+ * Base-quality metrics over the 20-bar base window (today's bar excluded, same
+ * convention as the VCP ATRs — the breakout bar must not grade its own base).
+ * - upDownVolumeRatio: accumulation tell. RPTECH-style bases run 2x+.
+ * - failedPokes: supply overhead — wicks that reached the pivot but were sold.
+ * - coilRatio: Minervini tightening — the base's 2nd half range vs its 1st.
+ */
+function calculateBaseQualityMetrics(allBars: any[]): BaseQualityMetrics {
+  const empty: BaseQualityMetrics = {
+    upDownVolumeRatio: 0,
+    failedPokes: 0,
+    coilRatio: 0,
+  };
+  if (allBars.length < 22) return empty;
+
+  const base = allBars.slice(-21, -1); // 20 bars, today excluded
+  const prevCloses = allBars.slice(-22, -2).map((b: any) => b.close);
+
+  let upVol = 0;
+  let downVol = 0;
+  base.forEach((b: any, i: number) => {
+    if (b.close > prevCloses[i]) upVol += b.volume;
+    else if (b.close < prevCloses[i]) downVol += b.volume;
+  });
+  // downVol of 0 (no down days at all) caps at 99 rather than Infinity
+  const upDownVolumeRatio = downVol > 0 ? upVol / downVol : upVol > 0 ? 99 : 0;
+
+  // Pivot = the base's own high (Donchian resistance today's breakout must clear)
+  const pivot = Math.max(...base.map((b: any) => b.high));
+  const failedPokes = base.filter(
+    (b: any) => b.high >= pivot * 0.995 && b.close <= pivot * 0.99,
+  ).length;
+
+  const range = (bars: any[]) =>
+    Math.max(...bars.map((b: any) => b.high)) -
+    Math.min(...bars.map((b: any) => b.low));
+  const firstHalfRange = range(base.slice(0, 10));
+  const secondHalfRange = range(base.slice(10));
+  const coilRatio = firstHalfRange > 0 ? secondHalfRange / firstHalfRange : 0;
+
+  return { upDownVolumeRatio, failedPokes, coilRatio };
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
@@ -759,6 +812,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // ATR-based VCP metrics (base tightness, contraction, breakout expansion)
       const volatilityMetrics = calculateVolatilityMetrics(allBars);
 
+      // Base-quality metrics (accumulation, failed pokes, coil)
+      const baseQuality = calculateBaseQualityMetrics(allBars);
+
       // Extension = prior breakout exists AND today still closes above its resistance.
       // No time window — a breakout stays an extension for as long as price holds it.
       const currentClose = allBars[allBars.length - 1].close;
@@ -1021,6 +1077,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         atrPercent: volatilityMetrics.atrPercent,
         contractionRatio: volatilityMetrics.contractionRatio,
         expansionRatio: volatilityMetrics.expansionRatio,
+        upDownVolumeRatio: baseQuality.upDownVolumeRatio,
+        failedPokes: baseQuality.failedPokes,
+        coilRatio: baseQuality.coilRatio,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });

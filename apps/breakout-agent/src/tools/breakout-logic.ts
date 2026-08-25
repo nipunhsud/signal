@@ -44,12 +44,18 @@ export interface BreakoutAnalysis {
   atrPercent: number; // base ATR(14) as % of close (today's bar excluded)
   contractionRatio: number; // base ATR(5) / ATR(20) — <1 = contracting
   expansionRatio: number; // today's true range / base ATR(14)
+  // Base-quality metrics (20-bar base, today excluded)
+  upDownVolumeRatio: number; // up-day vol / down-day vol — >1.5 = accumulation
+  failedPokes: number; // wicks that reached the pivot but closed >1% below it
+  coilRatio: number; // 2nd-half range / 1st-half — <1 = tightening
+  isBlueSky: boolean; // pivot within 2% of the 52-week high — no overhead supply
 }
 
 export interface SetupAnalysis {
   isSetup: boolean; // Consolidation + bullish MAs + low volume (pre-breakout)
   setupType: "none" | "base" | "handle";
   distanceFromMA20: number; // % distance from 20 MA
+  distanceToPivotPct: number; // % below the pivot (Donchian resistance) — how far from trigger
   distancePenalty: number; // Confidence penalty for distance from MA20
   confidence: number; // Setup confidence (99% - distance penalty)
   // True only for handles tight enough to be a pre-breakout watchlist entry:
@@ -94,6 +100,9 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     atrPercent = 0,
     contractionRatio = 0,
     expansionRatio = 0,
+    upDownVolumeRatio = 0,
+    failedPokes = 0,
+    coilRatio = 0,
   } = data;
   const MIN_STRUCTURE_BARS = 5;
   const MIN_AVG_VOLUME = 100_000; // Liquidity filter
@@ -219,6 +228,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     expansionRatio >= 1.5 &&
     closeInTopThird;
 
+  // Blue sky: the pivot sits at (within 2% of) the 52-week high, so a breakout
+  // clears every holder from the past year — no trapped sellers overhead.
+  const isBlueSky = high52w > 0 && resistance >= high52w * 0.98;
+
   // Calculate confidence
   let confidence = 0.1; // base for weak/no signal
 
@@ -338,6 +351,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     atrPercent,
     contractionRatio,
     expansionRatio,
+    upDownVolumeRatio,
+    failedPokes,
+    coilRatio,
+    isBlueSky,
   };
 }
 
@@ -384,11 +401,18 @@ export function analyzeSetup(
     lowVolumeConsolidation &&
     priceAboveMA50;
 
+  // How far price sits below the pivot — the honest "distance to trigger"
+  const distanceToPivotPct =
+    breakout.resistance > 0
+      ? ((breakout.resistance - close) / close) * 100
+      : 0;
+
   if (!isSetup) {
     return {
       isSetup: false,
       setupType: "none",
       distanceFromMA20: 0,
+      distanceToPivotPct,
       distancePenalty: 0,
       confidence: 0,
       qualifiesAsTradableHandle: false,
@@ -439,6 +463,7 @@ export function analyzeSetup(
     isSetup: true,
     setupType: isHandle ? "handle" : "base",
     distanceFromMA20,
+    distanceToPivotPct,
     distancePenalty,
     confidence,
     qualifiesAsTradableHandle,

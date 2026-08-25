@@ -87,3 +87,21 @@ check(
   "Type3",
   false,
 );
+
+// Base-quality metrics: blue-sky flag + pass-throughs
+const bq = (name: string, md: MarketData, expect: (a: ReturnType<typeof analyzeBreakout>) => boolean) => {
+  const a = analyzeBreakout(md);
+  const ok = expect(a);
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}`);
+  if (!ok) process.exitCode = 1;
+};
+
+// resistance = max(highs) = 101; blue sky when 52wH is within 2% above it
+bq("blue sky when pivot at 52w high", { ...base, high52w: 102 }, (a) => a.isBlueSky === true);
+bq("not blue sky with 10% overhead", { ...base, high52w: 112 }, (a) => a.isBlueSky === false);
+bq("not blue sky without 52w data", { ...base, high52w: 0 }, (a) => a.isBlueSky === false);
+bq(
+  "base-quality metrics pass through",
+  { ...base, upDownVolumeRatio: 2.3, failedPokes: 2, coilRatio: 0.8 },
+  (a) => a.upDownVolumeRatio === 2.3 && a.failedPokes === 2 && a.coilRatio === 0.8,
+);

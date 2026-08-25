@@ -1628,6 +1628,52 @@
                 </div>
               </div>
 
+              <!-- Base quality: RS / accumulation / supply metrics (null-safe: older rows lack them) -->
+              ${(() => {
+                if (signal.signalType !== 'breakout' && signal.signalType !== 'extension') return '';
+                const rs = signal.rsRating;
+                const udv = signal.upDownVolumeRatio;
+                const fp = signal.failedPokes;
+                const coil = signal.coilRatio;
+                if (rs == null && udv == null && fp == null && coil == null) return '';
+                const row = (label, tip, valueHtml) => `
+                  <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between items-center text-[13px]">
+                    <span class="text-gray-400" data-tip="${tip}">${label}</span>
+                    ${valueHtml}
+                  </div>`;
+                const rsHtml = rs != null
+                  ? `<span class="font-mono tabular-nums ${rs >= 80 ? 'text-green-400' : rs >= 50 ? 'text-gray-300' : 'text-red-400'}">${rs}${rs >= 80 ? ' · leader' : rs < 50 ? ' · laggard' : ''}</span>`
+                  : '<span class="text-gray-600">—</span>';
+                const udvHtml = udv != null
+                  ? `<span class="font-mono tabular-nums ${udv >= 1.5 ? 'text-green-400' : 'text-gray-300'}">${udv.toFixed(1)}x${udv >= 1.5 ? ' · accumulation' : ''}</span>`
+                  : '<span class="text-gray-600">—</span>';
+                const fpHtml = fp != null
+                  ? (fp === 0
+                      ? '<span class="font-mono tabular-nums text-green-400">0 · clean</span>'
+                      : fp === 1
+                        ? '<span class="font-mono tabular-nums text-gray-300">1</span>'
+                        : `<span class="font-mono tabular-nums text-orange-400">${fp} · supply overhead</span>`)
+                  : '<span class="text-gray-600">—</span>';
+                const coilHtml = coil != null
+                  ? (coil < 0.9
+                      ? `<span class="font-mono tabular-nums text-green-400">${coil.toFixed(2)}x · tightening</span>`
+                      : `<span class="font-mono tabular-nums text-gray-300">${coil.toFixed(2)}x</span>`)
+                  : '<span class="text-gray-600">—</span>';
+                return `
+              <div class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                  <span data-tip="How healthy the base under this breakout is — who was buying, how tight the coil got, and whether sellers sat on the pivot.">Base Quality</span>
+                </h3>
+                <div class="space-y-2">
+                  ${row('RS Rating', 'Percentile of this stock\'s trailing returns vs every scanned stock (1-99). 80+ means it\'s outrunning 80% of the market — leaders, not laggards, produce the big breakouts.', rsHtml)}
+                  ${row('Up/Down Volume', 'Volume on up-days divided by volume on down-days across the base. Above 1.5x means buyers were quietly absorbing shares while the price went sideways — accumulation.', udvHtml)}
+                  ${row('Failed Pokes', 'Times price wicked up to the pivot during the base but closed well below it. Each failed poke is a seller defending that level — 0 is clean, 2+ means supply overhead.', fpHtml)}
+                  ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot — the volatility contraction that precedes strong breakouts.', coilHtml)}
+                </div>
+              </div>`;
+              })()}
+
               <!-- Breakout Metrics (Pine Script green cone) -->
               ${signal.signalType === 'breakout' && signal.pineScriptGreen ? `
               <div class="border-t border-gray-700/60 pt-4">
@@ -1918,6 +1964,10 @@
               if (signal.support) {
                 series.createPriceLine({ price: signal.support, color: '#10b981', lineWidth: 1, lineStyle: 2, title: 'S' });
               }
+              // Frozen entry — skip when it coincides with R (labels would collide)
+              if (signal.entryPrice != null && (!signal.resistance || Math.abs(signal.entryPrice - signal.resistance) / signal.resistance > 0.001)) {
+                series.createPriceLine({ price: signal.entryPrice, color: '#eab308', lineWidth: 1, lineStyle: 2, title: 'entry' });
+              }
             }
             // Extension: show entry resistance (yellow) + current resistance (red)
             else if (signal.signalType === 'extension' && signal.entryResistance) {
@@ -1929,6 +1979,40 @@
             // Setup: show MA20
             else if (signal.signalType === 'setup' && signal.ma20) {
               series.createPriceLine({ price: signal.ma20, color: '#3b82f6', lineWidth: 1, lineStyle: 2, title: 'MA20' });
+            }
+            // Frozen stop for breakouts and extensions
+            if ((signal.signalType === 'breakout' || signal.signalType === 'extension') && signal.stopLoss != null) {
+              series.createPriceLine({ price: signal.stopLoss, color: '#ef4444', lineWidth: 1, lineStyle: 3, title: 'stop' });
+            }
+
+            // Base box: shade the consolidation that preceded the breakout — the
+            // barsInRange bars before the breakout candle, support → resistance.
+            // Positioned as an absolute div over the chart; re-anchored on every
+            // visible-range change (pan/zoom/resize).
+            const nBase = signal.barsInRange || 0;
+            if (signal.signalType === 'breakout' && nBase >= 3 && signal.resistance && signal.support && bars.length > nBase + 1) {
+              el.style.position = 'relative';
+              const box = document.createElement('div');
+              box.style.cssText = 'position:absolute;pointer-events:none;border:1px dashed rgba(148,163,184,0.5);background:rgba(148,163,184,0.07);border-radius:2px;z-index:3;display:none;';
+              el.appendChild(box);
+              const startBar = bars[bars.length - 1 - nBase];
+              const endBar = bars[bars.length - 2]; // last bar before the breakout candle
+              const positionBox = () => {
+                const x1 = chart.timeScale().timeToCoordinate(startBar.time);
+                const x2 = chart.timeScale().timeToCoordinate(endBar.time);
+                const y1 = series.priceToCoordinate(signal.resistance);
+                const y2 = series.priceToCoordinate(signal.support);
+                if (x1 == null || x2 == null || y1 == null || y2 == null) { box.style.display = 'none'; return; }
+                box.style.display = 'block';
+                box.style.left = Math.min(x1, x2) + 'px';
+                box.style.top = Math.min(y1, y2) + 'px';
+                box.style.width = Math.abs(x2 - x1) + 'px';
+                box.style.height = Math.abs(y2 - y1) + 'px';
+              };
+              // rAF retry: coordinates aren't final until the chart's first layout pass
+              positionBox();
+              requestAnimationFrame(positionBox);
+              chart.timeScale().subscribeVisibleTimeRangeChange(positionBox);
             }
           })
           .catch(err => {
@@ -3346,12 +3430,13 @@
                                   <span class="text-[10px] text-gray-500 font-medium">%</span>
                                 </div>
                                 <div class="conf-bar ${confTextColor}" style="--pct: ${signal.confidence}%;"></div>
+                                ${signal.rsRating != null ? `<span class="text-[10px] font-mono tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-400' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile)">RS ${signal.rsRating}</span>` : ''}
                               </div>
                             </td>
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
                             <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
-                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}</td>
+                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${signal.signalType === 'breakout' && signal.isBlueSky ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}</td>
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
                             <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>

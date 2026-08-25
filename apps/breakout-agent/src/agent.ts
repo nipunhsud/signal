@@ -272,6 +272,42 @@ export class BreakoutAgent {
       // Don't override with profile detection - trust the screener classification
       data.assetType = mode === "etfs" ? "etf" : "stock";
 
+      // Contribute this asset's trailing returns to the cross-sectional RS store.
+      // The universe is split across tier containers, so ranking must go through
+      // the DB: every shard upserts its slice, percentile queries read the union.
+      const rsScore =
+        0.5 * (data.return3mPct ?? 0) +
+        0.3 * (data.return1mPct ?? 0) +
+        0.2 * (data.return1wPct ?? 0);
+      if (
+        data.return3mPct != null ||
+        data.return1mPct != null ||
+        data.return1wPct != null
+      ) {
+        await db.assetReturn
+          .upsert({
+            where: { asset },
+            create: {
+              asset,
+              assetType: data.assetType,
+              rsScore,
+              return1wPct: data.return1wPct,
+              return1mPct: data.return1mPct,
+              return3mPct: data.return3mPct,
+            },
+            update: {
+              assetType: data.assetType,
+              rsScore,
+              return1wPct: data.return1wPct,
+              return1mPct: data.return1mPct,
+              return3mPct: data.return3mPct,
+            },
+          })
+          .catch((e: any) =>
+            console.warn(`[RS] upsert ${asset} failed:`, e?.message),
+          );
+      }
+
       // Check for recent prior alert (last 5 days): if found, force Type 3 to avoid duplicate Type 1 alerts
       const fiveDaysAgo = new Date();
       fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -508,9 +544,46 @@ export class BreakoutAgent {
             100
           : null;
 
+      // RS percentile (1-99) vs the fresh universe — only for rows that will be
+      // persisted/shown, to keep the count queries off the hot path for the
+      // hundreds of unremarkable assets per scan.
+      let rsRating: number | null = null;
+      if (
+        breakoutAnalysis.breakoutType !== "unknown" ||
+        setupAnalysis.qualifiesAsTradableHandle
+      ) {
+        try {
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const whereFresh = {
+            assetType: data.assetType || "stock",
+            updatedAt: { gte: dayAgo },
+          };
+          const [below, total] = await Promise.all([
+            db.assetReturn.count({
+              where: { ...whereFresh, rsScore: { lt: rsScore } },
+            }),
+            db.assetReturn.count({ where: whereFresh }),
+          ]);
+          // Need a real universe before a percentile means anything
+          if (total >= 20) {
+            rsRating = Math.min(99, Math.max(1, Math.round((below / total) * 99)));
+          }
+        } catch (e: any) {
+          console.warn(`[RS] rank ${asset} failed:`, e?.message);
+        }
+      }
+
       const localReasoning = [
         breakoutAnalysis.isVcp
           ? `VCP ✓ (ATR ${breakoutAnalysis.atrPercent.toFixed(1)}%, contraction ${breakoutAnalysis.contractionRatio.toFixed(2)}, expansion ${breakoutAnalysis.expansionRatio.toFixed(1)}x)`
+          : null,
+        breakoutAnalysis.isBlueSky ? "Blue Sky ✓ (base at 52w high)" : null,
+        rsRating != null ? `RS: ${rsRating}` : null,
+        breakoutAnalysis.upDownVolumeRatio > 0
+          ? `U/D Vol: ${breakoutAnalysis.upDownVolumeRatio.toFixed(1)}x`
+          : null,
+        breakoutAnalysis.failedPokes > 0
+          ? `Failed pokes: ${breakoutAnalysis.failedPokes}`
           : null,
         `MA Stack: ${breakoutAnalysis.maStack ? "Uptrend ✓" : "No uptrend ✗"}`,
         `Vol: ${volumeRatio.toFixed(1)}x${volumeIncreasing ? " ✓" : ""}`,
@@ -696,6 +769,11 @@ export class BreakoutAgent {
               etfCategory: data.etfCategory,
               breakoutType: breakoutAnalysis.breakoutType,
               isVcp: breakoutAnalysis.isVcp,
+              rsRating,
+              upDownVolumeRatio: breakoutAnalysis.upDownVolumeRatio || null,
+              failedPokes: breakoutAnalysis.failedPokes,
+              isBlueSky: breakoutAnalysis.isBlueSky,
+              coilRatio: breakoutAnalysis.coilRatio || null,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
@@ -720,10 +798,14 @@ export class BreakoutAgent {
           `Setup Type: ${setupAnalysis.setupType}`,
           `MA Stack: ${breakoutAnalysis.maStack ? "Uptrend ✓" : "No uptrend ✗"}`,
           `Distance from MA20: ${setupAnalysis.distanceFromMA20.toFixed(2)}%`,
+          `Pivot: ${setupAnalysis.distanceToPivotPct.toFixed(1)}% above price`,
+          rsRating != null ? `RS: ${rsRating}` : null,
           `Consolidation: ${data.setupBarsInRange || 0} bars`,
           `Range: ${data.setupConsolidationRangePercent || 0}%`,
           `Volume: ${data.setupConsolidationVolumePercent || 0}% of avg`,
-        ].join(" | ");
+        ]
+          .filter(Boolean)
+          .join(" | ");
 
         const setupSignalType = `setup-${setupAnalysis.setupType}`;
         const latestSetup = await db.signal.findFirst({
@@ -767,6 +849,8 @@ export class BreakoutAgent {
                 etfCategory: data.etfCategory,
                 setupType: setupAnalysis.setupType,
                 distanceFromMA20: setupAnalysis.distanceFromMA20,
+                distanceToPivotPct: setupAnalysis.distanceToPivotPct,
+                rsRating,
                 distancePenalty: setupAnalysis.distancePenalty,
                 ma20: data.ma20,
                 currentPrice: data.close,

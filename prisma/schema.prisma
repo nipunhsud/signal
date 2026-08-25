@@ -64,6 +64,13 @@ model BreakoutSignal {
   // Type 1 vs Type 3 classification
   breakoutType String @default("unknown") // "Type1" (fresh), "Type3" (continuation), "unknown"
   isVcp Boolean @default(false) // Type1 VCP: tight base (ATR%<2.5), contracting (ATR5/ATR20<0.75), upside expansion (TR≥1.5x ATR)
+
+  // Base-quality metrics (computed over the ~20-bar base, today's bar excluded)
+  rsRating Int? // 1-99 relative-strength percentile vs the scanned universe (AssetReturn table)
+  upDownVolumeRatio Float? // up-day volume / down-day volume — >1.5 = accumulation
+  failedPokes Int @default(0) // bars that wicked to within 0.5% of the pivot but closed >1% below it
+  isBlueSky Boolean @default(false) // pivot within 2% of the 52-week high — no trapped sellers overhead
+  coilRatio Float? // base 2nd-half range / 1st-half range — <1 = tightening into the pivot
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout
@@ -94,6 +101,21 @@ model BreakoutSignal {
   @@index([asset, alertSentAt])
   @@index([xPostedAt])
   @@index([earningsPostedAt])
+}
+
+// Trailing returns per scanned asset, upserted by every tier/shard on each scan.
+// Exists so relative strength can be ranked cross-sectionally: the universe is
+// split across tier containers, so no single process sees all returns in memory.
+model AssetReturn {
+  asset       String @id
+  assetType   String @default("stock") // rank stocks against stocks, etfs against etfs
+  rsScore     Float // weighted trailing return: 0.5*3m + 0.3*1m + 0.2*1w
+  return1wPct Float?
+  return1mPct Float?
+  return3mPct Float?
+  updatedAt   DateTime @updatedAt
+
+  @@index([assetType, updatedAt])
 }
 
 // Winner-model screen (MissionWinners-style): stocks with strong prior-quarter
