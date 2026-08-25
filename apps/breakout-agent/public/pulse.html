@@ -89,6 +89,20 @@
       <p class="mt-3 text-xs text-[color:var(--muted)] tabular" id="meta"></p>
     </section>
 
+    <!-- Market health: the regime gate — is this a tape that rewards breakouts? -->
+    <section class="mb-14" aria-labelledby="health-h" id="health-section" style="display:none">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 id="health-h" class="text-xl font-semibold flex items-center gap-2">🩺 Market health</h2>
+        <span class="text-xs text-[color:var(--muted)]" id="health-benchmark"></span>
+      </div>
+      <div id="health" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+      <p class="mt-3 text-xs text-[color:var(--muted)]">
+        Trend = benchmark vs its 50/200-day averages. Distribution days = sessions of institutional selling
+        (down on rising volume) in the last 25 — 4+ is a warning even when price holds up. Breadth = share of
+        every stock we scan with a positive month.
+      </p>
+    </section>
+
     <!-- Trending -->
     <section class="mb-14" aria-labelledby="trending-h">
       <div class="flex items-baseline justify-between mb-4">
@@ -217,6 +231,33 @@
       }
     }
     load();
+
+    // Market health strip — advisory regime gauge, fails silently if absent.
+    async function loadHealth() {
+      try {
+        const r = await fetch('/api/market-health');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!d || !d.regime) return;
+        const color = d.regime === 'risk-on' ? '#34D399' : d.regime === 'caution' ? '#FBBF24' : '#F87171';
+        const label = d.regime === 'risk-on' ? 'Risk-on' : d.regime === 'caution' ? 'Caution' : 'Risk-off';
+        const c = d.components || {};
+        const tile = (title, value, sub) => `
+          <div class="card p-4">
+            <div class="text-[11px] uppercase tracking-wider text-[color:var(--muted)] font-medium">${title}</div>
+            <div class="mt-1 text-xl font-bold tabular">${value}</div>
+            <div class="mt-0.5 text-xs text-[color:var(--muted)]">${sub}</div>
+          </div>`;
+        document.getElementById('health').innerHTML =
+          tile('Regime', `<span style="color:${color}">${label} · ${d.score}</span>`, d.advice) +
+          tile('Trend', `${c.trend?.score ?? '—'}/50`, `${c.trend?.aboveMA50 ? 'above' : 'below'} 50MA · ${c.trend?.aboveMA200 ? 'above' : 'below'} 200MA`) +
+          tile('Distribution days', `<span style="color:${(c.distribution?.days ?? 0) >= 4 ? '#F87171' : 'inherit'}">${c.distribution?.days ?? '—'}</span> <span class="text-sm font-normal">/ 25 sessions</span>`, (c.distribution?.days ?? 0) >= 4 ? 'institutions selling into strength' : 'normal selling pressure') +
+          tile('Breadth', c.breadth?.pctPositive1m != null ? `${c.breadth.pctPositive1m}% <span class="text-sm font-normal">positive 1m</span>` : 'populating', `across ${c.breadth?.universe ?? 0} scanned stocks`);
+        document.getElementById('health-benchmark').textContent = `Benchmark: ${d.benchmark} · as of ${d.asOf}`;
+        document.getElementById('health-section').style.display = '';
+      } catch (e) { /* advisory only */ }
+    }
+    loadHealth();
   </script>
 </body>
 </html>

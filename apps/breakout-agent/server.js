@@ -1673,11 +1673,24 @@ app.get('/api/pulse', async (req, res) => {
   if (!apiKey) return res.status(503).json({ error: 'FMP_API_KEY not set' });
 
   try {
+    // Log upstream failures instead of swallowing them — a 429 during a scan
+    // burst was rendering the whole page empty with no trace in the logs.
+    const loggedFetch = (label, url) =>
+      fetch(url)
+        .then((r) => {
+          if (!r.ok) {
+            console.warn(`[/api/pulse] ${label} HTTP ${r.status}`);
+            return [];
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.warn(`[/api/pulse] ${label} failed: ${e.message}`);
+          return [];
+        });
     const [trendRaw, newsRaw] = await Promise.all([
-      fetch(`https://financialmodelingprep.com/api/v4/social-sentiments/trending?type=bullish&source=stocktwits&apikey=${apiKey}`)
-        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      fetch(`https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`)
-        .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      loggedFetch('social-trending', `https://financialmodelingprep.com/api/v4/social-sentiments/trending?type=bullish&source=stocktwits&apikey=${apiKey}`),
+      loggedFetch('news', `https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`),
     ]);
 
     const trending = (Array.isArray(trendRaw) ? trendRaw : []).slice(0, 12).map((t) => ({
@@ -1724,7 +1737,12 @@ app.get('/api/pulse', async (req, res) => {
       signalCount: Object.keys(sigMap).length,
       cached: false,
     };
-    pulseCache = { data, expiresAt: Date.now() + PULSE_TTL_MS };
+    // Never cache an empty pulse: a transient upstream failure (FMP 429 during
+    // a scan burst) would otherwise freeze the page blank for the whole TTL.
+    // Serve the empty result once, retry on the next request.
+    if (data.trending.length || data.news.length) {
+      pulseCache = { data, expiresAt: Date.now() + PULSE_TTL_MS };
+    }
     res.json(data);
   } catch (error) {
     console.error('[/api/pulse] failed:', error);
