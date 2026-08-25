@@ -110,6 +110,7 @@ model AssetReturn {
   asset       String @id
   assetType   String @default("stock") // rank stocks against stocks, etfs against etfs
   region      String @default("US") // "US" | "IN" — RS percentiles are per-market
+  sector      String? // FMP sector — powers the sector-strength rollup
   rsScore     Float // weighted trailing return: 0.5*3m + 0.3*1m + 0.2*1w
   return1wPct Float?
   return1mPct Float?

@@ -787,9 +787,20 @@ app.get('/api/signals', async (req, res) => {
     // No lower bound here: every signal already passed the raw >=0.80 gate in
     // SQL; display confidence only dips below 80 via the extension distance
     // penalty, and those should stay visible (penalized), not vanish.
-    const highConfidence = sorted.filter(s => s.confidence >= 95 && !s.stoppedOut);
+    // Stale extensions (>5 days past the breakout) leave the confidence buckets
+    // entirely: the actionable entry window is gone, and the stopped-out list
+    // shows they're where the losses live (35/35 stops were extensions, 32 of
+    // them 6+ days old). They remain visible in a separate "tracking" list for
+    // holders monitoring an open position — not as entry candidates.
+    const isStaleExtension = (s) =>
+      s.signalType === 'extension' &&
+      s.daysSinceBreakout != null &&
+      s.daysSinceBreakout > 5 &&
+      !s.stoppedOut;
+    const tracking = sorted.filter(isStaleExtension);
+    const highConfidence = sorted.filter(s => s.confidence >= 95 && !s.stoppedOut && !isStaleExtension(s));
     const mediumConfidence = [
-      ...sorted.filter(s => s.confidence < 95 && !s.stoppedOut),
+      ...sorted.filter(s => s.confidence < 95 && !s.stoppedOut && !isStaleExtension(s)),
       ...sorted.filter(s => s.stoppedOut),
     ];
 
@@ -819,9 +830,11 @@ app.get('/api/signals', async (req, res) => {
     res.json({
       highConfidence,
       mediumConfidence,
+      tracking,
       stats: {
         highConfidenceCount: highConfidence.length,
         mediumConfidenceCount: mediumConfidence.length,
+        trackingCount: tracking.length,
         total: sorted.length,
         breakoutCount,
         extensionCount,
@@ -1407,6 +1420,137 @@ app.get('/api/candles/:symbol', async (req, res) => {
   } catch (err) {
     console.error(`[/api/candles] ${symbol}: ${err.message}`);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// Market health: the "M" gate a breakout system needs — is this a tape that
+// rewards breakouts right now? Three components, 0-100:
+//   trend (0-50):        benchmark vs 50/200MA + 50MA slope
+//   distribution (0-25): O'Neil distribution days in the last 25 sessions
+//                        (down >=0.2% on higher volume than the prior day)
+//   breadth (0-25):      % of the scanned universe with a positive 1-month
+//                        return (from the same store RS ranks on)
+// >=70 risk-on · 45-69 caution · <45 risk-off (avoid new entries).
+const marketHealthCache = new Map(); // region -> { data, expiresAt }
+app.get('/api/market-health', async (req, res) => {
+  const region = req.query.region === 'in' ? 'IN' : 'US';
+  const cached = marketHealthCache.get(region);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.data);
+  try {
+    const benchmark = region === 'IN' ? '^NSEI' : 'SPY';
+    const bars = await getDailyCandles(benchmark);
+    if (!bars || bars.length < 210) throw new Error(`only ${bars?.length ?? 0} bars for ${benchmark}`);
+    const closes = bars.map(b => b.close);
+    const last = closes[closes.length - 1];
+    const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
+    const ma50 = avg(closes.slice(-50));
+    const ma200 = avg(closes.slice(-200));
+    const ma50Prev = avg(closes.slice(-60, -10));
+    const ma50Rising = ma50 > ma50Prev;
+    let trendScore = 0;
+    if (last > ma50) trendScore += 25;
+    if (last > ma200) trendScore += 15;
+    if (ma50Rising) trendScore += 10;
+
+    // Distribution days. Index volume can be missing (^NSEI often reports 0) —
+    // fall back to a price-only proxy: down days of >=1%.
+    const win = bars.slice(-26);
+    const hasVolume = win.filter(b => (b.volume || 0) > 0).length > 20;
+    let distributionDays = 0;
+    for (let i = 1; i < win.length; i++) {
+      const downEnough = win[i].close <= win[i - 1].close * 0.998;
+      if (hasVolume) {
+        if (downEnough && (win[i].volume || 0) > (win[i - 1].volume || 0)) distributionDays++;
+      } else if (win[i].close <= win[i - 1].close * 0.99) {
+        distributionDays++;
+      }
+    }
+    const distributionScore = Math.max(0, 25 - distributionDays * 5);
+
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const universe = await db.assetReturn.findMany({
+      where: { region, assetType: 'stock', updatedAt: { gte: dayAgo }, return1mPct: { not: null } },
+      select: { return1mPct: true },
+    });
+    const breadthPct = universe.length >= 50
+      ? Math.round((universe.filter(r => r.return1mPct > 0).length / universe.length) * 100)
+      : null;
+    const breadthScore = breadthPct != null ? Math.round(breadthPct / 4) : 12; // neutral until populated
+
+    const score = trendScore + distributionScore + breadthScore;
+    const regime = score >= 70 ? 'risk-on' : score >= 45 ? 'caution' : 'risk-off';
+    const advice = regime === 'risk-on'
+      ? 'Tape supports breakouts — normal position sizing.'
+      : regime === 'caution'
+        ? 'Mixed tape — take only the best setups, size down, honor stops fast.'
+        : 'Defensive — avoid new entries; breakouts fail in this tape. Protect open positions.';
+
+    const data = {
+      region,
+      benchmark,
+      asOf: bars[bars.length - 1].time,
+      score,
+      regime,
+      advice,
+      components: {
+        trend: { score: trendScore, max: 50, aboveMA50: last > ma50, aboveMA200: last > ma200, ma50Rising },
+        distribution: { score: distributionScore, max: 25, days: distributionDays, window: 25, volumeBased: hasVolume },
+        breadth: { score: breadthScore, max: 25, pctPositive1m: breadthPct, universe: universe.length },
+      },
+    };
+    marketHealthCache.set(region, { data, expiresAt: Date.now() + 15 * 60 * 1000 });
+    res.json(data);
+  } catch (err) {
+    console.error('[/api/market-health]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Sector strength: roll the cross-sectional returns store up by sector.
+// Same fresh-24h window RS ranks on; per-market via ?region=in|us. Leaders =
+// stocks in the top quintile of the whole market's rsScore.
+app.get('/api/sector-strength', async (req, res) => {
+  try {
+    const region = req.query.region === 'in' ? 'IN' : 'US';
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await db.assetReturn.findMany({
+      where: { region, assetType: 'stock', updatedAt: { gte: dayAgo } },
+      select: { asset: true, sector: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true },
+    });
+    if (rows.length < 20) {
+      return res.json({ region, asOf: new Date().toISOString(), universe: rows.length, sectors: [], note: 'universe still populating — sector data appears after the next scan cycles' });
+    }
+    const scores = rows.map(r => r.rsScore).sort((a, b) => a - b);
+    const q80 = scores[Math.floor(scores.length * 0.8)];
+    const median = (arr) => {
+      const v = arr.filter(x => x != null && Number.isFinite(x)).sort((a, b) => a - b);
+      return v.length ? v[Math.floor(v.length / 2)] : null;
+    };
+    const bySector = new Map();
+    for (const r of rows) {
+      const key = r.sector || 'Unclassified';
+      if (!bySector.has(key)) bySector.set(key, []);
+      bySector.get(key).push(r);
+    }
+    const sectors = [...bySector.entries()]
+      .filter(([, list]) => list.length >= 3) // too few stocks = noise
+      .map(([sector, list]) => ({
+        sector,
+        stocks: list.length,
+        medianRsScore: median(list.map(r => r.rsScore)),
+        median1wPct: median(list.map(r => r.return1wPct)),
+        median1mPct: median(list.map(r => r.return1mPct)),
+        median3mPct: median(list.map(r => r.return3mPct)),
+        leaders: list.filter(r => r.rsScore >= q80).length,
+        leadersPct: Math.round((list.filter(r => r.rsScore >= q80).length / list.length) * 100),
+        topAssets: list.sort((a, b) => b.rsScore - a.rsScore).slice(0, 3).map(r => r.asset),
+      }))
+      .sort((a, b) => (b.medianRsScore ?? -Infinity) - (a.medianRsScore ?? -Infinity))
+      .map((s, i) => ({ rank: i + 1, ...s }));
+    res.json({ region, asOf: new Date().toISOString(), universe: rows.length, sectors });
+  } catch (err) {
+    console.error('[/api/sector-strength]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

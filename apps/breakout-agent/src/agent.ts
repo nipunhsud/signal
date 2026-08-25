@@ -291,6 +291,7 @@ export class BreakoutAgent {
               asset,
               assetType: data.assetType,
               region: regionOf(asset),
+              sector: data.sector || null,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -299,6 +300,7 @@ export class BreakoutAgent {
             update: {
               assetType: data.assetType,
               region: regionOf(asset),
+              sector: data.sector || null,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
