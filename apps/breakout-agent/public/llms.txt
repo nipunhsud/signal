@@ -1,0 +1,25 @@
+# DataQuant
+
+> Systematic breakout-signal platform for individual traders. Every liquid US stock (~3,000 NASDAQ/NYSE/AMEX tickers above $300M market cap and 100k average daily volume) is scanned every 15 minutes during market hours for breakouts from tight consolidations. Signals are curated — 20-30 per month, pre-filtered to high confidence — each with a frozen entry price, a disciplined 8% stop, risk/reward, and an AI summary of the company's latest earnings call. Research and educational tool only; not investment advice.
+
+## How the signals work
+
+- **Actionable (Type 1) breakouts**: price clears a multi-week base on at least 1.2x average volume, with moving averages stacked in an uptrend (20 > 50 > 150 > 200 day). Entry is frozen at the breakout level the moment the signal fires; the stop sits 8% below entry and never drifts.
+- **VCP breakouts**: Type 1 signals that additionally match Minervini's Volatility Contraction Pattern — a tight base (ATR under 2.5% of price), volatility contracting into the pivot (5-day ATR under 0.75x the 20-day), and a breakout bar expanding at least 1.5x the base's range with a close near its high.
+- **Setups**: tight pre-breakout consolidations ("handles") near the 20-day moving average — the watchlist for the next breakout.
+- **Extensions**: continuations of a recent breakout that price is still holding above, tracked with days-since-breakout and gain-from-entry.
+- **AI earnings context**: every US stock signal carries an LLM analysis of the latest earnings call — tone score (-1 to +1), guidance direction (raised/maintained/lowered), highlights, and risk flags.
+
+## Track record and honesty
+
+The published backtest is deliberately narrow: 22 signals over a 30-day window (May 22 – Jun 20, 2026), each held 20 trading days or stopped at -8%, averaged equal-weight (+6.9% average return, 64% win rate). This is live production data with all signals disclosed, but it is one market regime — DataQuant does not annualize it or claim a permanent edge. Results update monthly, wins and losses both.
+
+## Key pages
+
+- [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ
+- [Market Pulse](https://dataquant.ai/pulse): free daily market-breadth snapshot
+- [Dashboard](https://dataquant.ai/dashboard): the live signal feed (subscription; 30-day free trial, then $99/month)
+
+## Disclaimer
+
+DataQuant provides systematic technical signals for research and educational purposes only. It is not a registered investment advisor and nothing on the site is a recommendation to buy or sell any security.

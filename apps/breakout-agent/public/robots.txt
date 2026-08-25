@@ -1,0 +1,23 @@
+# dataquant.ai — public marketing pages are crawlable; the dashboard and API
+# are app surfaces, not content.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /in/dashboard
+
+# AI/LLM crawlers welcome — llms.txt has the structured summary.
+User-agent: GPTBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://dataquant.ai/sitemap.xml
