@@ -1105,16 +1105,28 @@
             return;
           }
 
+          // Re-sync from the drawer that's actually open: openAsset (row
+          // clicks) never updates currentAssetIndex, so stepping from the
+          // stale value jumped to an unrelated ticker on the first keypress.
+          const openAssetName = this.selectedAsset?.asset;
+          if (openAssetName) {
+            const oi = navList.findIndex(s => s.asset === openAssetName);
+            if (oi >= 0) this.currentAssetIndex = oi;
+          }
+          if (this.currentAssetIndex >= navList.length) this.currentAssetIndex = 0;
+
+          // openAsset (not openDrawer) so tickers that only exist in the
+          // Winners/B&R/UV pools still get their full merged drawer data.
           if (e.code === 'Space') {
             e.preventDefault();
             this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
-            this.openDrawer(navList[this.currentAssetIndex]);
+            this.openAsset(navList[this.currentAssetIndex].asset);
           } else if (e.code === 'ArrowLeft') {
             this.currentAssetIndex = (this.currentAssetIndex - 1 + navList.length) % navList.length;
-            this.openDrawer(navList[this.currentAssetIndex]);
+            this.openAsset(navList[this.currentAssetIndex].asset);
           } else if (e.code === 'ArrowRight') {
             this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
-            this.openDrawer(navList[this.currentAssetIndex]);
+            this.openAsset(navList[this.currentAssetIndex].asset);
           }
         });
 
@@ -2764,6 +2776,9 @@
         }
         if (navView === 'unusual-volume') {
           return fromAssets((this.unusualVolume?.stocks || []).map(s => s.asset));
+        }
+        if (navView === 'backtest') {
+          return fromAssets((this.backtest?.recent || []).map(r => r.asset));
         }
         if (navView === 'winners') {
           const { tier: filterTier, asset: assetFilter } = this.winnersFilter || {};
