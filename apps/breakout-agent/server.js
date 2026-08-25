@@ -1482,15 +1482,27 @@ app.get('/api/market-health', async (req, res) => {
     const benchmark = benchmarks.join('+');
     const barsAsOf = gauges[0].asOf;
 
+    // Breadth blends two horizons: 1-month anchors the regime (15 pts), the
+    // last week reacts faster (10 pts). The 1w-vs-1m gap is the direction cue —
+    // a week meaningfully weaker than the month means breadth is deteriorating
+    // before the monthly number shows it.
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const universe = await db.assetReturn.findMany({
       where: { region, assetType: 'stock', updatedAt: { gte: dayAgo }, return1mPct: { not: null } },
-      select: { return1mPct: true },
+      select: { return1mPct: true, return1wPct: true },
     });
-    const breadthPct = universe.length >= 50
-      ? Math.round((universe.filter(r => r.return1mPct > 0).length / universe.length) * 100)
+    const pctPos = (f) => {
+      const rows = universe.filter(r => f(r) != null);
+      return rows.length >= 50 ? Math.round((rows.filter(r => f(r) > 0).length / rows.length) * 100) : null;
+    };
+    const breadthPct = pctPos(r => r.return1mPct);
+    const breadth1wPct = pctPos(r => r.return1wPct);
+    const breadthScore = breadthPct != null
+      ? Math.round((breadthPct / 100) * 15) + (breadth1wPct != null ? Math.round((breadth1wPct / 100) * 10) : Math.round((breadthPct / 100) * 10))
+      : 12; // neutral until populated
+    const breadthDirection = breadthPct != null && breadth1wPct != null
+      ? (breadth1wPct - breadthPct <= -10 ? 'deteriorating' : breadth1wPct - breadthPct >= 10 ? 'improving' : 'steady')
       : null;
-    const breadthScore = breadthPct != null ? Math.round(breadthPct / 4) : 12; // neutral until populated
 
     const score = trendScore + distributionScore + breadthScore;
     const regime = score >= 70 ? 'risk-on' : score >= 45 ? 'caution' : 'risk-off';
@@ -1530,7 +1542,7 @@ app.get('/api/market-health', async (req, res) => {
           volumeBased: gauges.every(g => g.volumeBased),
           perBenchmark: Object.fromEntries(benchmarks.map(b => [b, perBenchmark[b].distributionDays])),
         },
-        breadth: { score: breadthScore, max: 25, pctPositive1m: breadthPct, universe: universe.length },
+        breadth: { score: breadthScore, max: 25, pctPositive1m: breadthPct, pctPositive1w: breadth1wPct, direction: breadthDirection, universe: universe.length },
       },
     };
     marketHealthCache.set(region, { data, expiresAt: Date.now() + 15 * 60 * 1000 });

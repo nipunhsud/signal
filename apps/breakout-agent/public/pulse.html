@@ -257,7 +257,7 @@
           tile('Regime', `<span style="color:${color}">${label} · ${d.score}</span>`, d.advice) +
           tile('Trend', `${c.trend?.score ?? '—'}/50`, `${c.trend?.aboveMA50 ? 'above' : 'below'} 50MA · ${c.trend?.aboveMA200 ? 'above' : 'below'} 200MA`) +
           tile('Distribution days', `<span style="color:${(c.distribution?.days ?? 0) >= 4 ? '#F87171' : 'inherit'}">${c.distribution?.days ?? '—'}</span> <span class="text-sm font-normal">/ 25 sessions</span>`, (c.distribution?.days ?? 0) >= 4 ? 'institutions selling into strength' : 'normal selling pressure') +
-          tile('Breadth', c.breadth?.pctPositive1m != null ? `${c.breadth.pctPositive1m}% <span class="text-sm font-normal">positive 1m</span>` : 'populating', `across ${c.breadth?.universe ?? 0} scanned stocks`);
+          tile('Breadth', c.breadth?.pctPositive1m != null ? `${c.breadth.pctPositive1m}% <span class="text-sm font-normal">positive 1m</span>${c.breadth?.pctPositive1w != null ? ` <span class="text-sm font-normal">· ${c.breadth.pctPositive1w}% 1w</span>` : ''}` : 'populating', c.breadth?.direction === 'deteriorating' ? '<span style="color:#F87171">short-term weakening</span>' : c.breadth?.direction === 'improving' ? '<span style="color:#34D399">short-term improving</span>' : `across ${c.breadth?.universe ?? 0} scanned stocks`);
         document.getElementById('health-benchmark').textContent = `Benchmark: ${d.benchmark} · as of ${d.asOf}`;
         document.getElementById('health-section').style.display = '';
       } catch (e) { /* advisory only */ }

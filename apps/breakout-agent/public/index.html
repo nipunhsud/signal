@@ -1208,11 +1208,64 @@
             ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
             : 'bg-red-500/15 text-red-400 ring-red-500/30';
         const label = mh.regime === 'risk-on' ? 'Risk-on' : mh.regime === 'caution' ? 'Caution' : 'Risk-off';
-        const ddDetail = c.distribution?.perBenchmark
-          ? ' (' + Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${b} ${d}`).join(' · ') + ')'
+
+        // Per-benchmark trend, in words
+        const trendLine = (name, g) => {
+          const bits = [];
+          bits.push(g.aboveMA50 ? 'above its 50-day' : 'below its 50-day');
+          bits.push(g.aboveMA200 ? 'above its 200-day' : 'below its 200-day');
+          bits.push(g.ma50Rising ? 'trend rising' : 'trend flat/falling');
+          const ok = g.aboveMA50 && g.aboveMA200 && g.ma50Rising;
+          return `<div class="flex justify-between gap-3"><span class="text-gray-400 font-mono">${name}</span><span class="${ok ? 'text-green-400' : 'text-amber-300'} text-right">${bits.join(', ')}</span></div>`;
+        };
+        const trendRows = c.trend?.perBenchmark
+          ? Object.entries(c.trend.perBenchmark).map(([b, g]) => trendLine(b, g)).join('')
           : '';
-        const tip = `${mh.advice} — trend ${c.trend?.score ?? '?'}/50, distribution days ${c.distribution?.days ?? '?'}/25 sessions${ddDetail} (${c.distribution?.score ?? '?'}/25), breadth ${c.breadth?.pctPositive1m != null ? c.breadth.pctPositive1m + '% positive 1m' : 'populating'} (${c.breadth?.score ?? '?'}/25). Benchmark ${mh.benchmark}.`;
-        return `<span class="badge ${style} ring-1 cursor-help font-semibold" data-tip="${tip}"><span class="badge-dot"></span>Market: ${label} · ${mh.score}</span>`;
+        const dd = c.distribution?.days ?? 0;
+        const ddPer = c.distribution?.perBenchmark
+          ? Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${b} ${d}`).join(' · ')
+          : '';
+        const breadthPct = c.breadth?.pctPositive1m;
+
+        const row = (title, score, max, body) => `
+          <div class="border-t border-gray-700/50 pt-2.5 mt-2.5">
+            <div class="flex justify-between items-baseline mb-1">
+              <span class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">${title}</span>
+              <span class="font-mono text-xs ${score >= max * 0.7 ? 'text-green-400' : score >= max * 0.35 ? 'text-amber-300' : 'text-red-400'}">${score}/${max}</span>
+            </div>
+            <div class="text-[12px] text-gray-300 leading-relaxed">${body}</div>
+          </div>`;
+
+        const panel = !this._showMarketHealth ? '' : `
+          <div class="absolute left-0 top-full mt-2 z-40 w-[26rem] max-w-[92vw] bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl p-4 text-left cursor-default" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="font-bold text-white">Market: ${label} · ${mh.score}<span class="text-gray-500 font-normal">/100</span></div>
+                <div class="text-[12px] text-gray-300 mt-0.5">${mh.advice}</div>
+              </div>
+              <button onclick="dashboard.toggleMarketHealth(); event.stopPropagation();" class="text-gray-500 hover:text-white transition ml-2">✕</button>
+            </div>
+            ${row('Trend', c.trend?.score ?? 0, 50, `${trendRows || 'Benchmark trend vs the 50 and 200-day averages.'}`)}
+            ${row('Distribution days', c.distribution?.score ?? 0, 25, `
+              <span class="${dd >= 4 ? 'text-red-400 font-semibold' : ''}">${dd} in the last 25 sessions</span>${ddPer ? ` <span class="text-gray-500">(${ddPer})</span>` : ''}.
+              Days the index fell on <em>rising</em> volume — institutions selling into strength. 4+ is a warning even while price holds up.`)}
+            ${row('Breadth', c.breadth?.score ?? 0, 25, breadthPct != null
+              ? `${breadthPct}% of the ${(c.breadth?.universe || 0).toLocaleString()} stocks we scan are positive over the last month${c.breadth?.pctPositive1w != null ? `, ${c.breadth.pctPositive1w}% over the last week` : ''} — the average stock's tape, not the index's.${c.breadth?.direction === 'deteriorating' ? ' <span class="text-red-400 font-semibold">Short-term weaker than the month — breadth is deteriorating.</span>' : c.breadth?.direction === 'improving' ? ' <span class="text-green-400 font-semibold">Short-term stronger than the month — breadth is improving.</span>' : ''}`
+              : 'Populating — appears after the next scan cycles.')}
+            <div class="border-t border-gray-700/50 mt-2.5 pt-2 text-[11px] text-gray-500">
+              ≥70 risk-on · 45–69 caution · &lt;45 risk-off · benchmark ${mh.benchmark} · as of ${mh.asOf}
+            </div>
+          </div>`;
+
+        return `<span class="relative inline-block">
+          <button onclick="dashboard.toggleMarketHealth()" class="badge ${style} ring-1 font-semibold cursor-pointer hover:brightness-125 transition" title="${mh.advice} Click for the breakdown."><span class="badge-dot"></span>Market: ${label} · ${mh.score} <span class="opacity-60 ml-0.5">${this._showMarketHealth ? '▴' : '▾'}</span></button>
+          ${panel}
+        </span>`;
+      }
+
+      toggleMarketHealth() {
+        this._showMarketHealth = !this._showMarketHealth;
+        this.render();
       }
 
       async fetchSignals() {
