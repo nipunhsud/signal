@@ -626,11 +626,19 @@ export class BreakoutAgent {
       const lastRowAgeMs = latestForAsset
         ? Date.now() - new Date(latestForAsset.createdAt).getTime()
         : Infinity;
+      // A streak also ENDS when price closes below the frozen stop: that trade
+      // is over, and any later signal is a NEW episode needing a fresh entry.
+      // Without this, dead episodes inherit stale entries forever — worst case
+      // a stock split (SFBS 2:1, Aug 2026) leaves a pre-split $92 entry against
+      // split-adjusted $44 prices, rendering a phantom -52% "stopped" row.
+      const stopBreached =
+        latestForAsset?.stopLoss != null && data.close <= latestForAsset.stopLoss;
       const isActiveStreak =
         latestForAsset &&
         latestForAsset.breakoutType !== "unknown" &&
         latestForAsset.entryPrice != null &&
-        lastRowAgeMs <= STREAK_MAX_GAP_MS;
+        lastRowAgeMs <= STREAK_MAX_GAP_MS &&
+        !stopBreached;
       const entryPrice = isActiveStreak
         ? (latestForAsset!.entryPrice as number)
         : breakoutAnalysis.resistance;
