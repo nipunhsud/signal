@@ -219,9 +219,11 @@ app.get('/in', (req, res) => res.redirect('/in/dashboard'));
 const latestSignalFor = (ticker) =>
   db.breakoutSignal.findFirst({ where: { asset: ticker.toUpperCase() }, orderBy: { createdAt: 'desc' } });
 
-app.get(/^\/og\/([A-Za-z.\-]+)\.png$/, async (req, res) => {
+app.get(/^\/og\/([A-Za-z.\-]+)\.png$/, async (req, res, next) => {
   try {
     const ticker = req.params[0].toUpperCase();
+    // /og/pulse.png is the market-health card, registered later — not a ticker.
+    if (ticker === 'PULSE') return next();
     const s = (await latestSignalFor(ticker)) || { asset: ticker };
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=900'); // 15 min; signals move slowly
