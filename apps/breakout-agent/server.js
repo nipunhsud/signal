@@ -11,6 +11,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { postXThread } from './dist/x-post.js';
 import { renderScorecardPng, metaFor, metaHtml } from './og-card.js';
+import { detectBases } from './base-detect.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1371,30 +1372,62 @@ function shapeCandles(bars, range, tf) {
   return out;
 }
 
-app.get('/api/candles/:symbol', async (req, res) => {
-  const { symbol } = req.params;
-  const { range, tf } = req.query;
+// Shared 2y-daily-bar getter behind the cache; throws only when there is no
+// fresh data AND no stale fallback. Reused by /api/candles and /api/bases.
+async function getDailyCandles(symbol) {
   const cached = candlesCache.get(symbol);
-  if (cached && cached.expiresAt > Date.now()) return res.json(shapeCandles(cached.bars, range, tf));
-
+  if (cached && cached.expiresAt > Date.now()) return cached.bars;
   let bars;
   try {
     bars = await fetchYahooCandles(symbol);
   } catch (yErr) {
-    console.warn(`[/api/candles] Yahoo failed for ${symbol}: ${yErr.message}; falling back to FMP`);
+    console.warn(`[candles] Yahoo failed for ${symbol}: ${yErr.message}; falling back to FMP`);
     try {
       bars = await fetchFmpCandles(symbol);
     } catch (fErr) {
-      if (cached) return res.json(shapeCandles(cached.bars, range, tf)); // stale beats a broken chart
-      console.error(`[/api/candles] both sources failed for ${symbol}: ${fErr.message}`);
-      return res.status(502).json({ error: `candles unavailable: ${fErr.message}` });
+      if (cached) return cached.bars; // stale beats a broken chart
+      throw new Error(`candles unavailable: ${fErr.message}`);
     }
   }
-
-  if (!bars || !bars.length) return res.json(cached ? shapeCandles(cached.bars, range, tf) : []);
-  console.log(`[/api/candles] ${symbol} = ${bars.length} bars`);
+  if (!bars || !bars.length) {
+    if (cached) return cached.bars;
+    return [];
+  }
+  console.log(`[candles] ${symbol} = ${bars.length} bars`);
   candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
-  res.json(shapeCandles(bars, range, tf));
+  return bars;
+}
+
+app.get('/api/candles/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const { range, tf } = req.query;
+  try {
+    const bars = await getDailyCandles(symbol);
+    res.json(shapeCandles(bars, range, tf));
+  } catch (err) {
+    console.error(`[/api/candles] ${symbol}: ${err.message}`);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Base X-ray: every consolidation episode in the cached 2y of daily bars —
+// forming and resolved — each with pivot, depth, duration, quality metrics and
+// breakout outcome. Computed on demand (pure function of the candles) and
+// cached; nothing is persisted.
+const basesCache = new Map(); // symbol -> { payload, expiresAt }
+app.get('/api/bases/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const cached = basesCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.payload);
+  try {
+    const bars = await getDailyCandles(symbol);
+    const payload = { symbol: symbol.toUpperCase(), asOf: bars.length ? bars[bars.length - 1].time : null, bases: detectBases(bars) };
+    basesCache.set(symbol, { payload, expiresAt: Date.now() + CANDLES_TTL_MS });
+    res.json(payload);
+  } catch (err) {
+    console.error(`[/api/bases] ${symbol}: ${err.message}`);
+    res.status(502).json({ error: err.message });
+  }
 });
 
 // Shared historical-closes cache reused by /api/sparklines and /api/backtest.

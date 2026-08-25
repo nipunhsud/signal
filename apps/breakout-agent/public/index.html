@@ -478,6 +478,8 @@
         this.chartTf = ['d', 'w'].includes(ctf) ? ctf : 'd';
         this.chartMA50 = true;
         this.chartMA200 = true;
+        this._basesCache = null;    // { asset, data } — /api/bases result (null data = unavailable)
+        this._showAllBases = false; // Base X-ray card-list expander
         // Admin (Clerk private metadata admin:"true") — gates the "Tweet" button.
         this.isAdmin = false;
         fetch('/api/admin/status').then(r => r.json()).then(d => { this.isAdmin = !!d.isAdmin; }).catch(() => {});
@@ -1547,6 +1549,15 @@
                   <span>6 months · Daily</span>
                   <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
                 </div>
+                ${(() => {
+                  // Base X-ray teaser — display-only when the chart page already
+                  // fetched this asset's bases; the drawer never fetches them.
+                  const bc = this._basesCache;
+                  const bl = bc && bc.asset === signal.asset && bc.data && Array.isArray(bc.data.bases) ? bc.data.bases : null;
+                  if (!bl || !bl.length) return '';
+                  const nb = bl[bl.length - 1];
+                  return `<div class="text-[11px] text-gray-500 mb-1.5">${bl.length} base${bl.length === 1 ? '' : 's'} in 2y · newest: ${nb.weeks} wks, ${nb.depthPct}% deep · <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">X-ray ⤢</button></div>`;
+                })()}
                 <div id="chart-container" style="height:260px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
               </div>
 
@@ -2016,15 +2027,44 @@
           name: 'dqBaseBox',
           totalStep: 3,
           lock: true,
-          createPointFigures: ({ coordinates }) => {
-            if (coordinates.length < 2) return [];
+          createPointFigures: ({ coordinates, overlay }) => {
+            if (coordinates.length < 2 || coordinates.some(c => !c || !Number.isFinite(c.x) || !Number.isFinite(c.y))) return [];
             const [a, b] = coordinates;
-            return [{
+            const d = overlay.extendData || {};
+            const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+            const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+            const borderColor = d.borderColor || 'rgba(148,163,184,0.35)';
+            const figures = [{
               type: 'rect',
-              attrs: { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) },
-              styles: { style: 'stroke_fill', color: 'rgba(148,163,184,0.08)', borderColor: 'rgba(148,163,184,0.35)', borderStyle: 'dashed', borderSize: 1, borderDashedValue: [4, 4] },
+              attrs: { x, y, width: w, height: h },
+              styles: { style: 'stroke_fill', color: d.color || 'rgba(148,163,184,0.08)', borderColor, borderStyle: 'dashed', borderSize: 1, borderDashedValue: [4, 4] },
               ignoreEvent: true,
             }];
+            if (d.label) {
+              figures.push({
+                type: 'text',
+                attrs: { x: x + 3, y: y + 3, text: d.label, align: 'left', baseline: 'top' },
+                styles: { color: d.labelColor || '#9ca3af', size: 9, family: 'ui-monospace, monospace', backgroundColor: 'rgba(17,24,39,0.6)', paddingLeft: 2, paddingRight: 2, paddingTop: 1, paddingBottom: 1 },
+                ignoreEvent: true,
+              });
+            }
+            if (d.pivotTag) {
+              // Short dashed amber tail off the box's top-right + price label —
+              // the "live pivot" marker on the forming base.
+              figures.push({
+                type: 'line',
+                attrs: { coordinates: [{ x: x + w, y }, { x: x + w + 56, y }] },
+                styles: { style: 'dashed', color: 'rgba(245,158,11,0.8)', size: 1, dashedValue: [3, 3] },
+                ignoreEvent: true,
+              });
+              figures.push({
+                type: 'text',
+                attrs: { x: x + w + 58, y, text: d.pivotTag, align: 'left', baseline: 'middle' },
+                styles: { color: '#f59e0b', size: 10, family: 'ui-monospace, monospace', backgroundColor: 'rgba(17,24,39,0.75)', paddingLeft: 3, paddingRight: 3, paddingTop: 1, paddingBottom: 1 },
+                ignoreEvent: true,
+              });
+            }
+            return figures;
           },
         });
         klinecharts.registerOverlay({
@@ -2123,8 +2163,10 @@
         if (!daily || !bars || bars.length < 22) return;
 
         // Base box: the barsInRange consolidation before the breakout candle.
+        // skipBaseBox: the chart page draws every detected base from /api/bases
+        // instead, so the single signal-window box would just double-stroke it.
         const nBase = signal.barsInRange || 0;
-        if (signal.signalType === 'breakout' && nBase >= 3 && signal.resistance && signal.support && bars.length > nBase + 1) {
+        if (!opts.skipBaseBox && signal.signalType === 'breakout' && nBase >= 3 && signal.resistance && signal.support && bars.length > nBase + 1) {
           const startBar = bars[bars.length - 1 - nBase];
           const endBar = bars[bars.length - 2]; // last bar before the breakout candle
           chart.createOverlay({
@@ -2172,6 +2214,7 @@
       openChartView(asset) {
         if (!asset) return;
         if (this.view !== 'chart') this._chartReturnView = this.view;
+        if (this.chartAsset !== asset) this._showAllBases = false;
         this.chartAsset = asset;
         this.view = 'chart';
         this._chartKey = null; // force rebuild
@@ -2242,11 +2285,13 @@
                 </div>
               </div>
               <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
-              <div class="mt-2 text-[11px] text-gray-500 font-mono">${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}</div>
+              <div class="mt-2 text-[11px] text-gray-500 font-mono">${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}</div>
+              <div id="base-xray" class="mt-6"></div>
             </div>
           </div>
         `;
         this._buildPageChart(sig);
+        this._renderBaseXray(); // paints immediately when this asset's bases are cached
       }
 
       _buildPageChart(sig) {
@@ -2279,13 +2324,166 @@
               chart.createIndicator({ name: 'MA', calcParams: maParams }, true, { id: 'candle_pane' });
             }
             chart.createIndicator('VOL', false, { height: 90 });
-            this._applySignalOverlays(chart, sig, bars, { daily: this.chartTf !== 'w' });
+            this._applySignalOverlays(chart, sig, bars, { daily: this.chartTf !== 'w', skipBaseBox: true });
+            this._ensureBases(chart, token);
           })
           .catch(err => {
             const el = document.getElementById('chart-page-container');
             if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>';
             console.error('Chart error:', err);
           });
+      }
+
+      // ── Base X-ray (/api/bases) ──
+
+      // Fetch bases once per asset; cache survives range/tf/MA rebuilds and the
+      // 5s render tick (renderChartPanel's key guard means this only runs on a
+      // real rebuild, and a cache hit costs no network).
+      _ensureBases(chart, token) {
+        const asset = this.chartAsset;
+        const apply = (data) => {
+          if (token !== this._pageChartToken || this.view !== 'chart') return;
+          this._renderBaseXray();
+          if (this.chartTf !== 'w' && chart && data && Array.isArray(data.bases)) {
+            this._applyBaseOverlays(chart, data.bases);
+          }
+        };
+        if (this._basesCache && this._basesCache.asset === asset) {
+          apply(this._basesCache.data);
+          return;
+        }
+        fetch('/api/bases/' + encodeURIComponent(asset))
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(data => {
+            this._basesCache = { asset, data };
+            apply(data);
+          })
+          .catch(() => {
+            this._basesCache = { asset, data: null }; // remembered as unavailable
+            apply(null);
+          });
+      }
+
+      _applyBaseOverlays(chart, bases) {
+        const ts = (t) => new Date(t + 'T00:00:00Z').getTime();
+        bases.forEach((b) => {
+          if (!b || !b.start || !b.end || !(b.pivot > 0) || !(b.low > 0)) return;
+          const forming = b.status === 'forming';
+          chart.createOverlay({
+            name: 'dqBaseBox',
+            lock: true,
+            points: [
+              { timestamp: ts(b.start), value: b.pivot },
+              { timestamp: ts(b.end), value: b.low },
+            ],
+            extendData: forming
+              ? { label: b.weeks + ' wks', color: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.5)', labelColor: '#f59e0b', pivotTag: 'pivot ' + CUR + b.pivot }
+              : { label: b.weeks + ' wks' },
+          });
+        });
+      }
+
+      zoomToBase(idx) {
+        const data = this._basesCache && this._basesCache.data;
+        const b = data && Array.isArray(data.bases) ? data.bases[idx] : null;
+        if (!b || !this._pageKline || typeof this._pageKline.scrollToTimestamp !== 'function') return;
+        try { this._pageKline.scrollToTimestamp(new Date(b.start + 'T00:00:00Z').getTime(), 200); } catch (e) {}
+      }
+
+      toggleAllBases() {
+        this._showAllBases = !this._showAllBases;
+        this._renderBaseXray();
+      }
+
+      _renderBaseXray() {
+        const el = document.getElementById('base-xray');
+        if (!el) return;
+        const cache = this._basesCache;
+        if (!cache || cache.asset !== this.chartAsset) {
+          el.innerHTML = '<div class="text-xs text-gray-600">Detecting bases…</div>';
+          return;
+        }
+        const data = cache.data;
+        if (!data || !Array.isArray(data.bases)) {
+          el.innerHTML = '<div class="text-xs text-gray-600">Base detection unavailable</div>';
+          return;
+        }
+        if (!data.bases.length) {
+          el.innerHTML = '<div class="text-xs text-gray-600">No bases detected in the last 2 years</div>';
+          return;
+        }
+
+        const newest = data.bases.slice().reverse();
+        const shown = this._showAllBases ? newest : newest.slice(0, 4);
+        const fmt = (v, d = 2) => (v == null || !Number.isFinite(Number(v)) || Number(v) <= 0) ? null : Number(v).toFixed(d);
+        const dash = '<span class="text-gray-600">—</span>';
+        const row = (label, tip, html) => `
+          <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between gap-3 text-[13px]">
+            <span class="text-gray-400" data-tip="${tip}">${label}</span>
+            ${html}
+          </div>`;
+
+        const card = (b) => {
+          const origIdx = data.bases.indexOf(b);
+          const forming = b.status === 'forming';
+          const coil = fmt(b.coilRatio);
+          const dry = fmt(b.volumeDryUp);
+          const udv = fmt(b.upDownVolumeRatio, 1);
+          const coilHtml = coil == null ? dash : (Number(coil) < 0.9
+            ? `<span class="font-mono tabular-nums text-green-400">${coil}x · tightening</span>`
+            : `<span class="font-mono tabular-nums text-gray-300">${coil}x</span>`);
+          const dryHtml = dry == null ? dash : (Number(dry) < 0.9
+            ? `<span class="font-mono tabular-nums text-green-400">${dry}x · quiet</span>`
+            : `<span class="font-mono tabular-nums text-gray-300">${dry}x</span>`);
+          const udvHtml = udv == null ? dash : (Number(udv) >= 1.5
+            ? `<span class="font-mono tabular-nums text-green-400">${udv}x · accumulation</span>`
+            : `<span class="font-mono tabular-nums text-gray-300">${udv}x</span>`);
+          const fp = b.failedPokes || 0;
+          const fpHtml = fp === 0
+            ? '<span class="font-mono tabular-nums text-green-400">0 · clean</span>'
+            : fp >= 2
+              ? `<span class="font-mono tabular-nums text-orange-400">${fp} · supply overhead</span>`
+              : `<span class="font-mono tabular-nums text-gray-300">${fp}</span>`;
+          const boVol = b.breakout ? fmt(b.breakout.volumeRatio) : null;
+          const boVolHtml = boVol == null ? dash : (Number(boVol) >= 1.5
+            ? `<span class="font-mono tabular-nums text-green-400">${boVol}x avg</span>`
+            : `<span class="font-mono tabular-nums text-gray-300">${boVol}x avg</span>`);
+
+          const run = b.breakout && b.breakout.runPct != null ? b.breakout.runPct : null;
+          const badges = [
+            forming ? '<span class="badge bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30"><span class="badge-dot"></span>forming now</span>' : '',
+            (!forming && b.breakout) ? `<span class="text-[11px] px-2 py-0.5 rounded bg-gray-700/50 text-gray-400 ring-1 ring-gray-600/40">broke out ${b.breakout.date} — ran <span class="${run >= 0 ? 'text-green-400' : 'text-red-400'} font-semibold">${run >= 0 ? '+' : ''}${run}%</span></span>` : '',
+            b.isBlueSky ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="This base sits at the highest price of the period — no trapped sellers overhead.">Blue Sky</span>' : '',
+            b.isVcpShape ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Tightening coil on drying volume — the volatility-contraction shape.">VCP shape</span>' : '',
+          ].filter(Boolean).join(' ');
+
+          return `
+            <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4 cursor-pointer hover:ring-gray-500/60 transition" onclick="dashboard.zoomToBase(${origIdx})" title="Show this base on the chart">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <span class="font-semibold text-white">Base · ${b.weeks} wks · ${b.depthPct}% deep · ${CUR}${b.pivot}</span>
+              </div>
+              <div class="mt-1.5 flex items-center flex-wrap gap-1.5">${badges}</div>
+              <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                ${row('Coil', 'Range of the base&#39;s second half vs its first half. Below 1.0x the swings are tightening into the pivot.', coilHtml)}
+                ${row('Volume dry-up', 'Average volume inside the base vs the 50 bars before it. Below 1.0x means sellers were running out while the base formed.', dryHtml)}
+                ${row('Up ÷ down volume', 'Volume on up-days divided by down-days inside the base. Above 1.5x means buyers were quietly absorbing shares.', udvHtml)}
+                ${row('Failed pokes', 'Times price wicked to the pivot but closed well below it. 0 is clean; 2+ means sellers defended the level.', fpHtml)}
+                ${b.breakout ? row('Breakout volume', 'Volume on the breakout bar vs the base average. Real breakouts come on a surge — 1.5x or more.', boVolHtml) : ''}
+              </div>
+            </div>`;
+        };
+
+        el.innerHTML = `
+          <div class="mb-3">
+            <h2 class="text-lg font-bold text-white">Base X-ray</h2>
+            <p class="text-xs text-gray-500">Every base in the last 2 years — forming and resolved. Click a card to locate it on the chart.</p>
+          </div>
+          <div class="space-y-3">${shown.map(card).join('')}</div>
+          ${newest.length > 4 ? `
+            <button onclick="dashboard.toggleAllBases()" class="mt-3 w-full py-2 rounded-lg border border-dashed border-gray-700 text-sm text-gray-400 hover:text-gray-200 hover:border-gray-500 transition">
+              ${this._showAllBases ? 'Show fewer' : `Show all bases (${newest.length})`}
+            </button>` : ''}
+        `;
       }
 
       isInShortlist(asset) {
