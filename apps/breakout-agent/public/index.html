@@ -1685,8 +1685,12 @@
                 if (signal.signalType !== 'breakout' && signal.signalType !== 'extension') return '';
                 const rs = signal.rsRating;
                 const udv = signal.upDownVolumeRatio;
-                const fp = signal.failedPokes;
                 const coil = signal.coilRatio;
+                // failedPokes has a DB default of 0, so on pre-metrics rows it
+                // arrives as 0 without ever being measured. The metrics are
+                // computed together — a sibling being present is what proves a
+                // 0 is a real "clean", not an unmeasured default.
+                const fp = udv != null || coil != null ? signal.failedPokes : null;
                 if (rs == null && udv == null && fp == null && coil == null) return '';
                 const row = (label, tip, valueHtml) => `
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between items-center text-[13px]">
