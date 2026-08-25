@@ -1208,7 +1208,10 @@
             ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
             : 'bg-red-500/15 text-red-400 ring-red-500/30';
         const label = mh.regime === 'risk-on' ? 'Risk-on' : mh.regime === 'caution' ? 'Caution' : 'Risk-off';
-        const tip = `${mh.advice} — trend ${c.trend?.score ?? '?'}/50, distribution days ${c.distribution?.days ?? '?'}/25 sessions (${c.distribution?.score ?? '?'}/25), breadth ${c.breadth?.pctPositive1m != null ? c.breadth.pctPositive1m + '% positive 1m' : 'populating'} (${c.breadth?.score ?? '?'}/25). Benchmark ${mh.benchmark}.`;
+        const ddDetail = c.distribution?.perBenchmark
+          ? ' (' + Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${b} ${d}`).join(' · ') + ')'
+          : '';
+        const tip = `${mh.advice} — trend ${c.trend?.score ?? '?'}/50, distribution days ${c.distribution?.days ?? '?'}/25 sessions${ddDetail} (${c.distribution?.score ?? '?'}/25), breadth ${c.breadth?.pctPositive1m != null ? c.breadth.pctPositive1m + '% positive 1m' : 'populating'} (${c.breadth?.score ?? '?'}/25). Benchmark ${mh.benchmark}.`;
         return `<span class="badge ${style} ring-1 cursor-help font-semibold" data-tip="${tip}"><span class="badge-dot"></span>Market: ${label} · ${mh.score}</span>`;
       }
 

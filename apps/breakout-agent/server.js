@@ -1437,35 +1437,50 @@ app.get('/api/market-health', async (req, res) => {
   const cached = marketHealthCache.get(region);
   if (cached && cached.expiresAt > Date.now()) return res.json(cached.data);
   try {
-    const benchmark = region === 'IN' ? '^NSEI' : 'SPY';
-    const bars = await getDailyCandles(benchmark);
-    if (!bars || bars.length < 210) throw new Error(`only ${bars?.length ?? 0} bars for ${benchmark}`);
-    const closes = bars.map(b => b.close);
-    const last = closes[closes.length - 1];
-    const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
-    const ma50 = avg(closes.slice(-50));
-    const ma200 = avg(closes.slice(-200));
-    const ma50Prev = avg(closes.slice(-60, -10));
-    const ma50Rising = ma50 > ma50Prev;
-    let trendScore = 0;
-    if (last > ma50) trendScore += 25;
-    if (last > ma200) trendScore += 15;
-    if (ma50Rising) trendScore += 10;
-
-    // Distribution days. Index volume can be missing (^NSEI often reports 0) —
-    // fall back to a price-only proxy: down days of >=1%.
-    const win = bars.slice(-26);
-    const hasVolume = win.filter(b => (b.volume || 0) > 0).length > 20;
-    let distributionDays = 0;
-    for (let i = 1; i < win.length; i++) {
-      const downEnough = win[i].close <= win[i - 1].close * 0.998;
-      if (hasVolume) {
-        if (downEnough && (win[i].volume || 0) > (win[i - 1].volume || 0)) distributionDays++;
-      } else if (win[i].close <= win[i - 1].close * 0.99) {
-        distributionDays++;
+    // Per-benchmark gauge: trend vs 50/200MA + slope, and O'Neil distribution
+    // days over the last 25 sessions. Index volume can be missing (^NSEI often
+    // reports 0) — fall back to a price-only proxy: down days of >=1%.
+    const gaugeFor = (bars) => {
+      const closes = bars.map(b => b.close);
+      const last = closes[closes.length - 1];
+      const avg = (arr) => arr.reduce((s, v) => s + v, 0) / arr.length;
+      const ma50 = avg(closes.slice(-50));
+      const ma200 = avg(closes.slice(-200));
+      const ma50Rising = ma50 > avg(closes.slice(-60, -10));
+      let trendScore = 0;
+      if (last > ma50) trendScore += 25;
+      if (last > ma200) trendScore += 15;
+      if (ma50Rising) trendScore += 10;
+      const win = bars.slice(-26);
+      const hasVolume = win.filter(b => (b.volume || 0) > 0).length > 20;
+      let distributionDays = 0;
+      for (let i = 1; i < win.length; i++) {
+        const downEnough = win[i].close <= win[i - 1].close * 0.998;
+        if (hasVolume) {
+          if (downEnough && (win[i].volume || 0) > (win[i - 1].volume || 0)) distributionDays++;
+        } else if (win[i].close <= win[i - 1].close * 0.99) {
+          distributionDays++;
+        }
       }
+      return { trendScore, aboveMA50: last > ma50, aboveMA200: last > ma200, ma50Rising, distributionDays, volumeBased: hasVolume };
+    };
+
+    // US watches SPY AND QQQ — O'Neil's market call counts distribution on both
+    // exchanges and respects the worse one; growth breakouts live on the Nasdaq.
+    // Trend averages the two; distribution takes the max.
+    const benchmarks = region === 'IN' ? ['^NSEI'] : ['SPY', 'QQQ'];
+    const perBenchmark = {};
+    for (const b of benchmarks) {
+      const bars = await getDailyCandles(b);
+      if (!bars || bars.length < 210) throw new Error(`only ${bars?.length ?? 0} bars for ${b}`);
+      perBenchmark[b] = { ...gaugeFor(bars), asOf: bars[bars.length - 1].time };
     }
+    const gauges = Object.values(perBenchmark);
+    const trendScore = Math.round(gauges.reduce((s, g) => s + g.trendScore, 0) / gauges.length);
+    const distributionDays = Math.max(...gauges.map(g => g.distributionDays));
     const distributionScore = Math.max(0, 25 - distributionDays * 5);
+    const benchmark = benchmarks.join('+');
+    const barsAsOf = gauges[0].asOf;
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const universe = await db.assetReturn.findMany({
@@ -1488,13 +1503,33 @@ app.get('/api/market-health', async (req, res) => {
     const data = {
       region,
       benchmark,
-      asOf: bars[bars.length - 1].time,
+      asOf: barsAsOf,
       score,
       regime,
       advice,
       components: {
-        trend: { score: trendScore, max: 50, aboveMA50: last > ma50, aboveMA200: last > ma200, ma50Rising },
-        distribution: { score: distributionScore, max: 25, days: distributionDays, window: 25, volumeBased: hasVolume },
+        // Combined booleans are conservative: true only when EVERY benchmark agrees
+        trend: {
+          score: trendScore,
+          max: 50,
+          aboveMA50: gauges.every(g => g.aboveMA50),
+          aboveMA200: gauges.every(g => g.aboveMA200),
+          ma50Rising: gauges.every(g => g.ma50Rising),
+          perBenchmark: Object.fromEntries(benchmarks.map(b => [b, {
+            score: perBenchmark[b].trendScore,
+            aboveMA50: perBenchmark[b].aboveMA50,
+            aboveMA200: perBenchmark[b].aboveMA200,
+            ma50Rising: perBenchmark[b].ma50Rising,
+          }])),
+        },
+        distribution: {
+          score: distributionScore,
+          max: 25,
+          days: distributionDays,
+          window: 25,
+          volumeBased: gauges.every(g => g.volumeBased),
+          perBenchmark: Object.fromEntries(benchmarks.map(b => [b, perBenchmark[b].distributionDays])),
+        },
         breadth: { score: breadthScore, max: 25, pctPositive1m: breadthPct, universe: universe.length },
       },
     };
