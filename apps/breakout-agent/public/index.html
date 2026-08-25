@@ -1559,6 +1559,7 @@
                   return `<div class="text-[11px] text-gray-500 mb-1.5">${bl.length} base${bl.length === 1 ? '' : 's'} in 2y · newest: ${nb.weeks} wks, ${nb.depthPct}% deep · <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">X-ray ⤢</button></div>`;
                 })()}
                 <div id="chart-container" style="height:260px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
+                ${this.chartLegend()}
               </div>
 
               <!-- ETF Info (if applicable) -->
@@ -2251,6 +2252,20 @@
         this.render();
       }
 
+      // Marker legend shown under every chart — hover any term for the plain-
+      // English meaning. Same data-tip mechanism as the rest of the dashboard.
+      chartLegend() {
+        const item = (glyph, glyphCls, label, tip) =>
+          `<span class="inline-flex items-center gap-1 cursor-help" data-tip="${tip}"><span class="${glyphCls}">${glyph}</span><span>${label}</span></span>`;
+        return `<div class="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-gray-500 font-mono select-none">
+          ${item('▦', 'text-gray-400', 'base', 'Dashed box: a detected consolidation base — the quiet range price built before a move. Amber = still forming.')}
+          ${item('╌╌', 'text-yellow-500', 'entry / stop', 'Dashed lines: yellow = entry (the breakout level), red = stop or resistance R, green = support S, blue = 20-day MA on setups.')}
+          ${item('✗', 'text-red-400', 'failed poke', 'Price wicked up to the pivot but closed well below it — sellers defended the level. 2+ inside a base means supply overhead.')}
+          ${item('▲', 'text-yellow-500', 'breakout bar', 'The session that cleared the pivot and fired the signal.')}
+          ${item('↳', 'text-gray-400', 'hi·lo in view', 'Chart furniture: the highest and lowest prices currently visible. Moves as you pan or zoom.')}
+        </div>`;
+      }
+
       renderChartPanel() {
         // Auto-refresh guard: fetchSignals() re-renders every 5s — leave the live
         // chart DOM alone unless asset/range/tf/MA state actually changed.
@@ -2286,6 +2301,7 @@
               </div>
               <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
               <div class="mt-2 text-[11px] text-gray-500 font-mono">${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}</div>
+              ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
             </div>
           </div>
@@ -2839,7 +2855,7 @@
 
         const controlPill = (label, key, value, current) => `
           <button onclick="dashboard.setBacktestParam('${key}', ${typeof value === 'string' ? `'${value}'` : value})"
-            class="px-2.5 py-1 rounded text-xs font-medium transition ${current === value ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+            class="px-2.5 py-1 rounded text-xs font-semibold transition ${current === value ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-1 ring-gray-700/60'}">${label}</button>
         `;
 
         const app = document.getElementById('app');
@@ -2851,7 +2867,7 @@
                 <div class="flex items-center gap-3">
                   <button onclick="dashboard.closeBacktest();" class="text-gray-400 hover:text-white transition text-2xl leading-none" title="Back">←</button>
                   <div>
-                    <h1 class="text-3xl font-bold tracking-tight">Backtest</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">Backtest</h1>
                     <p class="text-gray-500 text-sm">Historical forward return of persisted signals · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
                   </div>
                 </div>
@@ -3038,78 +3054,83 @@
           <div class="flex-1 overflow-auto p-8 bg-gray-900">
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
-              <div class="mb-4 flex items-center gap-4">
-                <button onclick="dashboard.setView('dashboard')" class="text-2xl hover:text-gray-400 transition">←</button>
-                <div class="flex-1">
-                  <h1 class="text-4xl font-bold">⭐ Shortlist</h1>
-                  <p class="text-gray-400">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                  <button onclick="dashboard.setView('dashboard')" class="text-gray-400 hover:text-white transition text-2xl leading-none" title="Back">←</button>
+                  <div>
+                    <h1 class="text-2xl font-bold tracking-tight">⭐ Shortlist</h1>
+                    <p class="text-gray-500 text-sm">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
+                  </div>
                 </div>
-                ${activeId ? `<button onclick="dashboard.addTicker()" class="px-4 py-2 bg-green-700 hover:bg-green-600 rounded text-sm font-semibold" title="Add ticker(s) to this list">+ Add ticker</button>` : ''}
-                ${activeId ? `<button onclick="dashboard.renameList('${activeId}')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" title="Rename this list">Rename</button>` : ''}
-                ${activeId ? `<button onclick="dashboard.deleteList('${activeId}')" class="px-3 py-2 bg-red-900 hover:bg-red-800 text-red-100 rounded text-sm" title="Delete this list">Delete list</button>` : ''}
-                ${items.length ? `<button onclick="dashboard.copyTvList()" class="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm font-semibold" title="Copy as comma-separated tickers — paste into TradingView 'Add symbol' or Import list">Copy TV list</button>` : ''}
+                <div class="flex items-center gap-2 flex-wrap">
+                ${activeId ? `<button onclick="dashboard.addTicker()" class="px-2.5 py-1 rounded text-xs font-semibold bg-green-500/20 text-green-300 ring-1 ring-green-500/40 hover:bg-green-500/30 transition" title="Add ticker(s) to this list">+ Add ticker</button>` : ''}
+                ${activeId ? `<button onclick="dashboard.renameList('${activeId}')" class="px-2.5 py-1 rounded text-xs font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 ring-1 ring-gray-700/60 transition" title="Rename this list">Rename</button>` : ''}
+                ${activeId ? `<button onclick="dashboard.deleteList('${activeId}')" class="px-2.5 py-1 rounded text-xs font-semibold bg-red-500/15 text-red-300 ring-1 ring-red-500/30 hover:bg-red-500/25 transition" title="Delete this list">Delete list</button>` : ''}
+                ${items.length ? `<button onclick="dashboard.copyTvList()" class="px-2.5 py-1 rounded text-xs font-semibold bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40 hover:bg-blue-500/30 transition" title="Copy as comma-separated tickers — paste into TradingView 'Add symbol' or Import list">Copy TV list</button>` : ''}
+                </div>
               </div>
 
               <!-- List tabs -->
-              <div class="mb-8 flex flex-wrap items-center gap-2">
+              <div class="mb-6 flex flex-wrap items-center gap-2">
                 ${this.lists.map(l => `
                   <button onclick="dashboard.selectList('${l.id}')"
-                    class="px-4 py-1.5 rounded-full text-sm font-semibold transition ${l.id === activeId ? 'bg-yellow-500 text-gray-900' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}">
+                    class="px-2.5 py-1 rounded text-xs font-semibold transition ${l.id === activeId ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-1 ring-gray-700/60'}">
                     ${l.name} <span class="opacity-70">${l.count}</span>
                   </button>
                 `).join('')}
-                <button onclick="dashboard.createList()" class="px-4 py-1.5 rounded-full text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-green-400 transition" title="New list">+ New list</button>
+                <button onclick="dashboard.createList()" class="px-2.5 py-1 rounded text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-green-400 ring-1 ring-gray-700/60 transition" title="New list">+ New list</button>
               </div>
 
               <!-- Content -->
               ${items.length === 0 ? `
-                <div class="text-center py-12">
-                  <p class="text-gray-400 text-lg">${activeName ? `"${activeName}" is empty` : 'No lists yet'}</p>
-                  <p class="text-gray-500 text-sm mt-2">${activeName ? 'Click the ☆ star next to any asset to add it to this list' : 'Create a list to get started'}</p>
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">${activeName ? `"${activeName}" is empty` : 'No lists yet'}</h3>
+                  <p class="text-sm text-gray-500">${activeName ? 'Click the ☆ star next to any asset to add it to this list' : 'Create a list to get started'}</p>
                 </div>
               ` : `
-                <div class="bg-gray-800 rounded-lg overflow-hidden">
-                  <table class="w-full">
-                    <thead>
-                      <tr class="bg-gray-700 border-b border-gray-700">
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Asset</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Added</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Signal Status</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Price</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Confidence</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold">Action</th>
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="shortlist-x">
+                  <table class="w-full signals-responsive" style="min-width:760px;">
+                    <thead class="sticky-head">
+                      <tr class="border-b border-gray-600">
+                        <th style="min-width:140px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Added</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Signal Status</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${items.map((item, idx) => `
-                        <tr class="${idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-900'} border-b border-gray-700 hover:bg-gray-700 transition">
-                          <td class="px-6 py-4 font-bold text-lg">
-                            <span class="text-blue-400 hover:text-blue-300 cursor-pointer inline-flex items-center gap-2" onclick="dashboard.openDrawer(dashboard.signals.find(s => s.asset === '${item.asset}') || {asset: '${item.asset}'})">
+                        <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 hover:bg-gray-800/40 transition">
+                          <td class="card-header px-3 py-2.5 whitespace-nowrap">
+                            <span class="text-blue-400 hover:text-blue-300 font-mono font-bold cursor-pointer inline-flex items-center gap-2" onclick="dashboard.openDrawer(dashboard.signals.find(s => s.asset === '${item.asset}') || {asset: '${item.asset}'})">
                               ${item.asset}
                               <a href="${this.getTradingViewUrl(item.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm" title="Open on TradingView" onclick="event.stopPropagation();">↗</a>
                             </span>
                           </td>
-                          <td class="px-6 py-4 text-sm text-gray-400">
+                          <td data-label="Added" class="px-3 py-2.5 whitespace-nowrap text-xs text-gray-400">
                             ${new Date(item.addedAt).toLocaleDateString()}
                           </td>
-                          <td class="px-6 py-4">
+                          <td data-label="Signal Status" class="px-3 py-2.5 whitespace-nowrap">
                             ${item.signal
                               ? item.signal.signalType === 'breakout'
-                                ? '<span class="text-green-400">🟢 Breakout</span>'
+                                ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>'
                                 : item.signal.signalType === 'extension'
-                                ? '<span class="text-yellow-400">🟡 Extension</span>'
-                                : '<span class="text-blue-400">🔵 Setup</span>'
+                                ? '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>'
+                                : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                               : '<span class="text-gray-500">—</span>'
                             }
                           </td>
-                          <td class="px-6 py-4 font-mono">
+                          <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">
                             ${item.price ? CUR + item.price.toFixed(2) : '—'}
                           </td>
-                          <td class="px-6 py-4">
-                            ${item.confidence ? `<span class="bg-blue-700 px-2 py-1 rounded text-white text-sm">${item.confidence}%</span>` : '—'}
+                          <td data-label="Confidence" class="px-3 py-2.5 whitespace-nowrap">
+                            ${item.confidence ? `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40 tabular-nums">${item.confidence}%</span>` : '—'}
                           </td>
-                          <td class="px-6 py-4">
-                            <button onclick="dashboard.toggleShortlist('${item.asset.replace(/'/g, "\\'")}', event);" class="px-3 py-1 bg-red-900 hover:bg-red-800 text-red-100 rounded text-sm font-semibold transition">
+                          <td data-label="Action" class="px-3 py-2.5 whitespace-nowrap">
+                            <button onclick="dashboard.toggleShortlist('${item.asset.replace(/'/g, "\\'")}', event);" class="px-2.5 py-1 rounded text-xs font-semibold bg-red-500/15 text-red-300 ring-1 ring-red-500/30 hover:bg-red-500/25 transition">
                               Remove
                             </button>
                           </td>
@@ -3268,17 +3289,17 @@
         const fmt = (n, digits = 1, pct = false) => (n == null || Number.isNaN(n)) ? '—' : (n > 0 && pct ? '+' : '') + n.toFixed(digits) + (pct ? '%' : '');
         const toneColor = (t) => t === 'bullish' ? 'text-green-400' : t === 'bearish' ? 'text-red-400' : 'text-gray-300';
 
-        const row = (s) => `
-          <tr class="border-b border-gray-800 hover:bg-gray-800/40 cursor-pointer" onclick="dashboard.openAsset('${s.asset}')">
-            <td class="px-3 py-2 font-mono font-semibold text-white">${s.asset}${this.crossRefPills(s.asset, 'beat-raise')}</td>
-            <td class="px-3 py-2 text-gray-400 text-xs">${s.sector || '—'}</td>
-            <td class="px-3 py-2 font-mono tabular-nums">${CUR}${this.safeNum(s.currentPrice, 2)}</td>
-            <td class="px-3 py-2 font-mono tabular-nums text-right text-gray-300">
+        const row = (s, idx) => `
+          <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 hover:bg-gray-800/40 transition cursor-pointer" onclick="dashboard.openAsset('${s.asset}')">
+            <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono font-semibold text-white">${s.asset}${this.crossRefPills(s.asset, 'beat-raise')}</td>
+            <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap text-gray-400 text-xs">${s.sector || '—'}</td>
+            <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">${CUR}${this.safeNum(s.currentPrice, 2)}</td>
+            <td data-label="EPS (q-2 → latest)" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-gray-300">
               ${(s.epsQuarters || []).slice().reverse().map(e => e.toFixed(2)).join(' → ')}
             </td>
-            <td class="px-3 py-2 font-mono tabular-nums text-right text-green-400">${fmt(s.epsSurprisePct, 1, true)}</td>
-            <td class="px-3 py-2 text-center"><span class="text-xs font-medium px-2 py-0.5 rounded bg-green-500/15 text-green-400 ring-1 ring-green-500/30">raised</span></td>
-            <td class="px-3 py-2 text-center ${toneColor(s.earningsTone)} text-xs">${s.earningsTone || '—'}${s.earningsQuarter ? ` · Q${s.earningsQuarter} ${s.earningsYear}` : ''}</td>
+            <td data-label="Surprise" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-green-400">${fmt(s.epsSurprisePct, 1, true)}</td>
+            <td data-label="Guidance" class="px-3 py-2.5 whitespace-nowrap text-center"><span class="text-xs font-medium px-2 py-0.5 rounded bg-green-500/15 text-green-400 ring-1 ring-green-500/30">raised</span></td>
+            <td data-label="Tone" class="px-3 py-2.5 whitespace-nowrap text-center ${toneColor(s.earningsTone)} text-xs">${s.earningsTone || '—'}${s.earningsQuarter ? ` · Q${s.earningsQuarter} ${s.earningsYear}` : ''}</td>
           </tr>
         `;
 
@@ -3293,7 +3314,7 @@
                 <button onclick="dashboard.fetchBeatRaise()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
               </div>
               ${this.beatRaiseLoading || !d ? `
-                <div class="text-center py-16 text-gray-500 text-sm">Screening beat &amp; raise names… checking quarterly EPS trend from FMP.</div>
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6 text-gray-500 text-sm">Screening beat &amp; raise names… checking quarterly EPS trend from FMP.</div>
               ` : stocks.length === 0 ? `
                 <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
                   <div class="text-4xl mb-3 opacity-40">◎</div>
@@ -3301,17 +3322,17 @@
                   <p class="text-sm text-gray-500">No recently-scanned stock currently shows a beat + raised guidance with two quarters of sequential EPS growth.</p>
                 </div>
               ` : `
-                <div class="bg-gray-800/40 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
-                  <table class="w-full text-sm">
-                    <thead class="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-900/60">
-                      <tr>
-                        <th class="px-3 py-2 text-left font-medium">Symbol</th>
-                        <th class="px-3 py-2 text-left font-medium">Sector</th>
-                        <th class="px-3 py-2 text-left font-medium">Price</th>
-                        <th class="px-3 py-2 text-right font-medium">EPS (q-2 → latest)</th>
-                        <th class="px-3 py-2 text-right font-medium">Surprise</th>
-                        <th class="px-3 py-2 text-center font-medium">Guidance</th>
-                        <th class="px-3 py-2 text-center font-medium">Tone</th>
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="beatraise-x">
+                  <table class="w-full signals-responsive" style="min-width:880px;">
+                    <thead class="sticky-head">
+                      <tr class="border-b border-gray-600">
+                        <th style="min-width:120px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Symbol</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:160px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">EPS (q-2 → latest)</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Surprise</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-300">Guidance</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-300">Tone</th>
                       </tr>
                     </thead>
                     <tbody>${stocks.map(row).join('')}</tbody>
@@ -3330,18 +3351,18 @@
         // volumeRatio 2.0 = 100% above avg. Show as "+N%" above average.
         const abovePct = (r) => (r == null || Number.isNaN(r)) ? '—' : '+' + Math.round((r - 1) * 100) + '%';
 
-        const row = (s) => `
-          <tr class="border-b border-gray-800 hover:bg-gray-800/40 cursor-pointer" onclick="dashboard.openAsset('${s.asset}')">
-            <td class="px-3 py-2 font-mono font-semibold text-white">${s.asset}${this.crossRefPills(s.asset, 'unusual-volume')}</td>
-            <td class="px-3 py-2 text-gray-400 text-xs">${s.sector || '—'}</td>
-            <td class="px-3 py-2 font-mono tabular-nums">${CUR}${this.safeNum(s.currentPrice, 2)}</td>
-            <td class="px-3 py-2 font-mono tabular-nums text-right text-green-400 font-semibold">${abovePct(s.volumeRatio)}</td>
-            <td class="px-3 py-2 font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
-            <td class="px-3 py-2 text-center text-gray-400 text-xs">
+        const row = (s, idx) => `
+          <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 hover:bg-gray-800/40 transition cursor-pointer" onclick="dashboard.openAsset('${s.asset}')">
+            <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono font-semibold text-white">${s.asset}${this.crossRefPills(s.asset, 'unusual-volume')}</td>
+            <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap text-gray-400 text-xs">${s.sector || '—'}</td>
+            <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">${CUR}${this.safeNum(s.currentPrice, 2)}</td>
+            <td data-label="Vs Avg Vol" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-green-400 font-semibold">${abovePct(s.volumeRatio)}</td>
+            <td data-label="Ratio" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
+            <td data-label="Type" class="px-3 py-2.5 whitespace-nowrap text-center text-gray-400 text-xs">
               ${s.breakoutType || '—'}
               ${s.lowConfidence ? `<span class="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-900/50 text-amber-400 ring-1 ring-amber-700/40" title="Below the actionable confidence bar — surfaced for the volume surge, not in the Signals list">low conf</span>` : ''}
             </td>
-            <td class="px-3 py-2 text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
+            <td data-label="Scanned" class="px-3 py-2.5 whitespace-nowrap text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
           </tr>
         `;
 
@@ -3366,7 +3387,7 @@
                 </div>
               </div>
               ${this.unusualVolumeLoading || !d ? `
-                <div class="text-center py-16 text-gray-500 text-sm">Screening for unusual volume…</div>
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6 text-gray-500 text-sm">Screening for unusual volume…</div>
               ` : stocks.length === 0 ? `
                 <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
                   <div class="text-4xl mb-3 opacity-40">◎</div>
@@ -3374,17 +3395,17 @@
                   <p class="text-sm text-gray-500">No recently-scanned stock is currently trading 100%+ above average volume on an up candle.</p>
                 </div>
               ` : `
-                <div class="bg-gray-800/40 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
-                  <table class="w-full text-sm">
-                    <thead class="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-900/60">
-                      <tr>
-                        <th class="px-3 py-2 text-left font-medium">Symbol</th>
-                        <th class="px-3 py-2 text-left font-medium">Sector</th>
-                        <th class="px-3 py-2 text-left font-medium">Price</th>
-                        <th class="px-3 py-2 text-right font-medium">Vs Avg Vol</th>
-                        <th class="px-3 py-2 text-right font-medium">Ratio</th>
-                        <th class="px-3 py-2 text-center font-medium">Type</th>
-                        <th class="px-3 py-2 text-right font-medium">Scanned</th>
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="uv-x">
+                  <table class="w-full signals-responsive" style="min-width:860px;">
+                    <thead class="sticky-head">
+                      <tr class="border-b border-gray-600">
+                        <th style="min-width:120px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Symbol</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Vs Avg Vol</th>
+                        <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Ratio</th>
+                        <th style="min-width:120px;" class="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-300">Type</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Scanned</th>
                       </tr>
                     </thead>
                     <tbody>${stocks.map(row).join('')}</tbody>
@@ -3409,17 +3430,18 @@
         const tierColor = (t) => t === 'A' ? 'text-green-400' : t === 'B' ? 'text-yellow-400' : 'text-gray-300';
         const tierBg = (t) => t === 'A' ? 'bg-green-500/15 ring-green-500/30' : t === 'B' ? 'bg-yellow-500/15 ring-yellow-500/30' : 'bg-gray-500/15 ring-gray-500/30';
 
+        const pillCls = (active) => `px-2.5 py-1 rounded text-xs font-semibold transition ${active ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-1 ring-gray-700/60'}`;
         const tierPill = (label, value, active) => `
           <button onclick="dashboard.setWinnersTier('${value}')"
-            class="px-2.5 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+            class="${pillCls(active)}">${label}</button>
         `;
         const screenPill = (label, value, active) => `
           <button onclick="dashboard.setWinnersScreen('${value}')"
-            class="px-3 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+            class="${pillCls(active)}">${label}</button>
         `;
         const windowPill = (label, value, active) => `
           <button onclick="dashboard.setWinnersWindow('${value}')"
-            class="px-2.5 py-1 rounded text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800'}">${label}</button>
+            class="${pillCls(active)}">${label}</button>
         `;
 
         const subtitle = isMoving
@@ -3473,7 +3495,7 @@
               ` : ''}
 
               ${this.winnersLoading || !w ? `
-                <div class="text-center py-10 text-gray-500 text-sm">Loading winners…</div>
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6 text-gray-500 text-sm">Loading winners…</div>
               ` : rows.length === 0 ? `
                 <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
                   <div class="text-4xl mb-3 opacity-40">◎</div>
@@ -3481,19 +3503,23 @@
                   <p class="text-sm text-gray-500">No stocks currently pass the ${isMoving ? 'fundamentals + ' + win + ' return' : 'fundamentals + setup'} screen for the selected tier.</p>
                 </div>
               ` : `
-                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg overflow-hidden">
-                  <div class="grid grid-cols-12 gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-gray-500 font-medium border-b border-gray-700/60">
-                    <div class="col-span-2">Asset</div>
-                    <div class="col-span-1 text-center">Tier</div>
-                    <div class="col-span-2 text-right">Price</div>
-                    <div class="col-span-1 text-right">EPS Δ</div>
-                    <div class="col-span-1 text-right">Rev Δ</div>
-                    <div class="col-span-2 text-right">${isMoving ? '+' + win + ' Return' : 'Dist 52w'}</div>
-                    <div class="col-span-1 text-right">MAs</div>
-                    <div class="col-span-1 text-right">Signal</div>
-                    <div class="col-span-1 text-right">Sector</div>
-                  </div>
-                  ${rows.map(r => {
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="winners-x">
+                  <table class="w-full signals-responsive" style="min-width:960px;">
+                  <thead class="sticky-head">
+                    <tr class="border-b border-gray-600">
+                      <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
+                      <th style="min-width:70px;" class="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-gray-300">Tier</th>
+                      <th style="min-width:100px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                      <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">EPS Δ</th>
+                      <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Rev Δ</th>
+                      <th style="min-width:110px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">${isMoving ? '+' + win + ' Return' : 'Dist 52w'}</th>
+                      <th style="min-width:60px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">MAs</th>
+                      <th style="min-width:110px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Signal</th>
+                      <th style="min-width:120px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  ${rows.map((r, idx) => {
                     const signalBadge = (t) => {
                       const assetEsc = (r.asset || '').replace(/'/g, "\\'");
                       const jump = (filter) => `dashboard.jumpToSignal('${assetEsc}','${filter}'); event.stopPropagation();`;
@@ -3505,26 +3531,30 @@
                       return '<span class="text-gray-600">—</span>';
                     };
                     return `
-                    <div class="grid grid-cols-12 gap-3 px-4 py-2.5 items-center border-b border-gray-800/60 hover:bg-gray-800/40 transition cursor-pointer" onclick="dashboard.openAsset('${(r.asset||'').replace(/'/g, "\\'")}')">
-                      <div class="col-span-2 font-mono font-semibold text-white flex items-center gap-1.5">
+                    <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 hover:bg-gray-800/40 transition cursor-pointer" onclick="dashboard.openAsset('${(r.asset||'').replace(/'/g, "\\'")}')">
+                      <td class="card-header px-3 py-2.5 whitespace-nowrap">
+                        <div class="font-mono font-semibold text-white flex items-center gap-1.5">
                         <span>${r.asset}</span>${this.crossRefPills(r.asset, 'winners')}
                         <a href="${this.getTradingViewUrl(r.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition" title="Open on TradingView" onclick="event.stopPropagation();">↗</a>
                         ${r.politicianBuy ? `<a href="${r.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${r.politicianBuy.name} (${r.politicianBuy.transactionDate || '?'}) · ${r.politicianBuy.amount || ''}">🏛</a>` : ''}
-                      </div>
-                      <div class="col-span-1 text-center">
+                        </div>
+                      </td>
+                      <td data-label="Tier" class="px-3 py-2.5 whitespace-nowrap text-center">
                         <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold ring-1 ${tierBg(r.tier)} ${tierColor(r.tier)}">${r.tier}</span>
-                      </div>
-                      <div class="col-span-2 text-right font-mono text-white tabular-nums">${CUR}${fmt(r.currentPrice, 2)}</div>
-                      <div class="col-span-1 text-right font-mono text-green-400 tabular-nums">${fmt(r.epsGrowthPct, 0, true)}</div>
-                      <div class="col-span-1 text-right font-mono text-green-400 tabular-nums">${fmt(r.revenueGrowthPct, 0, true)}</div>
+                      </td>
+                      <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap text-right font-mono text-white tabular-nums">${CUR}${fmt(r.currentPrice, 2)}</td>
+                      <td data-label="EPS Δ" class="px-3 py-2.5 whitespace-nowrap text-right font-mono text-green-400 tabular-nums">${fmt(r.epsGrowthPct, 0, true)}</td>
+                      <td data-label="Rev Δ" class="px-3 py-2.5 whitespace-nowrap text-right font-mono text-green-400 tabular-nums">${fmt(r.revenueGrowthPct, 0, true)}</td>
                       ${isMoving
-                        ? `<div class="col-span-2 text-right font-mono tabular-nums text-green-400">+${fmt(r.returnPct, 1, true)}</div>`
-                        : `<div class="col-span-2 text-right font-mono tabular-nums ${r.distFrom52wHighPct <= 5 ? 'text-green-400' : 'text-gray-300'}">-${fmt(r.distFrom52wHighPct, 1, true)}</div>`}
-                      <div class="col-span-1 text-right ${r.maStacked ? 'text-green-400' : 'text-gray-500'}">${r.maStacked ? '✓' : '—'}</div>
-                      <div class="col-span-1 text-right">${signalBadge(r.signalType)}</div>
-                      <div class="col-span-1 text-right text-[11px] text-gray-400 truncate">${r.sector || '—'}</div>
-                    </div>
+                        ? `<td data-label="+${win} Return" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums text-green-400">+${fmt(r.returnPct, 1, true)}</td>`
+                        : `<td data-label="Dist 52w" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums ${r.distFrom52wHighPct <= 5 ? 'text-green-400' : 'text-gray-300'}">-${fmt(r.distFrom52wHighPct, 1, true)}</td>`}
+                      <td data-label="MAs" class="px-3 py-2.5 whitespace-nowrap text-right ${r.maStacked ? 'text-green-400' : 'text-gray-500'}">${r.maStacked ? '✓' : '—'}</td>
+                      <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap text-right">${signalBadge(r.signalType)}</td>
+                      <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap text-right text-[11px] text-gray-400 truncate">${r.sector || '—'}</td>
+                    </tr>
                   `; }).join('')}
+                  </tbody>
+                  </table>
                 </div>
               `}
             </div>
