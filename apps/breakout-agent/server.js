@@ -1693,13 +1693,13 @@ app.get('/api/pulse', async (req, res) => {
       loggedFetch('news', `https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`),
     ]);
 
-    const trending = (Array.isArray(trendRaw) ? trendRaw : []).slice(0, 12).map((t) => ({
+    let trending = (Array.isArray(trendRaw) ? trendRaw : []).slice(0, 12).map((t) => ({
       symbol: t.symbol,
       name: t.name || null,
       sentiment: Number(t.sentiment) || 0,           // 0..1
       lastSentiment: Number(t.lastSentiment) || 0,   // prior reading → momentum
     }));
-    const news = (Array.isArray(newsRaw) ? newsRaw : []).slice(0, 12).map((n) => ({
+    let news = (Array.isArray(newsRaw) ? newsRaw : []).slice(0, 12).map((n) => ({
       symbol: n.symbol || null,
       title: n.title,
       publisher: n.publisher || n.site || null,
@@ -1707,6 +1707,45 @@ app.get('/api/pulse', async (req, res) => {
       url: n.url || null,
       publishedDate: n.publishedDate || null,
     }));
+
+    // Keyless fallbacks — the FMP v4 social endpoint is discontinued on newer
+    // plans and the news endpoint can be plan-gated; the page must not go blank.
+    if (!trending.length) {
+      try {
+        const r = await fetch('https://query1.finance.yahoo.com/v1/finance/trending/US?count=20', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (r.ok) {
+          const quotes = (await r.json())?.finance?.result?.[0]?.quotes || [];
+          trending = quotes
+            .map((q) => q.symbol)
+            .filter((s) => s && !/[-=^.]/.test(s)) // equities only — skip crypto/futures/indices
+            .slice(0, 12)
+            .map((symbol) => ({ symbol, name: null, sentiment: null, lastSentiment: null }));
+          if (trending.length) console.log(`[/api/pulse] trending via Yahoo fallback (${trending.length})`);
+        }
+      } catch (e) { console.warn(`[/api/pulse] yahoo trending fallback failed: ${e.message}`); }
+    }
+    if (!news.length) {
+      try {
+        const r = await fetch('https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (r.ok) {
+          const xml = await r.text();
+          const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 12);
+          const field = (s, tag) => {
+            const m = s.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`));
+            return m ? m[1].trim() : null;
+          };
+          news = items.map(([, body]) => ({
+            symbol: null,
+            title: field(body, 'title'),
+            publisher: 'Yahoo Finance',
+            image: null,
+            url: field(body, 'link'),
+            publishedDate: field(body, 'pubDate'),
+          })).filter((n) => n.title && n.url);
+          if (news.length) console.log(`[/api/pulse] news via Yahoo RSS fallback (${news.length})`);
+        }
+      } catch (e) { console.warn(`[/api/pulse] yahoo news fallback failed: ${e.message}`); }
+    }
 
     // One DB pass: which of these tickers have a live signal (last 14 days)?
     const symbols = [...new Set([
