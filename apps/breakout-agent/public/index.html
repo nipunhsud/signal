@@ -490,6 +490,8 @@
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
+        // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
+        this.qualityFilters = prefs.qualityFilters ?? { vcp: false, blueSky: false, leaders: false };
         this.sectorFilter = prefs.sectorFilter ?? 'all';
         this.assetTypeFilter = prefs.assetTypeFilter ?? 'all';
         this._searchDebounceTimer = null;
@@ -816,6 +818,7 @@
             sectorFilter: this.sectorFilter,
             minConfidence: this.minConfidence,
             lookbackDays: this.lookbackDays,
+            qualityFilters: this.qualityFilters,
           }));
         } catch {}
       }
@@ -2925,6 +2928,12 @@
           filtered = filtered.filter(s => s.sector === this.sectorFilter);
         }
 
+        // Quality filters — each active chip is a hard AND requirement
+        const q = this.qualityFilters || {};
+        if (q.vcp) filtered = filtered.filter(s => s.isVcp);
+        if (q.blueSky) filtered = filtered.filter(s => s.isBlueSky);
+        if (q.leaders) filtered = filtered.filter(s => s.rsRating != null && s.rsRating >= 70);
+
         if (this.filtering) {
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
         }
@@ -2990,12 +2999,19 @@
         this.fetchSignals();
       }
 
+      toggleQualityFilter(key) {
+        this.qualityFilters = { ...this.qualityFilters, [key]: !this.qualityFilters?.[key] };
+        this.savePrefs();
+        this.render();
+      }
+
       resetFilters() {
         this.filtering = '';
         this.minConfidence = 85;
         this.signalTypeFilter = 'breakout';
         this.assetTypeFilter = 'all';
         this.sectorFilter = 'all';
+        this.qualityFilters = { vcp: false, blueSky: false, leaders: false };
         this.savePrefs();
         this.fetchSignals();
         this.toast('Filters reset', { kind: 'info' });
@@ -4105,6 +4121,16 @@
                   </label>
                   ` : ''}
 
+                  <!-- Quality filters: each active chip is a hard requirement -->
+                  <div class="flex items-center gap-1.5">
+                    <button onclick="dashboard.toggleQualityFilter('vcp')" data-tip="Only VCP breakouts: tight base, volatility contracting into the pivot, breakout bar expanding upward — Minervini's volatility contraction pattern."
+                      class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.vcp ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">VCP</button>
+                    <button onclick="dashboard.toggleQualityFilter('blueSky')" data-tip="Only blue-sky bases: the pivot sits at the 52-week high, so a breakout clears every holder from the past year — no trapped sellers overhead."
+                      class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.blueSky ? 'bg-sky-500/20 text-sky-300 ring-sky-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">Blue Sky</button>
+                    <button onclick="dashboard.toggleQualityFilter('leaders')" data-tip="Only leaders: relative strength 70+, i.e. outperforming at least 70% of the scanned market — O'Neil and Minervini's minimum bar. Hides signals whose RS isn't computed yet."
+                      class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.leaders ? 'bg-green-500/20 text-green-300 ring-green-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">RS ≥ 70</button>
+                  </div>
+
                 </div>
                 <div class="text-[10px] text-gray-500 mt-1.5 font-mono">
                   shortcuts: <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
@@ -4119,6 +4145,9 @@
                 if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
                 if (this.minConfidence !== 85) chips.push({ label: `Min: ${this.minConfidence}%`, clear: `dashboard.setFilter('minConfidence', 85)` });
                 if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Lookback: ${this.lookbackDays}d`, clear: `dashboard.setLookback(3)` });
+                if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
+                if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
+                if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
                 if (chips.length === 0) return '';
                 return `
                 <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
