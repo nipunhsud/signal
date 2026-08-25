@@ -33,6 +33,10 @@
       z-index: 5;
       background-color: rgb(55 65 81); /* gray-700 */
     }
+    /* Reserve the vertical-scrollbar gutter so short panels (no scrollbar) and
+       long ones (scrollbar) keep identical content width — otherwise centered
+       content shifts sideways on every tab change. */
+    #app, #app .overflow-auto { scrollbar-gutter: stable; }
     /* Desktop: pin the Asset column so horizontal scroll keeps the ticker in view.
        Cells need a solid background (rows use translucent tints) or scrolled
        content bleeds through underneath. */
@@ -2744,11 +2748,29 @@
       // is open, walking should stay within the shortlist; otherwise the main
       // filtered table. Returns full signal objects so openDrawer() gets all data.
       getNavList() {
-        if (this.showShortlist) {
-          const byAsset = new Map(this.signals.map(s => [s.asset, s]));
-          return this.shortlist
-            .map(item => byAsset.get(item.asset) || { asset: item.asset, assetType: 'stock' })
-            .filter(Boolean);
+        const byAsset = new Map(this.signals.map(s => [s.asset, s]));
+        const fromAssets = (assets) =>
+          assets.map(a => byAsset.get(a) || { asset: a, assetType: 'stock' }).filter(Boolean);
+        // Space/arrow nav must walk the list the user is actually looking at —
+        // not the Signals list — or "next" from a Beat & Raise row jumps to an
+        // unrelated ticker. The chart page inherits the view it was opened
+        // from. Filters mirror each panel's own render exactly.
+        const navView = this.view === 'chart' ? (this._chartReturnView || 'dashboard') : this.view;
+        if (this.showShortlist || navView === 'shortlist') {
+          return fromAssets(this.shortlist.map(item => item.asset));
+        }
+        if (navView === 'beat-raise') {
+          return fromAssets((this.beatRaise?.stocks || []).map(s => s.asset));
+        }
+        if (navView === 'unusual-volume') {
+          return fromAssets((this.unusualVolume?.stocks || []).map(s => s.asset));
+        }
+        if (navView === 'winners') {
+          const { tier: filterTier, asset: assetFilter } = this.winnersFilter || {};
+          const rows = (this.winners?.winners || [])
+            .filter(r => !filterTier || filterTier === 'all' || r.tier === filterTier)
+            .filter(r => !assetFilter || (r.asset || '').toLowerCase().includes(assetFilter.toLowerCase()));
+          return fromAssets(rows.map(r => r.asset));
         }
         return this.getFilteredSignals();
       }
@@ -3292,7 +3314,13 @@
           this.renderMainDashboard();
         }
 
+        // Restore scroll only within the SAME view (refresh ticks, filter
+        // changes). Carrying positions across a tab switch made the new panel
+        // land mid-scroll — a fresh view starts at the top.
+        const viewChanged = this._lastRenderedView !== this.view;
+        this._lastRenderedView = this.view;
         document.querySelectorAll('[data-keep-scroll]').forEach(el => {
+          if (viewChanged) { el.scrollLeft = 0; el.scrollTop = 0; return; }
           const s = scrollKeep[el.dataset.keepScroll];
           if (s) { el.scrollLeft = s.left; el.scrollTop = s.top; }
         });
