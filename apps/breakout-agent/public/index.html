@@ -1053,6 +1053,10 @@
               e.target.blur();
               return;
             }
+            if (this.view === 'chart') {
+              this.backFromChart();
+              return;
+            }
             this.closeDrawer();
             return;
           }
@@ -1079,6 +1083,23 @@
           // Without this, pressing space in the shortlist would jump into the dashboard's filtered signals.
           const navList = this.getNavList();
           if (!navList.length) return;
+
+          // Chart page: space/arrows flip to the next/prev asset's chart in the
+          // same list order as the drawer. Index re-syncs from chartAsset so
+          // navigation stays correct however the chart was opened.
+          if (this.view === 'chart') {
+            const step =
+              e.code === 'Space' || e.code === 'ArrowRight' ? 1
+              : e.code === 'ArrowLeft' ? -1
+              : 0;
+            if (!step) return;
+            e.preventDefault();
+            const idx = navList.findIndex(s => s.asset === this.chartAsset);
+            const cur = idx >= 0 ? idx : this.currentAssetIndex;
+            this.currentAssetIndex = (cur + step + navList.length) % navList.length;
+            this.openChartView(navList[this.currentAssetIndex].asset);
+            return;
+          }
 
           if (e.code === 'Space') {
             e.preventDefault();
@@ -2300,7 +2321,7 @@
                 </div>
               </div>
               <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
-              <div class="mt-2 text-[11px] text-gray-500 font-mono">${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}</div>
+              <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}</span><span>space next · ← → nav · esc back</span></div>
               ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
             </div>
