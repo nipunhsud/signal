@@ -39,7 +39,7 @@
         "applicationCategory": "FinanceApplication",
         "operatingSystem": "Web",
         "url": "https://dataquant.ai/",
-        "description": "Breakout signal dashboard: US stocks scanned every 15 minutes for breakouts from tight bases (including volatility contraction patterns), pre-filtered to high confidence, each with a frozen entry, 8% stop, risk/reward, and AI-summarized earnings-call tone.",
+        "description": "Breakout signal dashboard for US and Indian stocks: scanned every 15 minutes for breakouts from tight bases (including Minervini volatility contraction patterns), pre-filtered to high confidence, each with a frozen entry, 8% stop, risk/reward, 1-99 relative-strength rating, base-quality metrics, and AI-summarized earnings-call tone. Includes a market-health regime gauge (trend, distribution days, breadth), sector-strength rankings, native charts with a 2-year base X-ray, and leader/VCP/blue-sky filters.",
         "offers": {
           "@type": "Offer",
           "price": "99",
@@ -250,6 +250,25 @@
           <span class="text-slate-700">·</span>
           <span>Live dashboard · 15-min scans</span>
         </div>
+        <!-- Live market-health strip: real data on the marketing page builds trust
+             and links to the free pulse page. Hidden until the fetch succeeds. -->
+        <div id="hero-health" style="display:none" class="mt-8 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm bg-slate-800/60 ring-1 ring-slate-700/60 rounded-full px-5 py-2"></div>
+        <script>
+          fetch('/api/market-health').then(r => r.ok ? r.json() : null).then(d => {
+            if (!d || !d.regime) return;
+            const color = d.regime === 'risk-on' ? '#34D399' : d.regime === 'caution' ? '#FBBF24' : '#F87171';
+            const label = d.regime === 'risk-on' ? 'Risk-on' : d.regime === 'caution' ? 'Caution' : 'Risk-off';
+            const dd = d.components?.distribution?.days;
+            const br = d.components?.breadth?.pctPositive1m;
+            document.getElementById('hero-health').innerHTML =
+              `<span class="text-slate-400">Market health right now:</span>` +
+              `<span class="font-semibold" style="color:${color}">● ${label} · ${d.score}/100</span>` +
+              (dd != null ? `<span class="text-slate-500">${dd} distribution days</span>` : '') +
+              (br != null ? `<span class="text-slate-500">${br}% of stocks positive 1m</span>` : '') +
+              `<a href="/pulse" class="text-amber-400 hover:text-amber-300 font-medium">Full pulse →</a>`;
+            document.getElementById('hero-health').style.display = '';
+          }).catch(() => {});
+        </script>
       </div>
 
       <!-- Stat strip -->

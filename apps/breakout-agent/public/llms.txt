@@ -1,24 +1,33 @@
 # DataQuant
 
-> Systematic breakout-signal platform for individual traders. Every liquid US stock (~3,000 NASDAQ/NYSE/AMEX tickers above $300M market cap and 100k average daily volume) is scanned every 15 minutes during market hours for breakouts from tight consolidations. Signals are curated — 20-30 per month, pre-filtered to high confidence — each with a frozen entry price, a disciplined 8% stop, risk/reward, and an AI summary of the company's latest earnings call. Research and educational tool only; not investment advice.
+> Systematic breakout-signal platform for individual traders, covering the US market (~3,000 NASDAQ/NYSE/AMEX tickers above $300M market cap and 100k average daily volume) and Indian NSE/BSE stocks. Every liquid stock is scanned every 15 minutes during market hours for breakouts from tight consolidations. Signals are curated — pre-filtered to high confidence — each with a frozen entry price, a disciplined 8% stop, risk/reward, relative-strength rating, base-quality metrics, and an AI summary of the company's latest earnings call. Research and educational tool only; not investment advice.
 
 ## How the signals work
 
-- **Actionable (Type 1) breakouts**: price clears a multi-week base on at least 1.2x average volume, with moving averages stacked in an uptrend (20 > 50 > 150 > 200 day). Entry is frozen at the breakout level the moment the signal fires; the stop sits 8% below entry and never drifts.
-- **VCP breakouts**: Type 1 signals that additionally match Minervini's Volatility Contraction Pattern — a tight base (ATR under 2.5% of price), volatility contracting into the pivot (5-day ATR under 0.75x the 20-day), and a breakout bar expanding at least 1.5x the base's range with a close near its high.
-- **Setups**: tight pre-breakout consolidations ("handles") near the 20-day moving average — the watchlist for the next breakout.
-- **Extensions**: continuations of a recent breakout that price is still holding above, tracked with days-since-breakout and gain-from-entry.
+- **Actionable (Type 1) breakouts**: price clears a multi-week base on at least 1.2x average volume, with moving averages stacked in an uptrend (20 > 50 > 150 > 200 day). Entry is frozen at the breakout level the moment the signal fires; the stop sits 8% below entry. A breached stop ends the episode — later signals start fresh.
+- **VCP breakouts**: Type 1 signals matching Minervini's Volatility Contraction Pattern — a tight base (ATR under 2.5% of price), volatility contracting into the pivot (5-day ATR under 0.75x the 20-day), and a breakout bar expanding at least 1.5x the base's range with a close near its high.
+- **Relative Strength (RS) rating**: every stock's trailing returns (50% 3-month, 30% 1-month, 20% 1-week) ranked 1-99 against its own market's scanned universe — US vs US, India vs India. Dashboard filters let users screen to leaders (RS ≥ 70), VCP-only, or blue-sky-only breakouts.
+- **Base-quality metrics** on every signal: up/down volume ratio (accumulation), failed pokes at the pivot (supply overhead), coil ratio (tightening), and a blue-sky flag when the pivot sits at the 52-week high.
+- **Setups**: tight pre-breakout consolidations ("handles") near the 20-day moving average, with distance-to-pivot.
+- **Extensions**: continuations of a recent breakout. Extensions more than 5 days past their breakout are demoted to a "tracking" list — monitoring for holders, not entry candidates.
 - **AI earnings context**: every US stock signal carries an LLM analysis of the latest earnings call — tone score (-1 to +1), guidance direction (raised/maintained/lowered), highlights, and risk flags.
+
+## Market analysis tools
+
+- **Market Health gauge**: a 0-100 regime score answering "does this tape reward breakouts?" — benchmark trend vs 50/200-day averages (SPY and QQQ combined for the US, taking the worse; NIFTY for India), O'Neil distribution days over the last 25 sessions, and breadth (% of the scanned universe positive over 1 month and 1 week, with a deterioration flag). Three regimes: risk-on (≥70), caution (45-69), risk-off (<45, "avoid new entries").
+- **Sector Strength**: every scanned stock's trailing returns rolled up by sector, ranked strongest-first with median 1-week/1-month/3-month returns, top-quintile leader counts, and top names per sector.
+- **Base X-ray**: every consolidation base a stock built in the last 2 years — pivot, depth, duration, coil, volume dry-up, failed pokes, and breakout outcome (volume ratio, subsequent run) — drawn as boxes on a full native chart with entry/stop levels, failed-poke and breakout-bar markers, daily/weekly timeframes, and MA50/200 overlays.
+- **Market Pulse** (free, no login): live market health, trending tickers, and market news cross-referenced against live signals — at https://dataquant.ai/pulse
 
 ## Track record and honesty
 
-The published backtest is deliberately narrow: 22 signals over a 30-day window (May 22 – Jun 20, 2026), each held 20 trading days or stopped at -8%, averaged equal-weight (+6.9% average return, 64% win rate). This is live production data with all signals disclosed, but it is one market regime — DataQuant does not annualize it or claim a permanent edge. Results update monthly, wins and losses both.
+The published backtest is deliberately narrow: 22 signals over a 30-day window (May 22 – Jun 20, 2026), each held 20 trading days or stopped at -8%, averaged equal-weight (+6.9% average return, 64% win rate). This is live production data with all signals disclosed, but it is one market regime — a choppier July window ran well below it, which DataQuant reports rather than hides. Results update monthly, wins and losses both; the Market Health gauge exists precisely because breakout systems are regime-dependent.
 
 ## Key pages
 
 - [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ
-- [Market Pulse](https://dataquant.ai/pulse): free daily market-breadth snapshot
-- [Dashboard](https://dataquant.ai/dashboard): the live signal feed (subscription; 30-day free trial, then $99/month)
+- [Market Pulse](https://dataquant.ai/pulse): free live market health, trending tickers, and news
+- [Dashboard](https://dataquant.ai/dashboard): the live signal feed with charts, X-ray, sectors, and filters (subscription; 30-day free trial, then $99/month)
 
 ## Disclaimer
 
