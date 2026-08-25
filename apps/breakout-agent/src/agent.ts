@@ -290,6 +290,7 @@ export class BreakoutAgent {
             create: {
               asset,
               assetType: data.assetType,
+              region: regionOf(asset),
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -297,6 +298,7 @@ export class BreakoutAgent {
             },
             update: {
               assetType: data.assetType,
+              region: regionOf(asset),
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -554,8 +556,10 @@ export class BreakoutAgent {
       ) {
         try {
           const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          // Per-market percentile: an NSE stock ranks vs the Indian universe
           const whereFresh = {
             assetType: data.assetType || "stock",
+            region: regionOf(asset),
             updatedAt: { gte: dayAgo },
           };
           const [below, total] = await Promise.all([
