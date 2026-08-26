@@ -40,7 +40,7 @@ DataQuant exposes its free data layer as a Model Context Protocol server at `htt
 
 - [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ
 - [Market Pulse](https://dataquant.ai/pulse): free live market health, trending tickers, and news
-- [Dashboard](https://dataquant.ai/dashboard): the live signal feed with charts, X-ray, sectors, and filters (subscription; 30-day free trial, then $99/month)
+- [Dashboard](https://dataquant.ai/dashboard): the live signal feed with charts, X-ray, sectors, and filters (subscription; 30-day free trial, then $49/month or $449/year)
 
 ## Disclaimer
 

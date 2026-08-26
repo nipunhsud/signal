@@ -52,6 +52,7 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID}
+      - STRIPE_PRICE_ID_YEARLY=${STRIPE_PRICE_ID_YEARLY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       # X posting for the admin "Tweet earnings" button (admin gated via Clerk
       # private metadata, so no admin env needed — just the X credentials).

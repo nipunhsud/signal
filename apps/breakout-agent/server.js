@@ -70,7 +70,8 @@ const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 const stripe = STRIPE_ENABLED
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' })
   : null;
-const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID;
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID; // monthly ($49/mo)
+const STRIPE_PRICE_ID_YEARLY = process.env.STRIPE_PRICE_ID_YEARLY; // annual ($449/yr)
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 if (!STRIPE_ENABLED) {
   console.warn('[stripe] STRIPE_SECRET_KEY missing — billing endpoints disabled, paywall bypassed for signed-in users');
@@ -269,6 +270,11 @@ app.post('/api/create-checkout-session', requireAuth(), async (req, res) => {
   if (!STRIPE_ENABLED) return res.status(501).json({ error: 'Stripe not configured' });
   if (!STRIPE_PRICE_ID) return res.status(500).json({ error: 'STRIPE_PRICE_ID missing' });
 
+  // Plan selection: monthly (default) or yearly. Yearly quietly falls back to
+  // monthly until STRIPE_PRICE_ID_YEARLY is configured — never 500 a signup.
+  const plan = req.body?.plan === 'yearly' && STRIPE_PRICE_ID_YEARLY ? 'yearly' : 'monthly';
+  const priceId = plan === 'yearly' ? STRIPE_PRICE_ID_YEARLY : STRIPE_PRICE_ID;
+
   const { userId } = getAuth(req);
   const user = await ensureUser(userId);
 
@@ -287,10 +293,10 @@ app.post('/api/create-checkout-session', requireAuth(), async (req, res) => {
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: stripeCustomerId,
-    line_items: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
       trial_period_days: 30,
-      metadata: { clerkUserId: userId },
+      metadata: { clerkUserId: userId, plan },
     },
     // Card required upfront — dramatically higher trial→paid conversion vs. no-card trials.
     payment_method_collection: 'always',
