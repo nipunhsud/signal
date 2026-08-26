@@ -460,8 +460,13 @@
         this.filtering = '';
         this.minConfidence = prefs.minConfidence ?? 85;
         this.lookbackDays = prefs.lookbackDays ?? 3; // breakout lookback window (days)
-        this.sortBy = prefs.sortBy ?? 'confidence';
-        this.sortDirection = prefs.sortDirection ?? 'desc';
+        // Multi-sort: ordered {key, dir} list — first entry is the primary sort,
+        // the rest break ties. Click replaces the primary (previous keys demote
+        // to tie-breakers); shift-click adds/flips a secondary. Migrates the
+        // legacy single sortBy/sortDirection pref.
+        this.sortKeys = Array.isArray(prefs.sortKeys) && prefs.sortKeys.length
+          ? prefs.sortKeys.filter(k => k && k.key)
+          : [{ key: prefs.sortBy ?? 'confidence', dir: prefs.sortDirection ?? 'desc' }];
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
@@ -811,8 +816,10 @@
       savePrefs() {
         try {
           localStorage.setItem('sf_prefs_v1', JSON.stringify({
-            sortBy: this.sortBy,
-            sortDirection: this.sortDirection,
+            sortKeys: this.sortKeys,
+            // legacy mirror so an old cached build still sorts sensibly
+            sortBy: this.sortKeys?.[0]?.key,
+            sortDirection: this.sortKeys?.[0]?.dir,
             signalTypeFilter: this.signalTypeFilter,
             assetTypeFilter: this.assetTypeFilter,
             sectorFilter: this.sectorFilter,
@@ -2938,37 +2945,65 @@
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
         }
 
-        // Sort — stopped-out names always sink below live signals, whatever the sort key.
+        // Sort — stopped-out names always sink below live signals. Multi-key:
+        // walk sortKeys in priority order until one differentiates; missing
+        // values (null RS, no earnings score) always sort last regardless of
+        // direction, so "—" rows never lead the table.
+        const sortVal = {
+          confidence: (s) => s.confidence,
+          asset: (s) => s.asset,
+          rs: (s) => s.rsRating,
+          earnings: (s) => s.earningsSortScore,
+        };
+        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'confidence', dir: 'desc' }];
         filtered.sort((a, b) => {
           if (!!a.stoppedOut !== !!b.stoppedOut) return a.stoppedOut ? 1 : -1;
-          let compareVal = 0;
-          if (this.sortBy === 'confidence') {
-            compareVal = b.confidence - a.confidence;
-          } else if (this.sortBy === 'asset') {
-            compareVal = a.asset.localeCompare(b.asset);
-          } else if (this.sortBy === 'earnings') {
-            const av = a.earningsSortScore;
-            const bv = b.earningsSortScore;
-            if (av == null && bv == null) compareVal = 0;
-            else if (av == null) compareVal = 1;   // nulls last
-            else if (bv == null) compareVal = -1;
-            else compareVal = bv - av;
+          for (const { key, dir } of keys) {
+            const f = sortVal[key];
+            if (!f) continue;
+            const av = f(a);
+            const bv = f(b);
+            if (av == null && bv == null) continue;
+            if (av == null) return 1;
+            if (bv == null) return -1;
+            const v = typeof av === 'string' ? av.localeCompare(bv) : av - bv; // ascending
+            if (v === 0) continue;
+            return dir === 'asc' ? v : -v;
           }
-          return this.sortDirection === 'asc' ? -compareVal : compareVal;
+          return 0;
         });
 
         return filtered;
       }
 
-      toggleSort(field) {
-        if (this.sortBy === field) {
-          this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+      toggleSort(field, additive = false) {
+        // Numeric columns start descending (best first); Asset starts A→Z.
+        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc' };
+        const keys = [...(this.sortKeys || [])];
+        const i = keys.findIndex(k => k.key === field);
+        if (additive) {
+          // shift-click: add as an extra sort level, or flip it in place
+          if (i >= 0) keys[i] = { key: field, dir: keys[i].dir === 'asc' ? 'desc' : 'asc' };
+          else keys.push({ key: field, dir: defaults[field] || 'desc' });
+        } else if (i === 0) {
+          keys[0] = { key: field, dir: keys[0].dir === 'asc' ? 'desc' : 'asc' };
         } else {
-          this.sortBy = field;
-          this.sortDirection = 'desc';
+          // plain click: promote to primary; previous keys stay as tie-breakers
+          if (i > 0) keys.splice(i, 1);
+          keys.unshift({ key: field, dir: defaults[field] || 'desc' });
         }
+        this.sortKeys = keys.slice(0, 3); // deeper than 3 levels is noise
         this.savePrefs();
         this.render();
+      }
+
+      // Header arrow for a sort key; shows priority rank when multi-sorting.
+      sortIndicator(key) {
+        const i = (this.sortKeys || []).findIndex(k => k.key === key);
+        if (i < 0) return '';
+        const arrow = this.sortKeys[i].dir === 'asc' ? '↑' : '↓';
+        const rank = this.sortKeys.length > 1 ? `<sup>${i + 1}</sup>` : '';
+        return `<span class="text-gray-500">${arrow}${rank}</span>`;
       }
 
       setFilter(kind, value) {
@@ -3931,9 +3966,9 @@
                                   <span class="text-[10px] text-gray-500 font-medium">%</span>
                                 </div>
                                 <div class="conf-bar ${confTextColor}" style="--pct: ${signal.confidence}%;"></div>
-                                ${signal.rsRating != null ? `<span class="text-[10px] font-mono tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-400' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile)">RS ${signal.rsRating}</span>` : ''}
                               </div>
                             </td>
+                            <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">${signal.rsRating != null ? `<span class="text-sm font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile, per market)">${signal.rsRating}</span>` : '<span class="text-gray-600">—</span>'}</td>
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
                             <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
@@ -4167,7 +4202,7 @@
               ${this.loading ? `
                 <div class="bg-gray-800 rounded-lg overflow-hidden ring-1 ring-gray-700/60">
                   <div class="border-b border-gray-600 px-3 py-2.5 flex gap-4">
-                    ${['80px','100px','60px','100px','80px','90px','60px','120px','120px','60px'].map(w => `<div class="skeleton" style="width:${w};height:12px;"></div>`).join('')}
+                    ${['80px','100px','40px','60px','100px','80px','90px','60px','120px','120px','60px'].map(w => `<div class="skeleton" style="width:${w};height:12px;"></div>`).join('')}
                   </div>
                   ${Array.from({ length: 8 }).map((_, i) => `
                     <div class="border-b border-gray-700/50 px-3 py-3 flex gap-4 items-center ${i % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'}">
@@ -4199,20 +4234,23 @@
                 </div>
               ` : `
                 <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="signals-x">
-                  <table class="w-full signals-responsive" style="min-width:1080px;">
+                  <table class="w-full signals-responsive" style="min-width:1140px;">
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
-                        <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset');">
-                          Asset <span class="text-gray-500">${this.sortBy === 'asset' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
+                        <th style="min-width:180px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset', event.shiftKey);">
+                          Asset ${this.sortIndicator('asset')}
                         </th>
-                        <th style="min-width:110px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('confidence');">
-                          <span data-tip="Model confidence in the setup (0-99%). Combines technical structure, volume, and earnings-call tone.">Confidence</span> <span class="text-gray-500">${this.sortBy === 'confidence' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
+                        <th style="min-width:110px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('confidence', event.shiftKey);">
+                          <span data-tip="Model confidence in the setup (0-99%). Combines technical structure, volume, and earnings-call tone.">Confidence</span> ${this.sortIndicator('confidence')}
+                        </th>
+                        <th style="min-width:60px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('rs', event.shiftKey);">
+                          <span data-tip="Relative strength 1-99: percentile rank of trailing returns vs the scanned universe (per market). 80+ = leader, below 50 = laggard.">RS</span> ${this.sortIndicator('rs')}
                         </th>
                         <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                           <span data-tip="Last 30 daily closes. Green = closed higher over the window, red = closed lower.">Trend</span>
                         </th>
-                        <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings');">
-                          <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> <span class="text-gray-500">${this.sortBy === 'earnings' ? (this.sortDirection === 'asc' ? '↑' : '↓') : ''}</span>
+                        <th style="min-width:160px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings', event.shiftKey);">
+                          <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> ${this.sortIndicator('earnings')}
                         </th>
                         <th style="min-width:140px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
                         <th style="min-width:120px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
@@ -4250,11 +4288,12 @@
                   ${this._showTracking ? `
                     <p class="mt-2 mb-3 text-xs text-gray-500">More than 5 days past their breakout — monitoring for holders, not entry candidates. This is where most stopped-out signals come from.</p>
                     <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="tracking-x">
-                      <table class="w-full signals-responsive" style="min-width:1080px;">
+                      <table class="w-full signals-responsive" style="min-width:1140px;">
                         <thead class="sticky-head">
                           <tr class="border-b border-gray-600">
                             <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
                             <th style="min-width:110px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
+                            <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                             <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Trend</th>
                             <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Earnings</th>
                             <th style="min-width:140px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
