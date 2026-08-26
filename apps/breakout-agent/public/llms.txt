@@ -32,6 +32,10 @@ The published backtest is deliberately narrow: 22 signals over a 30-day window (
 - [The Honest Backtest](https://dataquant.ai/learn/honest-backtest): How DataQuant measures itself — methodology, the good month and the bad month, and why the numbers are never annualized.
 - [The Market Health Gauge](https://dataquant.ai/learn/market-health-gauge): The "M" in market direction — trend, distribution days, and breadth rolled into one 0-100 regime score.
 
+## MCP server (for AI agents)
+
+DataQuant exposes its free data layer as a Model Context Protocol server at `https://dataquant.ai/mcp` (streamable HTTP, stateless, no auth). Tools: `get_market_health` (the 0-100 regime gauge, US or India), `get_sector_strength` (ranked sector rollups), `get_base_xray` (every base a stock built in 2 years, with metrics and breakout outcomes), and `search_learn` (full-text access to the guides above, with canonical URLs for citation). Signals themselves are subscription-only and not exposed via MCP.
+
 ## Key pages
 
 - [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ

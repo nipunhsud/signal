@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { postXThread } from './dist/x-post.js';
 import { renderScorecardPng, renderMarketHealthPng, metaFor, metaHtml } from './og-card.js';
 import { detectBases } from './base-detect.js';
+import { handleMcpRequest } from './mcp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1584,16 +1585,15 @@ app.get('/og/pulse.png', async (req, res) => {
 // Sector strength: roll the cross-sectional returns store up by sector.
 // Same fresh-24h window RS ranks on; per-market via ?region=in|us. Leaders =
 // stocks in the top quintile of the whole market's rsScore.
-app.get('/api/sector-strength', async (req, res) => {
-  try {
-    const region = req.query.region === 'in' ? 'IN' : 'US';
+async function computeSectorStrength(region) {
+  {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const rows = await db.assetReturn.findMany({
       where: { region, assetType: 'stock', updatedAt: { gte: dayAgo } },
       select: { asset: true, sector: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true },
     });
     if (rows.length < 20) {
-      return res.json({ region, asOf: new Date().toISOString(), universe: rows.length, sectors: [], note: 'universe still populating — sector data appears after the next scan cycles' });
+      return { region, asOf: new Date().toISOString(), universe: rows.length, sectors: [], note: 'universe still populating — sector data appears after the next scan cycles' };
     }
     const scores = rows.map(r => r.rsScore).sort((a, b) => a - b);
     const q80 = scores[Math.floor(scores.length * 0.8)];
@@ -1622,12 +1622,33 @@ app.get('/api/sector-strength', async (req, res) => {
       }))
       .sort((a, b) => (b.medianRsScore ?? -Infinity) - (a.medianRsScore ?? -Infinity))
       .map((s, i) => ({ rank: i + 1, ...s }));
-    res.json({ region, asOf: new Date().toISOString(), universe: rows.length, sectors });
+    return { region, asOf: new Date().toISOString(), universe: rows.length, sectors };
+  }
+}
+
+app.get('/api/sector-strength', async (req, res) => {
+  try {
+    res.json(await computeSectorStrength(req.query.region === 'in' ? 'IN' : 'US'));
   } catch (err) {
     console.error('[/api/sector-strength]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
+// MCP endpoint: DataQuant's free data layer for AI agents — market health,
+// sector strength, base X-ray, learn content. Stateless streamable HTTP; no
+// auth (free tools only; signals are NOT exposed here).
+app.post('/mcp', async (req, res) => {
+  try {
+    await handleMcpRequest(req, res, { computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases });
+  } catch (err) {
+    console.error('[/mcp]', err.message);
+    if (!res.headersSent) res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'internal error' }, id: null });
+  }
+});
+// Stateless server: no SSE stream or session teardown to offer on GET/DELETE.
+app.get('/mcp', (req, res) => res.status(405).json({ error: 'POST JSON-RPC to this endpoint (stateless streamable HTTP; no SSE stream)' }));
+app.delete('/mcp', (req, res) => res.status(405).end());
 
 // Base X-ray: every consolidation episode in the cached 2y of daily bars —
 // forming and resolved — each with pivot, depth, duration, quality metrics and

@@ -23,6 +23,67 @@ const etDay = (ms: number) =>
 // by date only if a tier's symbol set ever churns hard.
 const histCache = new Map<string, { date: string; bars: any[] }>();
 
+// Disk-backed layer under histCache: EOD bars only change once per day, but the
+// in-memory cache dies on every container restart/deploy — each of which
+// re-pulled 250 bars × the whole universe from FMP. With CACHE_DIR set (a
+// docker volume in prod), the day's bars survive restarts.
+import * as fsCache from "fs";
+const CACHE_DIR = process.env.CACHE_DIR || "";
+const cacheFile = (symbol: string) =>
+  `${CACHE_DIR}/eod_${symbol.replace(/[^A-Za-z0-9.\-]/g, "_")}.json`;
+function readDiskEod(symbol: string, today: string): any[] | null {
+  if (!CACHE_DIR) return null;
+  try {
+    const raw = JSON.parse(fsCache.readFileSync(cacheFile(symbol), "utf8"));
+    if (raw?.date === today && Array.isArray(raw.bars) && raw.bars.length) return raw.bars;
+  } catch {}
+  return null;
+}
+function writeDiskEod(symbol: string, today: string, bars: any[]): void {
+  if (!CACHE_DIR) return;
+  try {
+    fsCache.mkdirSync(CACHE_DIR, { recursive: true });
+    fsCache.writeFileSync(cacheFile(symbol), JSON.stringify({ date: today, bars }));
+  } catch {}
+}
+
+// Batch quote priming: one /stable/batch-quote call per ~100 symbols instead of
+// one /stable/quote call per asset — the biggest FMP request-count cut
+// available. fetchFMPData reads this cache before the individual endpoint.
+const quoteCache = new Map<string, { q: any; expires: number }>();
+const QUOTE_TTL_MS = 3 * 60 * 1000;
+let batchQuotesSupported = true;
+
+export async function primeQuotes(symbols: string[], apiKey: string): Promise<void> {
+  if (!batchQuotesSupported || !symbols.length || !apiKey) return;
+  const CHUNK = 100;
+  for (let i = 0; i < symbols.length; i += CHUNK) {
+    const chunk = symbols.slice(i, i + CHUNK);
+    try {
+      const data = await globalRateLimiter.execute(async () => {
+        const res = await axios.get(`https://financialmodelingprep.com/stable/batch-quote`, {
+          params: { symbols: chunk.join(","), apikey: apiKey },
+          timeout: 15000,
+        });
+        return res.data;
+      });
+      const rows = Array.isArray(data) ? data : [];
+      const expires = Date.now() + QUOTE_TTL_MS;
+      for (const q of rows) {
+        if (q?.symbol) quoteCache.set(String(q.symbol).toUpperCase(), { q, expires });
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 403 || status === 404) {
+        console.warn(`[batch-quote] endpoint unavailable (${status}) — per-asset quotes only`);
+        batchQuotesSupported = false;
+        return;
+      }
+      console.warn(`[batch-quote] chunk failed: ${err?.message}`);
+    }
+  }
+}
+
 // Per-ET-day cache for reference data that changes at most quarterly (income
 // statements, company profile). These were fetched every scan — ~2.5M calls/mo
 // for data that moves 4x/year — hammering the rate-limit budget. Cache the raw
@@ -691,8 +752,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const hc = histCache.get(symbol);
       let eodBars: any[];
 
+      const diskBars = hc && hc.date === today ? null : readDiskEod(symbol, today);
       if (hc && hc.date === today) {
         eodBars = hc.bars;
+      } else if (diskBars) {
+        eodBars = diskBars;
+        histCache.set(symbol, { date: today, bars: eodBars });
       } else {
         const data = await globalRateLimiter.execute(async () => {
           const priceResponse = await axios.get(
@@ -728,6 +793,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         }
 
         histCache.set(symbol, { date: today, bars: eodBars });
+        writeDiskEod(symbol, today, eodBars);
       }
 
       // Clone so the live-quote splice below never mutates the cached array.
@@ -736,19 +802,24 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Splice in today's live quote so indicators run on current tape, not yesterday's EOD.
       // /stable/quote returns real-time price + today's OHLV during market hours.
       try {
-        const quoteData = await globalRateLimiter.execute(async () => {
-          const res = await axios.get(
-            `https://financialmodelingprep.com/stable/quote`,
-            {
-              params: { symbol, apikey: apiKey },
-              timeout: 10000,
-            },
-          );
-          return res.data;
-        });
+        // Primed batch quote first; individual /stable/quote only on a miss.
+        const primed = quoteCache.get(symbol.toUpperCase());
+        let q: any = primed && primed.expires > Date.now() ? primed.q : null;
+        if (!q) {
+          const quoteData = await globalRateLimiter.execute(async () => {
+            const res = await axios.get(
+              `https://financialmodelingprep.com/stable/quote`,
+              {
+                params: { symbol, apikey: apiKey },
+                timeout: 10000,
+              },
+            );
+            return res.data;
+          });
+          q = quoteData && Array.isArray(quoteData) && quoteData[0] ? quoteData[0] : null;
+        }
 
-        if (quoteData && Array.isArray(quoteData) && quoteData[0]) {
-          const q = quoteData[0];
+        if (q) {
           if (
             typeof q.price === "number" &&
             typeof q.dayHigh === "number" &&

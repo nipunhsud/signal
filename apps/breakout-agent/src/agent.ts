@@ -1,4 +1,4 @@
-import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings } from "./tools/market-data.js";
+import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings, primeQuotes } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
@@ -214,7 +214,17 @@ export class BreakoutAgent {
 
     const results: BreakoutResult[] = [];
 
+    // Prime live quotes in 100-symbol batch calls just ahead of the workers —
+    // one batch request replaces ~100 per-asset /stable/quote calls, and the
+    // rolling window keeps quotes inside their short TTL for slow scans.
+    const fmpKey = process.env.FMP_API_KEY || "";
+    let primedThrough = 0;
+
     for (let i = 0; i < shardedAssets.length; i += CONCURRENCY) {
+      if (i >= primedThrough && fmpKey) {
+        await primeQuotes(shardedAssets.slice(i, i + 100), fmpKey);
+        primedThrough = i + 100;
+      }
       const batch = shardedAssets.slice(i, i + CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map((asset) => this.analyzeAsset(asset, mode)),

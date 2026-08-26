@@ -75,6 +75,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
       - X_API_SECRET=${X_API_SECRET:-}
@@ -90,6 +91,8 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # Breakout Agent - Tier 2
@@ -102,6 +105,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
       - X_API_SECRET=${X_API_SECRET:-}
@@ -111,6 +115,8 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # Breakout Agent - Tier 3
@@ -123,6 +129,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
       - X_API_SECRET=${X_API_SECRET:-}
@@ -132,6 +139,8 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # Breakout Agent - Tier 4
@@ -144,6 +153,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
       - X_API_SECRET=${X_API_SECRET:-}
@@ -153,6 +163,8 @@ services:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # Breakout Agent - Tier 5
@@ -165,6 +177,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
       - X_API_SECRET=${X_API_SECRET:-}
@@ -174,6 +187,8 @@ services:
       postgres:
         condition: service_healthy
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # India (NSE) Breakout Agent — Shard 1 of 2. REGION=IN + TZ=Asia/Kolkata come
@@ -187,10 +202,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
     depends_on:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # India (NSE) Breakout Agent — Shard 2 of 2.
@@ -203,10 +221,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - CACHE_DIR=/cache
     depends_on:
       migrations:
         condition: service_completed_successfully
     command: npm start
+    volumes:
+      - eod-cache:/cache
     restart: unless-stopped
 
   # Reverse proxy + automatic HTTPS (Let's Encrypt) for dataquant.ai.
@@ -226,6 +247,7 @@ services:
       - dashboard
 
 volumes:
+  eod-cache:
   postgres_data:
     driver: local
   caddy_data:

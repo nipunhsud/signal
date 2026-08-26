@@ -12,6 +12,7 @@
     "lint": "prettier --check ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@anthropic-ai/sdk": "^0.40.0",
     "@clerk/express": "^2.1.35",
     "@prisma/client": "^5.0.0",
