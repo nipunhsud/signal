@@ -52,34 +52,59 @@ function writeDiskEod(symbol: string, today: string, bars: any[]): void {
 // available. fetchFMPData reads this cache before the individual endpoint.
 const quoteCache = new Map<string, { q: any; expires: number }>();
 const QUOTE_TTL_MS = 3 * 60 * 1000;
-let batchQuotesSupported = true;
+// Fallback chain: stable batch → legacy v3 batch (available on most paid plans
+// even where stable batch is gated; same field names) → per-asset. Only the
+// last resort re-opens the one-call-per-asset firehose, and it logs loudly.
+let batchMode: "stable" | "v3" | "off" = "stable";
 
-export async function primeQuotes(symbols: string[], apiKey: string): Promise<void> {
-  if (!batchQuotesSupported || !symbols.length || !apiKey) return;
-  const CHUNK = 100;
-  for (let i = 0; i < symbols.length; i += CHUNK) {
-    const chunk = symbols.slice(i, i + CHUNK);
+async function fetchQuoteBatch(chunk: string[], apiKey: string): Promise<any[] | null> {
+  const attempt = async (mode: "stable" | "v3") => {
+    const url =
+      mode === "stable"
+        ? `https://financialmodelingprep.com/stable/batch-quote`
+        : `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(chunk.join(","))}`;
+    const params = mode === "stable" ? { symbols: chunk.join(","), apikey: apiKey } : { apikey: apiKey };
+    return globalRateLimiter.execute(async () => {
+      const res = await axios.get(url, { params, timeout: 15000 });
+      return res.data;
+    });
+  };
+  while (batchMode !== "off") {
     try {
-      const data = await globalRateLimiter.execute(async () => {
-        const res = await axios.get(`https://financialmodelingprep.com/stable/batch-quote`, {
-          params: { symbols: chunk.join(","), apikey: apiKey },
-          timeout: 15000,
-        });
-        return res.data;
-      });
+      const data = await attempt(batchMode);
       const rows = Array.isArray(data) ? data : [];
-      const expires = Date.now() + QUOTE_TTL_MS;
-      for (const q of rows) {
-        if (q?.symbol) quoteCache.set(String(q.symbol).toUpperCase(), { q, expires });
-      }
+      // A gated endpoint sometimes answers 200 with an error object / empty
+      // array; treat a rowless response for a real chunk as unsupported too.
+      if (!rows.length && chunk.length > 1) throw { response: { status: 404 } };
+      return rows;
     } catch (err: any) {
       const status = err?.response?.status;
-      if (status === 403 || status === 404) {
-        console.warn(`[batch-quote] endpoint unavailable (${status}) — per-asset quotes only`);
-        batchQuotesSupported = false;
-        return;
+      if (status === 401 || status === 403 || status === 404) {
+        if (batchMode === "stable") {
+          console.warn(`[batch-quote] stable endpoint unavailable (${status}) — trying legacy v3 batch`);
+          batchMode = "v3";
+          continue;
+        }
+        console.warn(`[batch-quote] v3 batch also unavailable (${status}) — REVERTING TO PER-ASSET QUOTES (high FMP request volume)`);
+        batchMode = "off";
+        return null;
       }
-      console.warn(`[batch-quote] chunk failed: ${err?.message}`);
+      console.warn(`[batch-quote] ${batchMode} chunk failed (${err?.message}) — will retry next window`);
+      return null; // transient: keep the mode, this chunk falls back individually
+    }
+  }
+  return null;
+}
+
+export async function primeQuotes(symbols: string[], apiKey: string): Promise<void> {
+  if (batchMode === "off" || !symbols.length || !apiKey) return;
+  const CHUNK = 100;
+  for (let i = 0; i < symbols.length; i += CHUNK) {
+    const rows = await fetchQuoteBatch(symbols.slice(i, i + CHUNK), apiKey);
+    if (!rows) continue;
+    const expires = Date.now() + QUOTE_TTL_MS;
+    for (const q of rows) {
+      if (q?.symbol) quoteCache.set(String(q.symbol).toUpperCase(), { q, expires });
     }
   }
 }
