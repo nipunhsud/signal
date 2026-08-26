@@ -13,6 +13,15 @@ cd "$(dirname "$0")/.."
 DC="docker compose"; command -v docker-compose >/dev/null 2>&1 && DC="docker-compose"
 
 git pull origin main
+
+# Reclaim disk BEFORE building: every deploy is a --no-cache rebuild of 8
+# images, and the orphaned layers from prior deploys pile up until the disk
+# fills and builds start failing. Prunes only dangling/unused images and build
+# cache — running containers and named volumes are untouched.
+docker image prune -af || true
+docker builder prune -af || true
+df -h / | tail -1
+
 # migrations MUST be rebuilt too: its image bakes in prisma/migrations, and a
 # stale one makes `migrate deploy` miss new migrations (silent schema drift).
 $DC build --no-cache migrations dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2
