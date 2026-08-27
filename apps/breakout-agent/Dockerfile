@@ -6,8 +6,11 @@ WORKDIR /app
 # misbehaves on musl)
 RUN apk add --no-cache openssl fontconfig font-inter
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm — PINNED to the version that wrote pnpm-lock.yaml. Unpinned
+# "latest" broke every deploy on 2026-08-26: a new pnpm release added binary
+# identity verification (ERR_PNPM_PNPM_ENGINE_IDENTITY_UNVERIFIABLE) that
+# rejects lockfiles written by older versions.
+RUN npm install -g pnpm@9.15.9
 
 # Copy monorepo files
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
