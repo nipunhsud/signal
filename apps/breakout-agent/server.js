@@ -18,6 +18,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const db = new PrismaClient();
 
+// Runtime FMP kill switch (admin-togglable, stored in RuntimeFlag; env
+// FMP_DISABLED=true is a hard override). 30s cache keeps it off the hot path.
+// MUST be declared before any top-level startup call that awaits fmpOff()
+// (refreshPoliticianBuys runs at module load) — a later `let` is a TDZ
+// ReferenceError that crash-loops the whole server.
+let fmpFlagCache = { value: false, expires: 0 };
+async function fmpOff() {
+  if (process.env.FMP_DISABLED === 'true') return true;
+  if (Date.now() < fmpFlagCache.expires) return fmpFlagCache.value;
+  let v = false;
+  try {
+    const row = await db.runtimeFlag.findUnique({ where: { key: 'fmp_disabled' } });
+    v = row?.value === 'true';
+  } catch { /* table may not exist mid-rollout */ }
+  fmpFlagCache = { value: v, expires: Date.now() + 30 * 1000 };
+  return v;
+}
+
 // Politician (Senate) purchases cache. Refreshes every 12h — the source
 // disclosures trickle in, no need to hammer it. In-memory only: on process
 // restart we refetch, no DB persistence required.
@@ -386,21 +404,6 @@ async function isAdmin(req) {
     console.warn('[isAdmin] lookup failed:', e.message);
     return false;
   }
-}
-
-// Runtime FMP kill switch (admin-togglable, stored in RuntimeFlag; env
-// FMP_DISABLED=true is a hard override). 30s cache keeps it off the hot path.
-let fmpFlagCache = { value: false, expires: 0 };
-async function fmpOff() {
-  if (process.env.FMP_DISABLED === 'true') return true;
-  if (Date.now() < fmpFlagCache.expires) return fmpFlagCache.value;
-  let v = false;
-  try {
-    const row = await db.runtimeFlag.findUnique({ where: { key: 'fmp_disabled' } });
-    v = row?.value === 'true';
-  } catch { /* table may not exist mid-rollout */ }
-  fmpFlagCache = { value: v, expires: Date.now() + 30 * 1000 };
-  return v;
 }
 
 app.post('/api/admin/fmp-toggle', async (req, res) => {
