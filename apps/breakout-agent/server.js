@@ -268,7 +268,7 @@ app.get(/^\/\$[A-Za-z.\-]+$/, async (req, res, next) => {
     const s = (await latestSignalFor(ticker)) || { asset: ticker };
     const proto = req.get('x-forwarded-proto') || req.protocol; // Caddy terminates TLS
     const origin = `${proto}://${req.get('host')}`;
-    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png`, `${origin}${req.path}`)));
+    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png?v=${encodeURIComponent(String(s.id || 'na').slice(-10))}`, `${origin}${req.path}`)));
   } catch (error) {
     console.error('[deep-link og] failed:', error);
     next();
@@ -288,7 +288,7 @@ app.get('/s/:symbol([A-Za-z.\\-]+)', async (req, res, next) => {
     const s = (await latestSignalFor(ticker)) || { asset: ticker };
     const proto = req.get('x-forwarded-proto') || req.protocol;
     const origin = `${proto}://${req.get('host')}`;
-    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png`, `${origin}${req.path}`)));
+    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png?v=${encodeURIComponent(String(s.id || 'na').slice(-10))}`, `${origin}${req.path}`)));
   } catch (error) {
     console.error('[deep-link og /s] failed:', error);
     next();
