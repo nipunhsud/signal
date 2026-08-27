@@ -1125,6 +1125,7 @@ Time: ${result.timestamp.toISOString()}
       .filter(
         (s) =>
           !postedSet.has(s.asset) &&
+          regionOf(s.asset) === "US" && // X audience is US — never tease NSE/BSE names
           (s.confidence >= 0.95 ||
             (s.confidence >= 0.85 && s.earningsGuidance === "raised")),
       )

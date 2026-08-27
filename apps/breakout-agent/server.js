@@ -1821,6 +1821,110 @@ app.get('/og/pulse.png', async (req, res) => {
   }
 });
 
+// ── Email capture (pulse page) ──────────────────────────────────────────────
+const subscribeHits = new Map(); // ip -> { count, resetAt } — light abuse guard
+app.post('/api/subscribe', async (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+  const now = Date.now();
+  const hit = subscribeHits.get(ip);
+  if (hit && hit.resetAt > now && hit.count >= 10) return res.status(429).json({ error: 'Too many attempts — try later' });
+  subscribeHits.set(ip, hit && hit.resetAt > now ? { count: hit.count + 1, resetAt: hit.resetAt } : { count: 1, resetAt: now + 60 * 60 * 1000 });
+
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Enter a valid email' });
+  }
+  const source = String(req.body?.source || 'pulse').slice(0, 40);
+  try {
+    await db.emailSubscriber.upsert({ where: { email }, create: { email, source }, update: {} });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[subscribe]', e.message);
+    res.status(500).json({ error: 'Try again in a moment' });
+  }
+});
+
+// ── Scheduled X posts (US market audience only) ─────────────────────────────
+// Poor-man's cron: minute tick + a RuntimeFlag date guard so restarts/multiple
+// deploys never double-post. All content is US-region; NSE never tweets.
+const etParts = () => {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date()).reduce((a, x) => (a[x.type] = x.value, a), {});
+  return { day: p.weekday, hhmm: `${p.hour}:${p.minute}`, date: `${p.year}-${p.month}-${p.day}` };
+};
+async function oncePerDay(flagKey, date, fn) {
+  try {
+    const row = await db.runtimeFlag.findUnique({ where: { key: flagKey } });
+    if (row?.value === date) return;
+    // claim BEFORE posting so a crash can't double-post; a lost post beats a spammed feed
+    await db.runtimeFlag.upsert({ where: { key: flagKey }, create: { key: flagKey, value: date }, update: { value: date } });
+    await fn();
+  } catch (e) {
+    console.error(`[sched:${flagKey}]`, e.message);
+  }
+}
+
+async function postDailyMarketHealth() {
+  const mh = await computeMarketHealth('US');
+  const c = mh.components || {};
+  const label = mh.regime === 'risk-on' ? 'RISK-ON ✅' : mh.regime === 'caution' ? 'CAUTION ⚠️' : 'RISK-OFF 🛑';
+  const dd = c.distribution?.days;
+  const ddPer = c.distribution?.perBenchmark ? Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${b} ${d}`).join(' · ') : '';
+  const br = c.breadth?.pctPositive1m;
+  const lines = [
+    `Market health: ${mh.score}/100 — ${label}`,
+    '',
+    `Trend ${c.trend?.score ?? '—'}/50${c.trend?.aboveMA50 === false ? ' (a benchmark below its 50-day)' : ''}`,
+    dd != null ? `Distribution days: ${dd} in 25 sessions${ddPer ? ` (${ddPer})` : ''}` : null,
+    br != null ? `Breadth: ${br}% of ${(c.breadth?.universe || 0).toLocaleString('en-US')} stocks positive over 1m${c.breadth?.pctPositive1w != null ? ` · ${c.breadth.pctPositive1w}% 1w` : ''}` : null,
+    '',
+    mh.advice,
+  ].filter((l) => l !== null);
+  const reply = `Methodology + live gauge (free, no login) → https://dataquant.ai/pulse?d=${mh.asOf}`;
+  let mediaPng = null;
+  try { mediaPng = renderMarketHealthPng(mh); } catch (e) { console.warn('[daily-health] card render failed:', e.message); }
+  const r = await postXThreadDetailed([lines.join('\n'), reply], mediaPng ? { mediaPng } : undefined);
+  console.log(r.ok ? `✓ Daily market-health posted (${mh.score} ${mh.regime})` : `⊘ Daily market-health post failed: ${r.error}`);
+}
+
+async function postWeeklyReceipts() {
+  // Honest weekly ledger: every fresh US breakout (Type1/1b) from the last 7
+  // days, judged by its latest row — above entry, stopped, or underwater.
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const rows = await db.breakoutSignal.findMany({
+    where: { breakoutType: { in: ['Type1', 'Type1b'] }, createdAt: { gte: since } },
+    orderBy: { createdAt: 'desc' },
+    distinct: ['asset'],
+    select: { asset: true, entryPrice: true, stopLoss: true, currentPrice: true },
+  });
+  const us = rows.filter((r) => !/\.(NS|BO)$/i.test(r.asset) && r.entryPrice > 0 && r.currentPrice > 0);
+  if (us.length < 3) { console.log(`⊘ Weekly receipts: only ${us.length} signals — skipping`); return; }
+  const graded = us.map((r) => ({ ...r, pct: ((r.currentPrice - r.entryPrice) / r.entryPrice) * 100, stopped: r.stopLoss != null && r.currentPrice <= r.stopLoss }));
+  const winners = graded.filter((g) => !g.stopped && g.pct > 0).sort((a, b) => b.pct - a.pct);
+  const stopped = graded.filter((g) => g.stopped);
+  const avg = graded.reduce((s, g) => s + Math.max(-8, g.pct), 0) / graded.length;
+  const fmtPct = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+  const main = [
+    `This week's breakout signals — all of them, wins and losses:`,
+    '',
+    `${graded.length} fresh breakouts · ${winners.length} above entry · ${stopped.length} stopped (-8% cap)`,
+    `Average: ${fmtPct(avg)} (equal weight, stop-capped)`,
+    winners[0] ? `Best: $${winners[0].asset} ${fmtPct(winners[0].pct)}` : null,
+    stopped[0] ? `Worst: stopped out — that's the discipline working` : null,
+    '',
+    `We publish every signal, not a highlight reel. Not advice.`,
+  ].filter((l) => l !== null).join('\n');
+  const reply = `Live signals, market health & methodology → https://dataquant.ai/pulse?w=${new Date().toISOString().slice(0, 10)}`;
+  const r = await postXThreadDetailed([main, reply]);
+  console.log(r.ok ? `✓ Weekly receipts posted (${graded.length} signals, avg ${fmtPct(avg)})` : `⊘ Weekly receipts failed: ${r.error}`);
+}
+
+setInterval(() => {
+  const t = etParts();
+  if (t.hhmm === '09:00') oncePerDay('daily_health_post', t.date, postDailyMarketHealth);
+  if (t.day === 'Sat' && t.hhmm === '11:00') oncePerDay('weekly_receipts_post', t.date, postWeeklyReceipts);
+}, 60 * 1000);
+
 // Sector strength: roll the cross-sectional returns store up by sector.
 // Same fresh-24h window RS ranks on; per-market via ?region=in|us. Leaders =
 // stocks in the top quintile of the whole market's rsScore.

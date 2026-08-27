@@ -120,6 +120,14 @@ model AssetReturn {
   @@index([region, assetType, updatedAt])
 }
 
+// Free email list captured on the pulse page ("morning market health email").
+model EmailSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String   @default("pulse")
+  createdAt DateTime @default(now())
+}
+
 // Runtime feature flags togglable from the admin UI without a redeploy —
 // e.g. fmp_disabled: scanners switch to Yahoo-only data on the next cycle.
 model RuntimeFlag {

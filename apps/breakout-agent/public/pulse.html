@@ -106,6 +106,22 @@
         (down on rising volume) in the last 25 — 4+ is a warning even when price holds up. Breadth = share of
         every stock we scan with a positive month.
       </p>
+
+      <!-- Email capture: the free daily version of this reading -->
+      <div class="card p-5 mt-5" id="subscribe-box">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div class="flex-1">
+            <div class="font-semibold">Get this reading every morning at 9am ET — free.</div>
+            <div class="text-xs text-[color:var(--muted)] mt-0.5">Score, distribution days, breadth, and the one-line read. No spam, unsubscribe anytime.</div>
+          </div>
+          <form id="subscribe-form" class="flex gap-2 w-full sm:w-auto">
+            <input id="subscribe-email" type="email" required placeholder="you@example.com" autocomplete="email"
+              class="flex-1 sm:w-56 bg-[#0B1220] text-sm rounded-lg px-3 py-2 border border-[color:var(--border)] focus:border-amber-500 outline-none" />
+            <button type="submit" class="btn-primary whitespace-nowrap" style="padding:8px 16px;font-size:14px;">Subscribe</button>
+          </form>
+        </div>
+        <div id="subscribe-msg" class="text-xs mt-2"></div>
+      </div>
     </section>
 
     <!-- Trending -->
@@ -268,6 +284,28 @@
       } catch (e) { /* advisory only */ }
     }
     loadHealth();
+
+    document.getElementById('subscribe-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('subscribe-msg');
+      const email = document.getElementById('subscribe-email').value;
+      msg.textContent = '';
+      try {
+        const r = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, source: 'pulse' }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Try again');
+        msg.textContent = '✓ You\'re in — first email at the next 9am ET.';
+        msg.style.color = 'var(--green)';
+        document.getElementById('subscribe-form').style.display = 'none';
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = 'var(--red)';
+      }
+    });
   </script>
 </body>
 </html>
