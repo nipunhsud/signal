@@ -557,22 +557,21 @@ function composeBreakoutTweet(asset, sig) {
   if (sig.isBlueSky) tags.push('Blue Sky · 52w-high base');
   if (sig.rsRating != null) tags.push(`RS ${sig.rsRating}`);
   const conf = sig.confidence != null ? Math.round(Number(sig.confidence) * 100) : null;
-  const lines = [
+  // Two-tweet thread: main post is link-free (X deprioritizes posts with
+  // external links) and carries the one allowed cashtag; the reply holds the
+  // /$TICKER deep link — legal there since the cashtag limit is per post —
+  // whose OG scorecard unfurls the chart card.
+  const main = [
     `$${asset.replace(/\.(NS|BO)$/i, '')} ${isExt ? 'breakout extension' : 'breakout'} 🚨`,
     '',
     [money(sig.entryPrice) && `Entry ${money(sig.entryPrice)}`, money(sig.stopLoss) && `Stop ${money(sig.stopLoss)}`, money(sig.currentPrice) && `Now ${money(sig.currentPrice)}`]
       .filter(Boolean).join(' · '),
     [conf != null && `Confidence ${conf}/100`, ...tags].filter(Boolean).join(' · '),
     '',
-    // /s/ alias, NOT /$TICKER — a cashtag inside the URL would be the post's
-    // second cashtag and X rejects it (max one per post).
-    `Chart + levels: https://dataquant.ai/s/${encodeURIComponent(asset)}`,
-    '',
     'Systematic signal — not advice.',
-  ].filter((l) => l !== null);
-  let text = lines.join('\n');
-  if (text.length > 275) text = text.replace('\nSystematic signal — not advice.', '\nNot advice.');
-  return [text];
+  ].filter((l) => l !== null).join('\n');
+  const reply = `Chart, levels & the 2-year base X-ray → https://dataquant.ai/$${encodeURIComponent(asset)}`;
+  return [main, reply];
 }
 
 app.post('/api/admin/tweet-breakout', async (req, res) => {
