@@ -406,6 +406,60 @@ async function isAdmin(req) {
   }
 }
 
+// RS backfill: rows written before the RS pipeline existed (or during universe
+// warm-up) carry rsRating null forever. Fill nulls from the CURRENT fresh
+// universe — honest only for recent rows (RS drifts), so cap at 7 days back.
+// Idempotent (touches only nulls); runs at boot and every 6h as self-healing.
+async function backfillRecentRs() {
+  try {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const universe = await db.assetReturn.findMany({
+      where: { updatedAt: { gte: dayAgo } },
+      select: { asset: true, assetType: true, region: true, rsScore: true },
+    });
+    if (universe.length < 50) return;
+    const groups = new Map(); // region:assetType -> sorted scores
+    const byAsset = new Map();
+    for (const r of universe) {
+      const k = `${r.region}:${r.assetType}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r.rsScore);
+      byAsset.set(r.asset, r);
+    }
+    for (const list of groups.values()) list.sort((a, b) => a - b);
+    const rankOf = (r) => {
+      const g = groups.get(`${r.region}:${r.assetType}`);
+      if (!g || g.length < 20) return null;
+      let lo = 0, hi = g.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (g[mid] < r.rsScore) lo = mid + 1; else hi = mid; }
+      return Math.min(99, Math.max(1, Math.round((lo / g.length) * 99)));
+    };
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const rows = await db.breakoutSignal.findMany({
+      where: { rsRating: null, createdAt: { gte: cutoff } },
+      select: { asset: true },
+      distinct: ['asset'],
+    });
+    let updated = 0;
+    for (const { asset } of rows) {
+      const ar = byAsset.get(asset);
+      if (!ar) continue;
+      const rating = rankOf(ar);
+      if (rating == null) continue;
+      const r = await db.breakoutSignal.updateMany({
+        where: { asset, rsRating: null, createdAt: { gte: cutoff } },
+        data: { rsRating: rating },
+      });
+      updated += r.count;
+    }
+    if (updated) console.log(`[rs-backfill] filled ${updated} rows across ${rows.length} assets (universe ${universe.length})`);
+  } catch (e) {
+    console.warn('[rs-backfill] failed:', e.message);
+  }
+}
+setTimeout(backfillRecentRs, 20 * 1000); // after boot, once DB is warm
+setInterval(backfillRecentRs, 6 * 60 * 60 * 1000);
+
 app.post('/api/admin/fmp-toggle', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
   const disabled = !!req.body?.disabled;
