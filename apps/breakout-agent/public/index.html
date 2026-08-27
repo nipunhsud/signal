@@ -491,7 +491,7 @@
         this._showAllBases = false; // Base X-ray card-list expander
         // Admin (Clerk private metadata admin:"true") — gates the "Tweet" button.
         this.isAdmin = false;
-        fetch('/api/admin/status').then(r => r.json()).then(d => { this.isAdmin = !!d.isAdmin; }).catch(() => {});
+        fetch('/api/admin/status').then(r => r.json()).then(d => { this.isAdmin = !!d.isAdmin; this.fmpDisabled = !!d.fmpDisabled; }).catch(() => {});
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
         this._isResizing = false;
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
@@ -1276,6 +1276,36 @@
       toggleMarketHealth() {
         this._showMarketHealth = !this._showMarketHealth;
         this.render();
+      }
+
+      // Admin: pause/resume all FMP fetching (agents flip to Yahoo-only data on
+      // their next scan cycle). Same Clerk-metadata gate as the Tweet button.
+      async toggleFmp() {
+        const next = !this.fmpDisabled;
+        const msg = next
+          ? 'Pause ALL FMP fetching?\n\nScanners switch to Yahoo-only data on their next cycle (~15 min). Fundamentals (sector, EPS, earnings tone) pause until re-enabled.'
+          : 'Resume FMP fetching?\n\nScanners return to FMP data on their next cycle.';
+        if (!confirm(msg)) return;
+        try {
+          const r = await fetch('/api/admin/fmp-toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ disabled: next }),
+          });
+          if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
+          this.fmpDisabled = (await r.json()).fmpDisabled;
+          this.toast(this.fmpDisabled ? 'FMP paused — Yahoo-only mode from the next scan cycle' : 'FMP resumed', { kind: this.fmpDisabled ? 'warn' : 'success' });
+          this.render();
+        } catch (e) {
+          this.toast('Toggle failed: ' + e.message, { kind: 'warn' });
+        }
+      }
+
+      fmpTogglePill() {
+        if (!this.isAdmin) return '';
+        return this.fmpDisabled
+          ? `<button onclick="dashboard.toggleFmp()" class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30 cursor-pointer font-semibold hover:brightness-125 transition" title="Admin: FMP fetching is PAUSED — all data via Yahoo, fundamentals skipped. Click to resume."><span class="badge-dot"></span>FMP paused · Yahoo mode</button>`
+          : `<button onclick="dashboard.toggleFmp()" class="badge bg-gray-700/40 text-gray-500 ring-1 ring-gray-600/40 cursor-pointer hover:text-gray-300 transition" title="Admin: FMP data source active. Click to pause all FMP fetching (bandwidth emergency) — scanners switch to Yahoo-only.">FMP: on</button>`;
       }
 
       async fetchSignals() {
@@ -3999,6 +4029,7 @@
                   <div class="flex items-center gap-3 flex-wrap">
                     <h1 class="text-2xl font-bold tracking-tight">Signals</h1>
                     ${this.marketHealthPill()}
+                    ${this.fmpTogglePill()}
                   </div>
                   <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} after filters</p>
                 </div>

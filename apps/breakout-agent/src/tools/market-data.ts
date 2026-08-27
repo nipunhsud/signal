@@ -47,6 +47,76 @@ function writeDiskEod(symbol: string, today: string, bars: any[]): void {
   } catch {}
 }
 
+// Emergency Yahoo-only mode: FMP_DISABLED=true routes daily bars and live
+// quotes through Yahoo's keyless chart API so scanning survives an FMP
+// bandwidth outage. Fundamentals (sector, EPS, earnings, fed rate) are skipped
+// and default — signals still fire on pure technicals.
+// Runtime-toggleable (admin UI writes a RuntimeFlag row; agent.ts re-reads it
+// every scan cycle and calls setFmpDisabled). The env var is the boot default.
+let fmpDisabled = process.env.FMP_DISABLED === "true";
+if (fmpDisabled) console.warn("[FMP] DISABLED at boot — Yahoo data only; fundamentals skipped");
+export function setFmpDisabled(v: boolean): void {
+  if (v !== fmpDisabled) console.warn(`[FMP] ${v ? "DISABLED — switching to Yahoo-only data" : "re-enabled"}`);
+  fmpDisabled = v;
+}
+export function isFmpDisabled(): boolean {
+  return fmpDisabled;
+}
+
+const dayInTz = (ms: number, tz: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+
+async function fetchYahooDailyBars(symbol: string): Promise<any[]> {
+  const data = await globalRateLimiter.execute(async () => {
+    const res = await axios.get(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
+      { params: { range: "1y", interval: "1d" }, headers: { "User-Agent": "Mozilla/5.0" }, timeout: 15000 },
+    );
+    return res.data;
+  });
+  const r = data?.chart?.result?.[0];
+  const ts = r?.timestamp;
+  const q = r?.indicators?.quote?.[0];
+  if (!ts || !q) throw new Error(`No data found for ${symbol}`);
+  // Date each bar in ITS exchange's timezone — an NSE session timestamped in ET
+  // would land on the previous calendar day.
+  const tz = r?.meta?.exchangeTimezoneName || "America/New_York";
+  const bars: any[] = [];
+  for (let i = 0; i < ts.length; i++) {
+    if (q.open?.[i] == null || q.high?.[i] == null || q.low?.[i] == null || q.close?.[i] == null) continue;
+    bars.push({
+      date: dayInTz(ts[i] * 1000, tz),
+      open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i],
+      volume: q.volume?.[i] ?? 0,
+    });
+  }
+  if (!bars.length) throw new Error(`No data found for ${symbol}`);
+  return bars;
+}
+
+async function fetchYahooLiveQuote(symbol: string): Promise<any | null> {
+  try {
+    const data = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
+        { params: { range: "1d", interval: "1d" }, headers: { "User-Agent": "Mozilla/5.0" }, timeout: 10000 },
+      );
+      return res.data;
+    });
+    const r = data?.chart?.result?.[0];
+    const q0 = r?.indicators?.quote?.[0];
+    const i = (r?.timestamp?.length ?? 0) - 1;
+    if (!q0 || i < 0 || q0.close?.[i] == null) return null;
+    // Shaped like FMP's /stable/quote so the splice logic downstream is unchanged
+    return {
+      price: q0.close[i], dayHigh: q0.high?.[i], dayLow: q0.low?.[i], open: q0.open?.[i],
+      volume: q0.volume?.[i] ?? 0, timestamp: r.timestamp[i],
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Batch quote priming: one /stable/batch-quote call per ~100 symbols instead of
 // one /stable/quote call per asset — the biggest FMP request-count cut
 // available. fetchFMPData reads this cache before the individual endpoint.
@@ -97,7 +167,7 @@ async function fetchQuoteBatch(chunk: string[], apiKey: string): Promise<any[] |
 }
 
 export async function primeQuotes(symbols: string[], apiKey: string): Promise<void> {
-  if (batchMode === "off" || !symbols.length || !apiKey) return;
+  if (fmpDisabled || batchMode === "off" || !symbols.length || !apiKey) return;
   const CHUNK = 100;
   for (let i = 0; i < symbols.length; i += CHUNK) {
     const rows = await fetchQuoteBatch(symbols.slice(i, i + CHUNK), apiKey);
@@ -140,6 +210,7 @@ export async function fetchEarningsSurprise(
   symbol: string,
   apiKey: string,
 ): Promise<{ epsBeat: boolean; epsSurprisePct: number } | null> {
+  if (fmpDisabled) return null;
   try {
     const data = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
@@ -190,6 +261,7 @@ export async function fetchRecentEarnings(
   revenueActual: number | null;
   revenueEstimated: number | null;
 } | null> {
+  if (fmpDisabled) return null;
   try {
     const data = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
@@ -745,7 +817,7 @@ async function getFedRate(apiKey: string): Promise<number> {
 
 async function fetchFMPData(symbol: string): Promise<MarketData> {
   const apiKey = process.env.FMP_API_KEY;
-  if (!apiKey) throw new Error("FMP_API_KEY not set");
+  if (!apiKey && !fmpDisabled) throw new Error("FMP_API_KEY not set");
 
   // Clear the daily caches on ET-day rollover: caps memory at one day's universe
   // and evicts symbols dropped from the dynamic set. Runs once per day (first
@@ -783,6 +855,14 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       } else if (diskBars) {
         eodBars = diskBars;
         histCache.set(symbol, { date: today, bars: eodBars });
+      } else if (fmpDisabled) {
+        eodBars = await fetchYahooDailyBars(symbol);
+        const latestYd = new Date(eodBars[eodBars.length - 1].date);
+        if ((Date.now() - latestYd.getTime()) / (1000 * 60 * 60 * 24) > 5) {
+          throw new Error(`[STALE] ${symbol}: last Yahoo data from ${eodBars[eodBars.length - 1].date}`);
+        }
+        histCache.set(symbol, { date: today, bars: eodBars });
+        writeDiskEod(symbol, today, eodBars);
       } else {
         const data = await globalRateLimiter.execute(async () => {
           const priceResponse = await axios.get(
@@ -830,7 +910,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         // Primed batch quote first; individual /stable/quote only on a miss.
         const primed = quoteCache.get(symbol.toUpperCase());
         let q: any = primed && primed.expires > Date.now() ? primed.q : null;
-        if (!q) {
+        if (!q && fmpDisabled) {
+          q = await fetchYahooLiveQuote(symbol);
+        } else if (!q) {
           const quoteData = await globalRateLimiter.execute(async () => {
             const res = await axios.get(
               `https://financialmodelingprep.com/stable/quote`,
@@ -951,7 +1033,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       let beta: number | undefined;
 
       try {
-        const earningsData = await fetchDayCached(`is-annual:${symbol}`, () =>
+        const earningsData = fmpDisabled ? null : await fetchDayCached(`is-annual:${symbol}`, () =>
           globalRateLimiter.execute(async () => {
             const earningsRes = await axios.get(
               `https://financialmodelingprep.com/stable/income-statement`,
@@ -974,7 +1056,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       }
 
       try {
-        const qtrEarningsData = await fetchDayCached(`is-qtr:${symbol}`, () =>
+        const qtrEarningsData = fmpDisabled ? null : await fetchDayCached(`is-qtr:${symbol}`, () =>
           globalRateLimiter.execute(async () => {
             const qtrRes = await axios.get(
               `https://financialmodelingprep.com/stable/income-statement`,
@@ -1012,7 +1094,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       let etfCategory: string | undefined;
 
       // Try to fetch ETF profile first to detect if it's an ETF
-      const etfProfile = await fetchETFProfile(symbol, apiKey);
+      const etfProfile = fmpDisabled ? {} : await fetchETFProfile(symbol, apiKey!);
       if (
         etfProfile.isETF ||
         etfProfile.aum !== undefined ||
@@ -1065,7 +1147,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       } else {
         // Single /profile/ call for stocks: fetch ETF type + sector/industry in one request
         try {
-          const profileData = await fetchDayCached(`profile:${symbol}`, () =>
+          const profileData = fmpDisabled ? null : await fetchDayCached(`profile:${symbol}`, () =>
             globalRateLimiter.execute(async () => {
               const profileRes = await axios.get(
                 `https://financialmodelingprep.com/stable/profile`,
@@ -1117,7 +1199,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       if (!sector) sector = 'Unclassified';
       if (!industry) industry = 'Unclassified';
 
-      const fedFundsRate = await getFedRate(apiKey);
+      const fedFundsRate = fmpDisabled ? 5.25 : await getFedRate(apiKey!);
 
       const result: MarketData = {
         asset: symbol,

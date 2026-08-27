@@ -46,6 +46,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - FMP_API_KEY=${FMP_API_KEY}
       - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
@@ -76,6 +77,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
@@ -106,6 +108,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
@@ -130,6 +133,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
@@ -154,6 +158,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
@@ -178,6 +183,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
       - X_POST_ENABLED=${X_POST_ENABLED:-false}
       - X_API_KEY=${X_API_KEY:-}
@@ -203,6 +209,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
     depends_on:
       migrations:
@@ -222,6 +229,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
       - NODE_ENV=production
+      - FMP_DISABLED=${FMP_DISABLED:-false}
       - CACHE_DIR=/cache
     depends_on:
       migrations:

@@ -1,4 +1,4 @@
-import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings, primeQuotes } from "./tools/market-data.js";
+import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings, primeQuotes, setFmpDisabled } from "./tools/market-data.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
@@ -192,6 +192,15 @@ export class BreakoutAgent {
   // Cache reduces actual API calls by 60-70%, so even safer
   async analyzeMarkets(assets: string[], mode: "stocks" | "etfs" = "stocks"): Promise<BreakoutResult[]> {
     const CONCURRENCY = 15;
+
+    // Admin FMP kill switch: the dashboard writes a RuntimeFlag row; every scan
+    // cycle re-reads it so all tiers flip to Yahoo-only data within one cycle.
+    try {
+      const flag = await db.runtimeFlag.findUnique({ where: { key: "fmp_disabled" } });
+      if (flag) setFmpDisabled(flag.value === "true");
+    } catch {
+      /* table may not exist mid-rollout — keep current mode */
+    }
 
     // Reset per-scan breadth counters
     this.breadthBaseCount = 0;

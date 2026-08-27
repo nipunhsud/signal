@@ -120,6 +120,14 @@ model AssetReturn {
   @@index([region, assetType, updatedAt])
 }
 
+// Runtime feature flags togglable from the admin UI without a redeploy —
+// e.g. fmp_disabled: scanners switch to Yahoo-only data on the next cycle.
+model RuntimeFlag {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // Winner-model screen (MissionWinners-style): stocks with strong prior-quarter
 // EPS/revenue growth setting up technically (near 52w high, above stacked MAs).
 // Populated by the same market-data fetch as BreakoutSignal, no extra API calls.

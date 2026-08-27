@@ -26,6 +26,7 @@ const politicianBuysBySymbol = new Map();
 async function refreshPoliticianBuys() {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) return;
+  if (await fmpOff()) return;
   try {
     const res = await fetch(`https://financialmodelingprep.com/stable/senate-latest?apikey=${apiKey}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -387,8 +388,36 @@ async function isAdmin(req) {
   }
 }
 
+// Runtime FMP kill switch (admin-togglable, stored in RuntimeFlag; env
+// FMP_DISABLED=true is a hard override). 30s cache keeps it off the hot path.
+let fmpFlagCache = { value: false, expires: 0 };
+async function fmpOff() {
+  if (process.env.FMP_DISABLED === 'true') return true;
+  if (Date.now() < fmpFlagCache.expires) return fmpFlagCache.value;
+  let v = false;
+  try {
+    const row = await db.runtimeFlag.findUnique({ where: { key: 'fmp_disabled' } });
+    v = row?.value === 'true';
+  } catch { /* table may not exist mid-rollout */ }
+  fmpFlagCache = { value: v, expires: Date.now() + 30 * 1000 };
+  return v;
+}
+
+app.post('/api/admin/fmp-toggle', async (req, res) => {
+  if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
+  const disabled = !!req.body?.disabled;
+  await db.runtimeFlag.upsert({
+    where: { key: 'fmp_disabled' },
+    create: { key: 'fmp_disabled', value: String(disabled) },
+    update: { value: String(disabled) },
+  });
+  fmpFlagCache = { value: disabled, expires: Date.now() + 30 * 1000 };
+  console.warn(`[FMP] admin set fmp_disabled=${disabled} — agents pick it up next scan cycle`);
+  res.json({ fmpDisabled: disabled });
+});
+
 app.get('/api/admin/status', async (req, res) => {
-  res.json({ isAdmin: await isAdmin(req) });
+  res.json({ isAdmin: await isAdmin(req), fmpDisabled: await fmpOff() });
 });
 
 // No requireAuth() here — that middleware redirects unauthenticated requests to
@@ -1007,6 +1036,7 @@ async function getQuarterlyEps(symbol) {
   if (cached && cached.expiresAt > now) return cached.eps;
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) return null;
+  if (await fmpOff()) return null;
   try {
     const url = `https://financialmodelingprep.com/stable/income-statement?symbol=${encodeURIComponent(symbol)}&period=quarter&limit=3&apikey=${apiKey}`;
     const r = await fetch(url);
@@ -1348,6 +1378,7 @@ async function fetchYahooCandles(symbol) {
 async function fetchFmpCandles(symbol) {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error('FMP_API_KEY not set');
+  if (await fmpOff()) throw new Error('FMP disabled by admin flag');
   const resp = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`);
   if (!resp.ok) throw new Error(`FMP ${resp.status}`);
   const data = await resp.json();
@@ -1700,7 +1731,7 @@ async function getHistoricalCloses(symbol, minBars = 40) {
 
   if (!closes || closes.length < 2) {
     const apiKey = process.env.FMP_API_KEY;
-    if (apiKey) {
+    if (apiKey && !(await fmpOff())) {
       try {
         const r = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${minBars}&apikey=${apiKey}`);
         if (r.ok) {
@@ -1790,10 +1821,12 @@ app.get('/api/pulse', async (req, res) => {
           console.warn(`[/api/pulse] ${label} failed: ${e.message}`);
           return [];
         });
-    const [trendRaw, newsRaw] = await Promise.all([
-      loggedFetch('social-trending', `https://financialmodelingprep.com/api/v4/social-sentiments/trending?type=bullish&source=stocktwits&apikey=${apiKey}`),
-      loggedFetch('news', `https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`),
-    ]);
+    const [trendRaw, newsRaw] = (await fmpOff())
+      ? [[], []] // FMP paused — go straight to the Yahoo fallbacks below
+      : await Promise.all([
+          loggedFetch('social-trending', `https://financialmodelingprep.com/api/v4/social-sentiments/trending?type=bullish&source=stocktwits&apikey=${apiKey}`),
+          loggedFetch('news', `https://financialmodelingprep.com/stable/news/general-latest?limit=18&apikey=${apiKey}`),
+        ]);
 
     let trending = (Array.isArray(trendRaw) ? trendRaw : []).slice(0, 12).map((t) => ({
       symbol: t.symbol,
@@ -1903,6 +1936,7 @@ app.get('/api/ticker-pulse/:symbol', async (req, res) => {
   if (cached && cached.expiresAt > Date.now()) return res.json({ ...cached.data, cached: true });
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'FMP_API_KEY not set' });
+  if (await fmpOff()) return res.json({ sentiment: null, news: [], fmpPaused: true });
 
   try {
     const [sentRaw, newsRaw] = await Promise.all([
