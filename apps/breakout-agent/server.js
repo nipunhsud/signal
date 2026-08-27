@@ -480,6 +480,55 @@ app.get('/api/admin/status', async (req, res) => {
 // No requireAuth() here — that middleware redirects unauthenticated requests to
 // an HTML page, which breaks fetch()'s res.json(). isAdmin() (reads getAuth via
 // the global clerkMiddleware) gates it and always returns JSON.
+// Single-tweet breakout card. The /$TICKER deep link unfurls the live OG
+// scorecard on X. Null-safe: skips any field the row doesn't carry (e.g.
+// Yahoo-mode rows lack sector/EPS; RS may lag a cycle).
+function composeBreakoutTweet(asset, sig) {
+  const cur = /\.(NS|BO)$/i.test(asset) ? '₹' : '$';
+  const money = (v) => (v != null && Number.isFinite(Number(v)) ? cur + Number(v).toFixed(2) : null);
+  const isExt = sig.breakoutType === 'Type3';
+  const tags = [];
+  if (sig.isVcp) tags.push('VCP');
+  if (sig.isBlueSky) tags.push('Blue Sky · 52w-high base');
+  if (sig.rsRating != null) tags.push(`RS ${sig.rsRating}`);
+  const conf = sig.confidence != null ? Math.round(Number(sig.confidence) * 100) : null;
+  const lines = [
+    `$${asset.replace(/\.(NS|BO)$/i, '')} ${isExt ? 'breakout extension' : 'breakout'} 🚨`,
+    '',
+    [money(sig.entryPrice) && `Entry ${money(sig.entryPrice)}`, money(sig.stopLoss) && `Stop ${money(sig.stopLoss)}`, money(sig.currentPrice) && `Now ${money(sig.currentPrice)}`]
+      .filter(Boolean).join(' · '),
+    [conf != null && `Confidence ${conf}/100`, ...tags].filter(Boolean).join(' · '),
+    '',
+    `Chart + levels: https://dataquant.ai/$${encodeURIComponent(asset)}`,
+    '',
+    'Systematic signal — not advice.',
+  ].filter((l) => l !== null);
+  let text = lines.join('\n');
+  if (text.length > 275) text = text.replace('\nSystematic signal — not advice.', '\nNot advice.');
+  return [text];
+}
+
+app.post('/api/admin/tweet-breakout', async (req, res) => {
+  if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
+  const asset = String(req.body?.asset || '').toUpperCase().trim();
+  if (!asset) return res.status(400).json({ error: 'asset required' });
+
+  const sig = await db.breakoutSignal.findFirst({
+    where: { asset, breakoutType: { in: ['Type1', 'Type1b', 'Type3'] } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!sig) return res.status(404).json({ error: `No breakout signal on record for ${asset}` });
+
+  const tweets = composeBreakoutTweet(asset, sig);
+  if (!req.body?.confirm) return res.json({ preview: true, tweets });
+
+  const ok = await postXThread(tweets);
+  if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
+  await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
+  console.log(`✓ Admin tweeted $${asset} breakout`);
+  res.json({ ok: true, tweets });
+});
+
 app.post('/api/admin/tweet-earnings', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
   const asset = String(req.body?.asset || '').toUpperCase().trim();

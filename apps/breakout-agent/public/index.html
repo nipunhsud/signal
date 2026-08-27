@@ -1556,6 +1556,30 @@
       }
 
       // Admin: preview the composed earnings thread, confirm, then post to X.
+      // Admin: tweet a breakout card for one ticker (preview → confirm → post).
+      async tweetBreakout(asset, e) {
+        e?.stopPropagation();
+        try {
+          const pv = await fetch('/api/admin/tweet-breakout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asset }),
+          });
+          if (!pv.ok) throw new Error((await pv.json()).error || 'HTTP ' + pv.status);
+          const { tweets } = await pv.json();
+          if (!confirm(`Post this to X?\n\n${tweets.join('\n\n──────\n\n')}`)) return;
+          const r = await fetch('/api/admin/tweet-breakout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asset, confirm: true }),
+          });
+          if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
+          this.toast(`Tweeted $${asset} breakout`, { kind: 'success' });
+        } catch (err) {
+          this.toast('Tweet failed: ' + err.message, { kind: 'warn' });
+        }
+      }
+
       async tweetEarnings(asset, e) {
         if (e) e.stopPropagation();
         try {
@@ -1736,7 +1760,10 @@
               <div>
                 <div class="text-xs text-gray-400 mb-1.5 flex justify-between">
                   <span>6 months · Daily</span>
-                  <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
+                  <span class="inline-flex items-center gap-3">
+                    ${this.isAdmin && (signal.signalType === 'breakout' || signal.signalType === 'extension') ? `<button onclick="dashboard.tweetBreakout('${assetEscaped}', event)" title="Tweet this breakout to X (admin)" class="text-xs px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium">🐦 Tweet</button>` : ''}
+                    <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
+                  </span>
                 </div>
                 ${(() => {
                   // Base X-ray teaser — display-only when the chart page already
