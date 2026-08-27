@@ -278,6 +278,26 @@ app.get(/^\/\$[A-Za-z.\-]+$/, paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Cashtag-free alias for the same deep link: X limits posts to ONE cashtag,
+// and "/$NVDA" inside a tweeted URL counts as a second one. Tweets link
+// /s/NVDA instead; behavior is identical to /$NVDA.
+app.get('/s/:symbol([A-Za-z.\\-]+)', async (req, res, next) => {
+  if (!isCrawler(req.get('user-agent'))) return next();
+  try {
+    const ticker = req.params.symbol.toUpperCase();
+    const s = (await latestSignalFor(ticker)) || { asset: ticker };
+    const proto = req.get('x-forwarded-proto') || req.protocol;
+    const origin = `${proto}://${req.get('host')}`;
+    res.type('html').send(metaHtml(metaFor(s, `${origin}/og/${ticker}.png`, `${origin}${req.path}`)));
+  } catch (error) {
+    console.error('[deep-link og /s] failed:', error);
+    next();
+  }
+});
+app.get('/s/:symbol([A-Za-z.\\-]+)', paywall, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Fallback for the CTA hrefs. The landing JS normally intercepts these to open
 // the Clerk modal, but a click that lands before the Clerk SDK finishes loading
 // falls through to the raw href — so serve the landing page instead of a 404.
@@ -473,6 +493,16 @@ async function backfillRecentRs() {
           select: { sector: true },
         });
         known = prior?.sector || null;
+        if (!known) {
+          // Setup rows keep sector in Signal.metadata JSON — second source.
+          const rows = await db.$queryRaw`
+            SELECT metadata->>'sector' AS sector FROM "Signal"
+            WHERE asset = ${asset}
+              AND metadata->>'sector' IS NOT NULL
+              AND metadata->>'sector' <> 'Unclassified'
+            ORDER BY "createdAt" DESC LIMIT 1`;
+          known = rows?.[0]?.sector || null;
+        }
         if (known) {
           await db.assetReturn.update({ where: { asset }, data: { sector: known } }).catch(() => {});
         }
@@ -534,7 +564,9 @@ function composeBreakoutTweet(asset, sig) {
       .filter(Boolean).join(' · '),
     [conf != null && `Confidence ${conf}/100`, ...tags].filter(Boolean).join(' · '),
     '',
-    `Chart + levels: https://dataquant.ai/$${encodeURIComponent(asset)}`,
+    // /s/ alias, NOT /$TICKER — a cashtag inside the URL would be the post's
+    // second cashtag and X rejects it (max one per post).
+    `Chart + levels: https://dataquant.ai/s/${encodeURIComponent(asset)}`,
     '',
     'Systematic signal — not advice.',
   ].filter((l) => l !== null);

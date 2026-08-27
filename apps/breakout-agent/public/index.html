@@ -1018,7 +1018,8 @@
         const signalsReady = this.fetchSignals();
         // Deep link from X posts (dataquant.ai/$hpe): open that ticker's drawer
         // once signals load.
-        const deepLink = decodeURIComponent(location.pathname).match(/\/\$([A-Za-z.\-]+)/);
+        // Both deep-link shapes: /$NVDA and the cashtag-free /s/NVDA used in tweets
+        const deepLink = decodeURIComponent(location.pathname).match(/\/(?:\$|s\/)([A-Za-z.\-]+)/);
         if (deepLink) signalsReady.then(() => this.openAsset(deepLink[1]));
         this.fetchShortlistLists();
         // Prefetch the other lists so cross-reference chips are accurate on
