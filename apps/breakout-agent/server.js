@@ -570,7 +570,11 @@ function composeBreakoutTweet(asset, sig) {
     '',
     'Systematic signal — not advice.',
   ].filter((l) => l !== null).join('\n');
-  const reply = `Chart, levels & the 2-year base X-ray → https://dataquant.ai/$${encodeURIComponent(asset)}`;
+  // The ?s= version matters: X caches link cards BY THE TWEETED URL and won't
+  // re-scrape a URL it has seen — an unversioned link can unfurl a stale card
+  // forever. A fresh query per signal forces a fresh scrape.
+  const ver = encodeURIComponent(String(sig.id || Date.now()).slice(-10));
+  const reply = `Chart, levels & the 2-year base X-ray → https://dataquant.ai/$${encodeURIComponent(asset)}?s=${ver}`;
   return [main, reply];
 }
 
