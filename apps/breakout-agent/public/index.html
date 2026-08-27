@@ -2301,7 +2301,26 @@
               high: { color: '#9ca3af' },
               low: { color: '#9ca3af' },
             },
-            tooltip: { text: { color: '#d1d5db' } },
+            tooltip: {
+              text: { color: '#d1d5db' },
+              // Default legend plus a colored per-bar % change (vs the prior
+              // bar's close — daily on D, weekly on W). Function form so the
+              // change value can carry its own green/red color.
+              custom: ({ prev, current }) => {
+                const prevClose = prev?.close ?? current?.close;
+                const chg = prevClose ? ((current.close - prevClose) / prevClose) * 100 : 0;
+                const chgColor = chg > 0 ? '#10b981' : chg < 0 ? '#ef4444' : '#9ca3af';
+                return [
+                  { title: 'time', value: '{time}' },
+                  { title: 'open', value: '{open}' },
+                  { title: 'high', value: '{high}' },
+                  { title: 'low', value: '{low}' },
+                  { title: 'close', value: '{close}' },
+                  { title: { text: 'Chg: ', color: '#9ca3af' }, value: { text: `${chg > 0 ? '+' : ''}${chg.toFixed(2)}%`, color: chgColor } },
+                  { title: 'volume', value: '{volume}' },
+                ];
+              },
+            },
           },
           indicator: {
             tooltip: { text: { color: '#9ca3af' } },
