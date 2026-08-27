@@ -415,7 +415,7 @@ async function backfillRecentRs() {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const universe = await db.assetReturn.findMany({
       where: { updatedAt: { gte: dayAgo } },
-      select: { asset: true, assetType: true, region: true, rsScore: true },
+      select: { asset: true, assetType: true, region: true, rsScore: true, sector: true },
     });
     if (universe.length < 50) return;
     const groups = new Map(); // region:assetType -> sorted scores
@@ -453,6 +453,25 @@ async function backfillRecentRs() {
       updated += r.count;
     }
     if (updated) console.log(`[rs-backfill] filled ${updated} rows across ${rows.length} assets (universe ${universe.length})`);
+
+    // Sector heal: Yahoo-mode rows are born 'Unclassified' — repair recent ones
+    // from the per-asset sector memory in AssetReturn.
+    const sectorRows = await db.breakoutSignal.findMany({
+      where: { sector: 'Unclassified', createdAt: { gte: cutoff } },
+      select: { asset: true },
+      distinct: ['asset'],
+    });
+    let sectorFixed = 0;
+    for (const { asset } of sectorRows) {
+      const known = byAsset.get(asset)?.sector;
+      if (!known) continue;
+      const r = await db.breakoutSignal.updateMany({
+        where: { asset, sector: 'Unclassified', createdAt: { gte: cutoff } },
+        data: { sector: known },
+      });
+      sectorFixed += r.count;
+    }
+    if (sectorFixed) console.log(`[rs-backfill] repaired sector on ${sectorFixed} rows`);
   } catch (e) {
     console.warn('[rs-backfill] failed:', e.message);
   }

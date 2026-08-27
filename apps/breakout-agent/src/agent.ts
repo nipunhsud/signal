@@ -303,14 +303,19 @@ export class BreakoutAgent {
         data.return1mPct != null ||
         data.return1wPct != null
       ) {
-        await db.assetReturn
-          .upsert({
+        // Sector memory: Yahoo-mode scans have no profile data, so (a) never
+        // overwrite a known sector with null/Unclassified, and (b) reuse the
+        // remembered sector for this scan's signal rows — the upsert's return
+        // value gives it back for free.
+        const knowsSector = !!data.sector && data.sector !== "Unclassified";
+        try {
+          const arRow = await db.assetReturn.upsert({
             where: { asset },
             create: {
               asset,
               assetType: data.assetType,
               region: regionOf(asset),
-              sector: data.sector || null,
+              sector: knowsSector ? data.sector : null,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -319,16 +324,19 @@ export class BreakoutAgent {
             update: {
               assetType: data.assetType,
               region: regionOf(asset),
-              sector: data.sector || null,
+              sector: knowsSector ? data.sector : undefined,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
               return3mPct: data.return3mPct,
             },
-          })
-          .catch((e: any) =>
-            console.warn(`[RS] upsert ${asset} failed:`, e?.message),
-          );
+          });
+          if (!knowsSector && arRow.sector) {
+            data.sector = arRow.sector;
+          }
+        } catch (e: any) {
+          console.warn(`[RS] upsert ${asset} failed:`, e?.message);
+        }
       }
 
       // Check for recent prior alert (last 5 days): if found, force Type 3 to avoid duplicate Type 1 alerts
