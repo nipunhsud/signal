@@ -593,7 +593,12 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   if (edited?.error) return res.status(400).json({ error: edited.error });
   const toPost = edited?.tweets?.length ? edited.tweets : tweets;
 
-  const result = await postXThreadDetailed(toPost);
+  // Attach the live scorecard as media on the main tweet — an image is not a
+  // link, so the visual rides the main post without reach penalty. Fails open.
+  let mediaPng = null;
+  try { mediaPng = renderScorecardPng(sig); } catch (e) { console.warn('[tweet-breakout] card render failed:', e.message); }
+
+  const result = await postXThreadDetailed(toPost, mediaPng ? { mediaPng } : undefined);
   if (!result.ok) return res.status(502).json({ error: `X post failed: ${result.error}. Env issues: set X_POST_ENABLED=true + the four X_* tokens in the droplet root .env, then \`docker compose up -d dashboard\`.` });
   await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
   console.log(`✓ Admin tweeted $${asset} breakout${edited?.tweets?.length ? ' (edited)' : ''}`);

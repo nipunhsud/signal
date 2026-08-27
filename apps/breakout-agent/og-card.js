@@ -31,17 +31,23 @@ export function cardFields(s) {
   const price = num(s.currentPrice);
   const entry = num(s.entryPrice);
   const stop = num(s.stopLoss);
-  const conf = s.confidence != null ? Math.round(Number(s.confidence)) : null;
+  // DB stores confidence 0-1; display is 0-100. (Math.round(0.97) rendered
+  // "Confidence 1/100" on real cards.)
+  const confRaw = s.confidence != null ? Number(s.confidence) : null;
+  const conf = confRaw != null ? Math.round(confRaw <= 1 ? confRaw * 100 : confRaw) : null;
   const type = s.breakoutType === 'Type3' ? 'Extension' : 'Actionable breakout';
-  const epsG = num(s.epsGrowthPct);
-  const epsS = num(s.epsSurprisePct);
+  // The scanner defaults missing EPS data to 0 — on a card that reads as a
+  // bullish "+0%", so treat 0 as unknown (true 0.0% growth is vanishingly rare).
+  const epsG = (() => { const v = num(s.epsGrowthPct); return v === 0 ? null : v; })();
+  const epsS = (() => { const v = num(s.epsSurprisePct); return v === 0 ? null : v; })();
   const guidance = s.earningsGuidance && s.earningsGuidance !== 'none' ? cap(s.earningsGuidance) : null;
   const tone = s.earningsTone ? cap(s.earningsTone) : null;
   const earnings = tone ? tone + (guidance ? ` · ${guidance}` : '') : null;
   return {
     asset: s.asset, price, entry, stop, conf, type,
     epsG, epsS, earnings,
-    sector: s.sector || null,
+    // Blank beats advertising "Unclassified" on a shared card
+    sector: s.sector && s.sector !== 'Unclassified' ? s.sector : null,
     priceStr: money(s.asset, price),
     entryStr: money(s.asset, entry),
     stopStr: money(s.asset, stop),
@@ -94,9 +100,9 @@ function svg(s) {
     ['Setup', f.type, C.text],
   ];
   const rows2 = [
-    ['EPS growth', f.epsGStr, f.epsG >= 0 ? C.green : C.red],
-    ['EPS surprise', f.epsSStr, f.epsS >= 0 ? C.green : C.red],
-    ['Earnings', f.earnings || '—', C.text],
+    ['EPS growth', f.epsGStr, f.epsG == null ? C.dim : f.epsG >= 0 ? C.green : C.red],
+    ['EPS surprise', f.epsSStr, f.epsS == null ? C.dim : f.epsS >= 0 ? C.green : C.red],
+    ['Earnings', f.earnings || '—', f.earnings ? C.text : C.dim],
   ];
   const rowSvg = (list, x) => list.map(([label, val, color], i) => {
     const y = 300 + i * 84;

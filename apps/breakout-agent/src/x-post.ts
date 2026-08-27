@@ -42,8 +42,11 @@ export function xPostStatus(): { ready: boolean; reason?: string } {
 
 // Detailed variant: returns WHY a post failed (env not configured, duplicate
 // content, Read-only app, ...) so admin UIs can show the real reason.
+// opts.mediaPng attaches an image to the FIRST tweet (media is not a link, so
+// no external-link deprioritization — the visual travels with the main post).
 export async function postXThreadDetailed(
   tweets: string[],
+  opts?: { mediaPng?: Buffer },
 ): Promise<{ ok: boolean; error?: string }> {
   const status = xPostStatus();
   if (!status.ready) return { ok: false, error: status.reason };
@@ -51,12 +54,26 @@ export async function postXThreadDetailed(
   const c = getClient()!;
 
   try {
+    // Media upload fails open: a broken image never blocks the post itself.
+    let mediaId: string | null = null;
+    if (opts?.mediaPng?.length) {
+      try {
+        mediaId = await c.v1.uploadMedia(opts.mediaPng, { mimeType: "image/png" });
+      } catch (err) {
+        console.warn("X media upload failed — posting without image:", (err as Error).message);
+      }
+    }
+
     // 10k cap = long-form ceiling for verified/Premium accounts (well under X's
     // 25k max); short tweets pass through untouched.
     const capped = tweets.map((t) => t.slice(0, 10000));
     // A single item posts as one (long-form) tweet; multiple chain into a thread.
-    if (capped.length === 1) await c.v2.tweet(capped[0]);
-    else await c.v2.tweetThread(capped);
+    const firstExtra = mediaId ? { media: { media_ids: [mediaId] as [string] } } : {};
+    if (capped.length === 1) await c.v2.tweet(capped[0], firstExtra);
+    else
+      await c.v2.tweetThread(
+        capped.map((text, i) => (i === 0 ? { text, ...firstExtra } : text)),
+      );
     console.log(
       `✓ Posted to X (${capped.length === 1 ? "single" : capped.length + " thread"}): ${tweets[0].split("\n")[0]}`,
     );
