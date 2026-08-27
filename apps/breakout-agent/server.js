@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { postXThread } from './dist/x-post.js';
+import { postXThread, postXThreadDetailed } from './dist/x-post.js';
 import { renderScorecardPng, renderMarketHealthPng, metaFor, metaHtml } from './og-card.js';
 import { detectBases } from './base-detect.js';
 import { handleMcpRequest } from './mcp.js';
@@ -562,8 +562,8 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   if (edited?.error) return res.status(400).json({ error: edited.error });
   const toPost = edited?.tweets?.length ? edited.tweets : tweets;
 
-  const ok = await postXThread(toPost);
-  if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
+  const result = await postXThreadDetailed(toPost);
+  if (!result.ok) return res.status(502).json({ error: `X post failed: ${result.error}. Env issues: set X_POST_ENABLED=true + the four X_* tokens in the droplet root .env, then \`docker compose up -d dashboard\`.` });
   await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
   console.log(`✓ Admin tweeted $${asset} breakout${edited?.tweets?.length ? ' (edited)' : ''}`);
   res.json({ ok: true, tweets: toPost });
@@ -601,8 +601,8 @@ app.post('/api/admin/tweet-earnings', async (req, res) => {
   if (edited?.error) return res.status(400).json({ error: edited.error });
   const toPost = edited?.tweets?.length ? edited.tweets : tweets;
 
-  const ok = await postXThread(toPost);
-  if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
+  const result = await postXThreadDetailed(toPost);
+  if (!result.ok) return res.status(502).json({ error: `X post failed: ${result.error}. Env issues: set X_POST_ENABLED=true + the four X_* tokens in the droplet root .env, then \`docker compose up -d dashboard\`.` });
   await db.transcriptAnalysis.update({ where: { id: ta.id }, data: { xPostedAt: new Date() } });
   console.log(`✓ Admin tweeted $${asset} earnings (${toPost.length} tweets${edited?.tweets?.length ? ', edited' : ''})`);
   res.json({ ok: true, tweets: toPost });
