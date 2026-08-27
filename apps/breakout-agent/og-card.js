@@ -99,11 +99,24 @@ function svg(s) {
     ['Stop (-8%)', f.stopStr, C.red],
     ['Setup', f.type, C.text],
   ];
-  const rows2 = [
-    ['EPS growth', f.epsGStr, f.epsG == null ? C.dim : f.epsG >= 0 ? C.green : C.red],
-    ['EPS surprise', f.epsSStr, f.epsS == null ? C.dim : f.epsS >= 0 ? C.green : C.red],
-    ['Earnings', f.earnings || '—', f.earnings ? C.text : C.dim],
-  ];
+  // Right column adapts to what the row actually has: fundamentals first, then
+  // base-quality technicals — a Yahoo-mode row (FMP paused) shows RS/coil/
+  // volume instead of a column of dashes.
+  const rs = num(s.rsRating);
+  const coil = (() => { const v = num(s.coilRatio); return v && v > 0 ? v : null; })();
+  const udv = (() => { const v = num(s.upDownVolumeRatio); return v && v > 0 ? v : null; })();
+  const volR = (() => { const v = num(s.volumeRatio); return v && v > 0 ? v : null; })();
+  const candidates = [
+    f.epsG != null && ['EPS growth', f.epsGStr, f.epsG >= 0 ? C.green : C.red],
+    f.epsS != null && ['EPS surprise', f.epsSStr, f.epsS >= 0 ? C.green : C.red],
+    f.earnings && ['Earnings', f.earnings, C.text],
+    rs != null && ['RS rating', `${rs} / 99`, rs >= 70 ? C.green : rs >= 50 ? C.text : C.red],
+    coil != null && ['Base coil', `${coil.toFixed(2)}x${coil < 0.9 ? ' · tightening' : ''}`, coil < 0.9 ? C.green : C.text],
+    udv != null && ['Up/down volume', `${udv.toFixed(1)}x`, udv >= 1.5 ? C.green : C.text],
+    volR != null && ['Breakout volume', `${volR.toFixed(1)}x avg`, volR >= 1.5 ? C.green : C.text],
+  ].filter(Boolean);
+  const rows2 = candidates.slice(0, 3);
+  while (rows2.length < 3) rows2.push(['', '', C.dim]);
   const rowSvg = (list, x) => list.map(([label, val, color], i) => {
     const y = 300 + i * 84;
     return T(x, y, label, { size: 26, fill: C.dim }) + T(x, y + 40, val, { size: 40, weight: 700, fill: color });
