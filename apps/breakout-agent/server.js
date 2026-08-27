@@ -463,7 +463,20 @@ async function backfillRecentRs() {
     });
     let sectorFixed = 0;
     for (const { asset } of sectorRows) {
-      const known = byAsset.get(asset)?.sector;
+      let known = byAsset.get(asset)?.sector;
+      if (!known) {
+        // Memory erased (pre-fix Yahoo-mode scans nulled it) — recover from the
+        // asset's own signal history and write it back into AssetReturn.
+        const prior = await db.breakoutSignal.findFirst({
+          where: { asset, NOT: [{ sector: null }, { sector: 'Unclassified' }] },
+          orderBy: { createdAt: 'desc' },
+          select: { sector: true },
+        });
+        known = prior?.sector || null;
+        if (known) {
+          await db.assetReturn.update({ where: { asset }, data: { sector: known } }).catch(() => {});
+        }
+      }
       if (!known) continue;
       const r = await db.breakoutSignal.updateMany({
         where: { asset, sector: 'Unclassified', createdAt: { gte: cutoff } },
@@ -477,7 +490,10 @@ async function backfillRecentRs() {
   }
 }
 setTimeout(backfillRecentRs, 20 * 1000); // after boot, once DB is warm
-setInterval(backfillRecentRs, 6 * 60 * 60 * 1000);
+// Every 30 min, not 6h: scanners write fresh rows every 15 min, and while the
+// inline RS computation has gaps the healer must not lose that race. Cheap —
+// it only ever touches null ratings / Unclassified sectors in a 7-day window.
+setInterval(backfillRecentRs, 30 * 60 * 1000);
 
 app.post('/api/admin/fmp-toggle', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });

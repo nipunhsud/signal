@@ -801,7 +801,15 @@ export class BreakoutAgent {
               epsBeat: surprise?.epsBeat ?? breakoutAnalysis.epsBeat,
               epsSurprisePct:
                 surprise?.epsSurprisePct ?? breakoutAnalysis.epsSurprisePct,
-              sector: breakoutAnalysis.sector,
+              // Sector fallback chain: this scan's data → the asset's own most
+              // recent signal row. Covers Yahoo-mode scans AND assets whose
+              // AssetReturn sector was erased before the sector-memory fix.
+              sector:
+                breakoutAnalysis.sector && breakoutAnalysis.sector !== "Unclassified"
+                  ? breakoutAnalysis.sector
+                  : latestForAsset?.sector && latestForAsset.sector !== "Unclassified"
+                    ? latestForAsset.sector
+                    : breakoutAnalysis.sector,
               industry: breakoutAnalysis.industry,
               fedFundsRate: breakoutAnalysis.fedFundsRate,
               volumeRatio,
