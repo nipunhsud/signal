@@ -541,12 +541,29 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   const tweets = composeBreakoutTweet(asset, sig);
   if (!req.body?.confirm) return res.json({ preview: true, tweets });
 
-  const ok = await postXThread(tweets);
+  // The editor may send edited text; validate and prefer it over the composed draft.
+  const edited = sanitizeEditedTweets(req.body?.tweets);
+  if (edited?.error) return res.status(400).json({ error: edited.error });
+  const toPost = edited?.tweets?.length ? edited.tweets : tweets;
+
+  const ok = await postXThread(toPost);
   if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
   await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
-  console.log(`✓ Admin tweeted $${asset} breakout`);
-  res.json({ ok: true, tweets });
+  console.log(`✓ Admin tweeted $${asset} breakout${edited?.tweets?.length ? ' (edited)' : ''}`);
+  res.json({ ok: true, tweets: toPost });
 });
+
+// Edited-tweet payload guard, shared by the admin tweet endpoints.
+function sanitizeEditedTweets(raw) {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return { error: 'tweets must be an array of strings' };
+  const tweets = raw.map((t) => String(t)).map((t) => t.trim()).filter((t) => t.length);
+  if (!tweets.length) return { error: 'no non-empty tweets provided' };
+  if (tweets.length > 6) return { error: 'at most 6 tweets per thread' };
+  const over = tweets.findIndex((t) => t.length > 280);
+  if (over >= 0) return { error: `tweet ${over + 1} exceeds 280 characters (${tweets[over].length})` };
+  return { tweets };
+}
 
 app.post('/api/admin/tweet-earnings', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
@@ -564,11 +581,15 @@ app.post('/api/admin/tweet-earnings', async (req, res) => {
 
   if (!req.body?.confirm) return res.json({ preview: true, tweets });
 
-  const ok = await postXThread(tweets);
+  const edited = sanitizeEditedTweets(req.body?.tweets);
+  if (edited?.error) return res.status(400).json({ error: edited.error });
+  const toPost = edited?.tweets?.length ? edited.tweets : tweets;
+
+  const ok = await postXThread(toPost);
   if (!ok) return res.status(502).json({ error: 'X post failed — check X_POST_ENABLED + tokens (app must be Read/Write)' });
   await db.transcriptAnalysis.update({ where: { id: ta.id }, data: { xPostedAt: new Date() } });
-  console.log(`✓ Admin tweeted $${asset} earnings (${tweets.length} tweets)`);
-  res.json({ ok: true, tweets });
+  console.log(`✓ Admin tweeted $${asset} earnings (${toPost.length} tweets${edited?.tweets?.length ? ', edited' : ''})`);
+  res.json({ ok: true, tweets: toPost });
 });
 
 // Static assets (landing.html, CSS, JS, images) remain public. Note: because

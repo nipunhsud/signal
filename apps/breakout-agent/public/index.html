@@ -1556,7 +1556,7 @@
       }
 
       // Admin: preview the composed earnings thread, confirm, then post to X.
-      // Admin: tweet a breakout card for one ticker (preview → confirm → post).
+      // Admin: tweet a breakout card for one ticker (preview → edit → publish).
       async tweetBreakout(asset, e) {
         e?.stopPropagation();
         try {
@@ -1567,17 +1567,94 @@
           });
           if (!pv.ok) throw new Error((await pv.json()).error || 'HTTP ' + pv.status);
           const { tweets } = await pv.json();
-          if (!confirm(`Post this to X?\n\n${tweets.join('\n\n──────\n\n')}`)) return;
-          const r = await fetch('/api/admin/tweet-breakout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ asset, confirm: true }),
-          });
-          if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
-          this.toast(`Tweeted $${asset} breakout`, { kind: 'success' });
+          this.openTweetEditor('/api/admin/tweet-breakout', asset, tweets, 'breakout');
         } catch (err) {
           this.toast('Tweet failed: ' + err.message, { kind: 'warn' });
         }
+      }
+
+      // Editable preview overlay for admin tweets: textareas with live char
+      // counts, publish sends the edited text. DOM built with value assignment
+      // (never innerHTML for tweet text) so $/quotes/emoji can't break markup.
+      openTweetEditor(endpoint, asset, tweets, label) {
+        document.getElementById('tweet-editor-overlay')?.remove();
+        const ov = document.createElement('div');
+        ov.id = 'tweet-editor-overlay';
+        ov.className = 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4';
+        ov.addEventListener('click', (ev) => { if (ev.target === ov) ov.remove(); });
+
+        const card = document.createElement('div');
+        card.className = 'bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl w-full max-w-xl p-5 max-h-[85vh] overflow-y-auto';
+        card.innerHTML = `
+          <div class="flex justify-between items-center mb-1">
+            <div class="font-bold text-white">Tweet $${asset} ${label}</div>
+            <button class="text-gray-500 hover:text-white transition" data-x="close">✕</button>
+          </div>
+          <div class="text-[12px] text-gray-500 mb-3">Edit before publishing. Links count as 23 chars on X regardless of length.</div>
+          <div data-x="fields" class="space-y-3"></div>
+          <div class="mt-4 flex justify-end gap-2 items-center">
+            <span data-x="err" class="text-xs text-red-400 mr-auto"></span>
+            <button data-x="cancel" class="px-3 py-1.5 rounded text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Cancel</button>
+            <button data-x="post" class="px-3 py-1.5 rounded text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition">🐦 Publish to X</button>
+          </div>`;
+        ov.appendChild(card);
+
+        const fields = card.querySelector('[data-x="fields"]');
+        const areas = tweets.map((t, i) => {
+          const wrap = document.createElement('div');
+          const ta = document.createElement('textarea');
+          ta.className = 'w-full bg-gray-900 text-gray-200 text-[13px] leading-relaxed rounded ring-1 ring-gray-700 focus:ring-sky-500 outline-none p-3 font-mono';
+          ta.rows = Math.max(4, t.split('\n').length + 1);
+          ta.value = t;
+          const count = document.createElement('div');
+          count.className = 'text-right text-[11px] mt-0.5';
+          const upd = () => {
+            const n = ta.value.length;
+            count.textContent = `${n}/280`;
+            count.className = 'text-right text-[11px] mt-0.5 ' + (n > 280 ? 'text-red-400 font-bold' : n > 260 ? 'text-amber-400' : 'text-gray-500');
+          };
+          ta.addEventListener('input', upd);
+          upd();
+          if (tweets.length > 1) {
+            const lbl = document.createElement('div');
+            lbl.className = 'text-[11px] text-gray-500 mb-1';
+            lbl.textContent = `Tweet ${i + 1} of ${tweets.length}`;
+            wrap.appendChild(lbl);
+          }
+          wrap.appendChild(ta);
+          wrap.appendChild(count);
+          fields.appendChild(wrap);
+          return ta;
+        });
+
+        const close = () => ov.remove();
+        card.querySelector('[data-x="close"]').addEventListener('click', close);
+        card.querySelector('[data-x="cancel"]').addEventListener('click', close);
+        card.querySelector('[data-x="post"]').addEventListener('click', async () => {
+          const errEl = card.querySelector('[data-x="err"]');
+          const edited = areas.map((a) => a.value.trim()).filter((t) => t.length);
+          if (!edited.length) { errEl.textContent = 'Nothing to post.'; return; }
+          const over = edited.findIndex((t) => t.length > 280);
+          if (over >= 0) { errEl.textContent = `Tweet ${over + 1} is over 280 characters.`; return; }
+          const btn = card.querySelector('[data-x="post"]');
+          btn.disabled = true; btn.textContent = 'Posting…';
+          try {
+            const r = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ asset, confirm: true, tweets: edited }),
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
+            close();
+            this.toast(`Tweeted $${asset} ${label}`, { kind: 'success' });
+          } catch (err) {
+            btn.disabled = false; btn.textContent = '🐦 Publish to X';
+            errEl.textContent = err.message;
+          }
+        });
+
+        document.body.appendChild(ov);
+        areas[0]?.focus();
       }
 
       async tweetEarnings(asset, e) {
@@ -1593,15 +1670,7 @@
             return;
           }
           const { tweets } = await pv.json();
-          const preview = tweets.map((t, i) => `(${i + 1}/${tweets.length})\n${t}`).join('\n\n──────\n\n');
-          if (!confirm(`Post this ${tweets.length}-tweet thread to X?\n\n${preview}`)) return;
-          const res = await fetch('/api/admin/tweet-earnings', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ asset, confirm: true }),
-          });
-          const out = await res.json().catch(() => ({}));
-          if (res.ok && out.ok) this.toast(`Tweeted $${asset} earnings ✓`, { kind: 'success' });
-          else this.toast(out.error || 'Tweet failed', { kind: 'warn' });
+          this.openTweetEditor('/api/admin/tweet-earnings', asset, tweets, 'earnings');
         } catch (err) {
           console.error('tweetEarnings failed', err);
           this.toast('Tweet failed — see console', { kind: 'warn' });
