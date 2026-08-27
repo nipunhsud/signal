@@ -2642,7 +2642,12 @@
         const data = this._basesCache && this._basesCache.data;
         const b = data && Array.isArray(data.bases) ? data.bases[idx] : null;
         if (!b || !this._pageKline || typeof this._pageKline.scrollToTimestamp !== 'function') return;
-        try { this._pageKline.scrollToTimestamp(new Date(b.start + 'T00:00:00Z').getTime(), 200); } catch (e) {}
+        // scrollToTimestamp puts the target at the RIGHT edge of the view, so
+        // aiming at the base's START showed only what came before it (i.e. the
+        // previous base). Aim a week past its END so the whole base is on screen.
+        const endStr = (b.breakout && b.breakout.date) || b.end || b.start;
+        const target = new Date(endStr + 'T00:00:00Z').getTime() + 7 * 24 * 3600 * 1000;
+        try { this._pageKline.scrollToTimestamp(target, 200); } catch (e) {}
       }
 
       toggleAllBases() {
