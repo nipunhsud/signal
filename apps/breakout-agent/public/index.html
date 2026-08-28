@@ -1388,6 +1388,46 @@
         }
       }
 
+      // Admin-only rulebook: the active signal rules and the evidence behind
+      // them. Deliberately NOT public — exact thresholds are part of the edge.
+      rulebookPill() {
+        if (!this.isAdmin) return '';
+        return `<button onclick="dashboard.toggleRulebook()" class="badge bg-gray-700/40 text-gray-400 ring-1 ring-gray-600/40 cursor-pointer hover:text-gray-200 transition" title="Admin: active signal rules + the evidence behind them">📖 Rules</button>`;
+      }
+
+      toggleRulebook() {
+        document.getElementById('rulebook-overlay')?.remove();
+        if (this._rulebookOpen) { this._rulebookOpen = false; return; }
+        this._rulebookOpen = true;
+        const ov = document.createElement('div');
+        ov.id = 'rulebook-overlay';
+        ov.className = 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4';
+        ov.addEventListener('click', (ev) => { if (ev.target === ov) { ov.remove(); this._rulebookOpen = false; } });
+        const rule = (title, body) => `
+          <div class="border-t border-gray-700/50 pt-3 mt-3">
+            <div class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold mb-1">${title}</div>
+            <div class="text-[13px] text-gray-300 leading-relaxed">${body}</div>
+          </div>`;
+        ov.innerHTML = `
+          <div class="bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl w-full max-w-2xl p-5 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="font-bold text-white">Active signal rules — admin only</div>
+                <div class="text-[12px] text-gray-500 mt-0.5">Calibrated from the 2,074-base outcome study (Aug 2026, 304 stocks, 2y of dailies, effective 20-bar returns with the -8% stop). Baseline: 44.3% win, median -2.4%. Thresholds are edge — keep private.</div>
+              </div>
+              <button onclick="dashboard.toggleRulebook()" class="text-gray-500 hover:text-white transition ml-3">✕</button>
+            </div>
+            ${rule('VCP badge (recalibrated)', 'Type1 + base coil 0.70–0.90 + breakout volume ≥ 2.0x average. The old ATR/dry-up definition selected a 35%-win cohort; this combo measured <span class="text-green-400 font-semibold">49.8% win, +7.9% mean</span> (n=311). Extreme tightening (&lt;0.7 coil) and volume dry-up both underperform — dropped.')}
+            ${rule('Blue Sky (strongest factor)', 'Pivot within 2% of the 52w high: <span class="text-green-400 font-semibold">53.0% win / 28% stopped</span> vs 35.0% / 55% for buried bases. Now worth +4 confidence on Type1. Context beats shape: a shallow base only works late in an advance or at blue sky (56.5% win) — shallow-but-buried wins 26%.')}
+            ${rule('Base age', '≥16 weeks (~80 bars): best bucket in the study, <span class="text-green-400 font-semibold">58.8% win / 26% stopped</span> (n=313). +4 confidence. Older bases run less at their peak but fail far less often.')}
+            ${rule('Depth', 'U-shaped. &lt;10% safest (only in context — see Blue Sky), 20–35% boom-or-bust, and <span class="text-orange-400 font-semibold">10–20% is the worst pocket (39.3% win)</span> — now -5 confidence.')}
+            ${rule('Alert volume tiers', '1.2x avg = shown on dashboard · <span class="text-green-400 font-semibold">≥2x = emailed</span> (where mean outcomes jump) · ≥4x = 🔥 premium flag (best bucket, mean +5.9). The old 1.2x email floor barely cleared noise.')}
+            ${rule('Failed pokes (counter-intuitive)', '1–2 pokes = <span class="text-green-400">defended pivot, 46.7% win</span>. Zero pokes = untested, 40.3% win and more stops. 3+ = heavy supply. Display flipped accordingly.')}
+            <div class="border-t border-gray-700/50 mt-3 pt-2 text-[11px] text-gray-500">Survivorship caveat: sample = current signal universe (over-represents recent winners); treat as relative comparisons. Full bucket table: research scratchpad CSV.</div>
+          </div>`;
+        document.body.appendChild(ov);
+      }
+
       fmpTogglePill() {
         if (!this.isAdmin) return '';
         return this.fmpDisabled
@@ -2056,10 +2096,10 @@
                   : '<span class="text-gray-600">—</span>';
                 const fpHtml = fp != null
                   ? (fp === 0
-                      ? '<span class="font-mono tabular-nums text-green-400">0 · clean</span>'
-                      : fp === 1
-                        ? '<span class="font-mono tabular-nums text-gray-300">1</span>'
-                        : `<span class="font-mono tabular-nums text-orange-400">${fp} · supply overhead</span>`)
+                      ? '<span class="font-mono tabular-nums text-gray-300">0 · untested</span>'
+                      : fp <= 2
+                        ? `<span class="font-mono tabular-nums text-green-400">${fp} · defended</span>`
+                        : `<span class="font-mono tabular-nums text-orange-400">${fp} · heavy supply</span>`)
                   : '<span class="text-gray-600">—</span>';
                 const coilHtml = coil != null
                   ? (coil < 0.9
@@ -2075,7 +2115,7 @@
                 <div class="space-y-2">
                   ${row('RS Rating', 'Percentile of this stock\'s trailing returns vs every scanned stock (1-99). 80+ means it\'s outrunning 80% of the market — leaders, not laggards, produce the big breakouts.', rsHtml)}
                   ${row('Up/Down Volume', 'Volume on up-days divided by volume on down-days across the base. Above 1.5x means buyers were quietly absorbing shares while the price went sideways — accumulation.', udvHtml)}
-                  ${row('Failed Pokes', 'Times price wicked up to the pivot during the base but closed well below it. Each failed poke is a seller defending that level — 0 is clean, 2+ means supply overhead.', fpHtml)}
+                  ${row('Failed Pokes', 'Times price wicked to the pivot but closed well below it. Counter-intuitively, a tested-and-defended pivot (1-2 pokes) outperforms an untested one in our base study; 3+ suggests heavy supply.', fpHtml)}
                   ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot — the volatility contraction that precedes strong breakouts.', coilHtml)}
                 </div>
               </div>`;
@@ -2900,10 +2940,10 @@
             : `<span class="font-mono tabular-nums text-gray-300">${udv}x</span>`);
           const fp = b.failedPokes || 0;
           const fpHtml = fp === 0
-            ? '<span class="font-mono tabular-nums text-green-400">0 · clean</span>'
-            : fp >= 2
-              ? `<span class="font-mono tabular-nums text-orange-400">${fp} · supply overhead</span>`
-              : `<span class="font-mono tabular-nums text-gray-300">${fp}</span>`;
+            ? '<span class="font-mono tabular-nums text-gray-300">0 · untested</span>'
+            : fp <= 2
+              ? `<span class="font-mono tabular-nums text-green-400">${fp} · defended</span>`
+              : `<span class="font-mono tabular-nums text-orange-400">${fp} · heavy supply</span>`;
           const boVol = b.breakout ? fmt(b.breakout.volumeRatio) : null;
           const boVolHtml = boVol == null ? dash : (Number(boVol) >= 1.5
             ? `<span class="font-mono tabular-nums text-green-400">${boVol}x avg</span>`
@@ -4282,6 +4322,7 @@
                     <h1 class="text-2xl font-bold tracking-tight">Signals</h1>
                     ${this.marketHealthPill()}
                     ${this.fmpTogglePill()}
+                    ${this.rulebookPill()}
                   </div>
                   <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} after filters</p>
                 </div>

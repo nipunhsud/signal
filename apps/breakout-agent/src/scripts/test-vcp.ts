@@ -30,10 +30,11 @@ const base: MarketData = {
   priorBaseRangePercent: 12,
   priorBreakoutBarsAgo: 0,
   extensionPriorBreakoutBarsAgo: 0,
-  // VCP metrics: tight, contracting, expanding
+  // VCP metrics (recalibrated def): moderate coil + 2x breakout volume
   atrPercent: 1.8,
   contractionRatio: 0.6,
   expansionRatio: 2.1,
+  coilRatio: 0.8,
 };
 
 const check = (
@@ -50,32 +51,13 @@ const check = (
   if (!ok) process.exitCode = 1;
 };
 
-check("Type1 with full VCP", base, "Type1", true);
-check("Type1, base too wide (ATR% 4)", { ...base, atrPercent: 4 }, "Type1", false);
-check(
-  "Type1, not contracting (ratio 0.9)",
-  { ...base, contractionRatio: 0.9 },
-  "Type1",
-  false,
-);
-check(
-  "Type1, weak expansion (1.1x)",
-  { ...base, expansionRatio: 1.1 },
-  "Type1",
-  false,
-);
-check(
-  "Type1, closes mid-bar",
-  { ...base, close: 103, high: 106, low: 99.8 },
-  "Type1",
-  false,
-);
-check(
-  "Type1, no history (metrics 0)",
-  { ...base, atrPercent: 0, contractionRatio: 0, expansionRatio: 0 },
-  "Type1",
-  false,
-);
+// New VCP definition (2,074-base study): coil 0.7-0.9 + volume >= 2x avg.
+// Base fixture: volume 1.5M vs avg 1M = 1.5x -> fails volume gate by default.
+check("Type1, 1.5x volume fails new VCP gate", base, "Type1", false);
+check("Type1 full VCP (coil 0.8, 2.5x vol)", { ...base, volume: 2_500_000 }, "Type1", true);
+check("Type1, coil too loose (0.95)", { ...base, volume: 2_500_000, coilRatio: 0.95 }, "Type1", false);
+check("Type1, coil too tight (0.6 - deal-pinned tape)", { ...base, volume: 2_500_000, coilRatio: 0.6 }, "Type1", false);
+check("Type1, no history (coil 0)", { ...base, volume: 2_500_000, coilRatio: 0 }, "Type1", false);
 check(
   "Type3 never VCP",
   {

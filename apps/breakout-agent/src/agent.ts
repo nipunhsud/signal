@@ -440,6 +440,10 @@ export class BreakoutAgent {
       }
 
       const volumeRatio = data.volume / data.avgVolume;
+      // Volume tiers (2,074-base study): outcomes scale with breakout volume —
+      // 1.2x barely clears noise, ≥2x is where the mean jumps, ≥4x is best.
+      const alertVolumeOk = volumeRatio >= 2;
+      const premiumVolume = volumeRatio >= 4;
       const volumeIncreasing = volumeRatio > 1.3;
 
       // Fetch earnings transcript for Type 1/3 stock breakouts (cached per quarter).
@@ -607,6 +611,7 @@ export class BreakoutAgent {
       }
 
       const localReasoning = [
+        premiumVolume ? `🔥 Premium volume (${volumeRatio.toFixed(1)}x avg)` : null,
         breakoutAnalysis.isVcp
           ? `VCP ✓ (ATR ${breakoutAnalysis.atrPercent.toFixed(1)}%, contraction ${breakoutAnalysis.contractionRatio.toFixed(2)}, expansion ${breakoutAnalysis.expansionRatio.toFixed(1)}x)`
           : null,
@@ -702,11 +707,14 @@ export class BreakoutAgent {
         pctAboveEntry >= 0 &&
         pctAboveEntry <= 5;
 
+      // Signals below the 2x alert tier stay visible on the dashboard but
+      // don't email (alertVolumeOk declared beside volumeRatio above).
       const shouldAlert =
         (isType1Breakout &&
           isValid &&
           breakoutAnalysis.maStack &&
-          breakoutAnalysis.breakoutSignal) ||
+          breakoutAnalysis.breakoutSignal &&
+          alertVolumeOk) ||
         isType1bBreakout ||
         isFreshlyCaughtExtension;
 
@@ -995,7 +1003,7 @@ export class BreakoutAgent {
         : "";
 
     const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
-    const subject = `🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
+    const subject = `${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Trade setup for Type 1 & Type 3 — read frozen entry/stop that were

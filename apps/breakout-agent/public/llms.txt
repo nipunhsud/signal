@@ -5,7 +5,7 @@
 ## How the signals work
 
 - **Actionable (Type 1) breakouts**: price clears a multi-week base on at least 1.2x average volume, with moving averages stacked in an uptrend (20 > 50 > 150 > 200 day). Entry is frozen at the breakout level the moment the signal fires; the stop sits 8% below entry. A breached stop ends the episode — later signals start fresh.
-- **VCP breakouts**: Type 1 signals matching Minervini's Volatility Contraction Pattern — a tight base (ATR under 2.5% of price), volatility contracting into the pivot (5-day ATR under 0.75x the 20-day), and a breakout bar expanding at least 1.5x the base's range with a close near its high.
+- **VCP breakouts**: Type 1 signals matching a calibrated Volatility Contraction Pattern — a moderately tightening base (coiled, but not artificially pinned) breaking out on heavy volume. The exact thresholds are calibrated against DataQuant's own multi-thousand-base outcome study and are part of the edge, so they aren't published.
 - **Relative Strength (RS) rating**: every stock's trailing returns (50% 3-month, 30% 1-month, 20% 1-week) ranked 1-99 against its own market's scanned universe — US vs US, India vs India. Dashboard filters let users screen to leaders (RS ≥ 70), VCP-only, or blue-sky-only breakouts.
 - **Base-quality metrics** on every signal: up/down volume ratio (accumulation), failed pokes at the pivot (supply overhead), coil ratio (tightening), and a blue-sky flag when the pivot sits at the 52-week high.
 - **Setups**: tight pre-breakout consolidations ("handles") near the 20-day moving average, with distance-to-pivot.

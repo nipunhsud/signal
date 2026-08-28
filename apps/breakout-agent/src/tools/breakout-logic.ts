@@ -78,7 +78,6 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     close,
     open,
     high,
-    low,
     volume,
     avgVolume,
     highs,
@@ -213,20 +212,18 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   }
   // Everything else (high-vol messy consolidation, non-clean breakouts) stays "unknown".
 
-  // VCP mark: only Type1 qualifies. Three gates on top of the Type1 rules —
-  //   tight base:      ATR% < 2.5 (absolute, so an always-wild tape can't pass)
-  //   contracting:     ATR(5)/ATR(20) < 0.75 — volatility shrinking INTO the pivot
-  //   upside expansion: breakout bar's range ≥1.5x base ATR, close in top third
-  // Metrics are 0 when <22 bars of history — a 0 fails the gates, never passes.
-  const closeInTopThird = high > low ? (close - low) / (high - low) >= 0.67 : bullishCandle;
+  // VCP mark, recalibrated from the 2,074-base outcome study (Aug 2026): the
+  // original ATR/dry-up gates selected a 35%-win cohort (extreme tightening and
+  // volume dry-up both UNDERperformed). The winning combination measured:
+  //   moderate coil 0.7–0.9 (tightening, but not deal-pinned-tape tight)
+  //   breakout volume ≥ 2x average (outcomes scale with volume; 1.2x is noise)
+  // → 49.8% win rate, +7.9% mean 20-bar return vs 44.3%/+3.5% baseline.
   const isVcp =
     breakoutType === "Type1" &&
-    atrPercent > 0 &&
-    atrPercent < 2.5 &&
-    contractionRatio > 0 &&
-    contractionRatio < 0.75 &&
-    expansionRatio >= 1.5 &&
-    closeInTopThird;
+    coilRatio >= 0.7 &&
+    coilRatio < 0.9 &&
+    avgVolume > 0 &&
+    volume >= avgVolume * 2;
 
   // Blue sky: the pivot sits at (within 2% of) the 52-week high, so a breakout
   // clears every holder from the past year — no trapped sellers overhead.
@@ -253,6 +250,18 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
 
     consolidationQuality = Math.max(0.8, consolidationQuality); // Floor at 80%
     confidence = consolidationQuality;
+
+    // Evidence-based adjustments (2,074-base study, Aug 2026):
+    // - Blue sky: 53.0% win / 28% stopped vs 35.0% / 55% for buried bases —
+    //   the strongest single factor. Context matters more than shape.
+    // - Base age ≥16 weeks (~80 bars): best bucket in the study, 58.8% win.
+    // - 10-20% depth: the worst pocket (39.3% win) — shallower is safe,
+    //   deeper is boom-or-bust, this middle band is just bad.
+    if (isBlueSky) confidence = Math.min(0.99, confidence + 0.04);
+    if (priorBaseDays >= 80) confidence = Math.min(0.99, confidence + 0.04);
+    if (priorBaseRangePercent >= 10 && priorBaseRangePercent < 20) {
+      confidence = Math.max(0.5, confidence - 0.05);
+    }
   } else if (breakoutType === "Type1b") {
     // Weak-volume clean breakout: same shape math as Type1 but capped at 85%
     // so it never outranks a true Type1 in the sorted list.

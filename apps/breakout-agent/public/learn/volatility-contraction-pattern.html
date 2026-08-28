@@ -46,7 +46,7 @@
           "name": "How many contractions does a VCP need?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the 5-day ATR must be below 0.75x the 20-day ATR, which is what successive tightening produces."
+            "text": "Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the base must be tightening at a measured, calibrated rate — the footprint successive shallower pullbacks leave behind."
           }
         },
         {
@@ -54,7 +54,7 @@
           "name": "Is a VCP breakout on low volume still valid?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. The expansion gate exists precisely because a quiet base needs a loud release. A breakout bar that fails to expand at least 1.5x the base's range, or closes weakly, does not earn the VCP mark."
+            "text": "No. The volume gate exists precisely because a quiet base needs a loud release. A breakout that prints on unremarkable volume does not earn the VCP mark."
           }
         },
         {
@@ -131,11 +131,10 @@
       <p>Every real VCP tells the same story in the same order. First, a <strong>prior uptrend</strong> — the VCP is a pause inside strength, never a bottom-fishing pattern; a stock nobody wanted doesn't get quieter because sellers ran out, it gets quieter because nobody cares. Second, the <strong>base</strong>: price stops advancing and drifts sideways. Third, the <strong>contractions</strong> — each pullback inside the base is shallower than the one before, the visible signature of shrinking supply. Fourth, <strong>volume dry-up</strong>: turnover fades through the base, often to a fraction of what the stock traded during its advance. Fifth, the <strong>pivot</strong> — the well-defined ceiling the coiling price presses against. Sixth, the <strong>breakout</strong>: price clears the pivot decisively, on volume. Everything before the breakout is preparation; the breakout is the only step that pays.</p>
       <p>A cup-and-handle, for what it's worth, is a cousin — one specific base outline. A VCP is defined less by any silhouette than by the physics underneath: tightening swings and drying volume. A cup-and-handle whose pullbacks contract <em>is</em> a VCP.</p>
       <h2>DataQuant's machine definition</h2>
-      <p>"Tightening" is easy to see in hindsight and easy to imagine in foresight, so DataQuant reduces the VCP to three measurable gates. A breakout only earns the VCP mark when all three pass:</p>
-      <div class="metric"><b>Tight base.</b> <span>The base's average true range (ATR) is under 2.5% of the price — tight in absolute terms, so a permanently wild stock can't qualify just by being slightly less wild.</span></div>
-      <div class="metric"><b>Contraction into the pivot.</b> <span>The 5-day ATR is below 0.75&times; the 20-day ATR — volatility is still shrinking as price approaches the ceiling, not merely low.</span></div>
-      <div class="metric"><b>Upside expansion.</b> <span>The breakout bar's range expands to at least 1.5&times; the base's ATR <em>and</em> the bar closes in its top third — the release is decisive and upward, not churn.</span></div>
-      <p>All the base measurements exclude the breakout bar itself, so a big breakout candle can never flatter the quietness of the base it broke out of.</p>
+      <p>"Tightening" is easy to see in hindsight and easy to imagine in foresight, so DataQuant reduces the VCP to measurable gates. A breakout only earns the VCP mark when they pass:</p>
+      <div class="metric"><b>Measured coil.</b> <span>The base's second half is tighter than its first — but only within a calibrated band. Counter-intuitively, our outcome study found <em>extreme</em> tightening underperforms moderate tightening: a tape squeezed unnaturally flat is more often a pinned tape than patient accumulation.</span></div>
+      <div class="metric"><b>Heavy breakout volume.</b> <span>The breakout must print on volume well above the base's average — quiet bases need a loud release, and outcomes in our study scaled directly with breakout volume.</span></div>
+      <p>All base measurements exclude the breakout bar itself, so a big breakout candle can never flatter the quietness of the base it broke out of. The exact thresholds are calibrated against DataQuant's own study of more than two thousand historical bases and are kept private — they're part of the edge subscribers pay for.</p>
       <h2>An honest failure case: when every rule passes and it still isn't a VCP</h2>
       <p>In August 2026 DataQuant's scanner flagged DBRG as a textbook VCP: the base ATR was an astonishing 0.26% of price, the contraction ratio 0.74, and the breakout bar expanded 1.95&times; the base range with a close at its high. Mechanically perfect. But a look at the chart told a different story — the stock had been pinned in a $15.90–$15.97 range for weeks, the signature of a tape anchored by a corporate event, not of sellers being patiently absorbed. The "breakout" was a six-cent move.</p>
       <p>The lesson generalizes: <strong>rules find candidates; context confirms trades.</strong> A pattern detector tells you where to look. It does not excuse you from looking.</p>
@@ -145,7 +144,7 @@
       
     <section class="faq mt-12">
       <h2>Frequently asked questions</h2>
-      <div class="mt-2"><details><summary>How many contractions does a VCP need?</summary><p class="text-slate-400">Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the 5-day ATR must be below 0.75x the 20-day ATR, which is what successive tightening produces.</p></details><details><summary>Is a VCP breakout on low volume still valid?</summary><p class="text-slate-400">No. The expansion gate exists precisely because a quiet base needs a loud release. A breakout bar that fails to expand at least 1.5x the base's range, or closes weakly, does not earn the VCP mark.</p></details><details><summary>Can a pattern pass every VCP rule and still be a bad trade?</summary><p class="text-slate-400">Yes. DBRG in August 2026 passed every gate with near-perfect numbers, but the base was a deal-pinned tape stuck in a seven-cent range — a six-cent breakout is not a tradeable move. Rules find candidates; context confirms trades.</p></details><details><summary>Is the VCP reliable?</summary><p class="text-slate-400">It is a probability, not a prediction — plenty fail. Its value comes from pairing it with strict risk control: small losses on the failures, room to run on the ones that work.</p></details></div>
+      <div class="mt-2"><details><summary>How many contractions does a VCP need?</summary><p class="text-slate-400">Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the base must be tightening at a measured, calibrated rate — the footprint successive shallower pullbacks leave behind.</p></details><details><summary>Is a VCP breakout on low volume still valid?</summary><p class="text-slate-400">No. The volume gate exists precisely because a quiet base needs a loud release. A breakout that prints on unremarkable volume does not earn the VCP mark.</p></details><details><summary>Can a pattern pass every VCP rule and still be a bad trade?</summary><p class="text-slate-400">Yes. DBRG in August 2026 passed every gate with near-perfect numbers, but the base was a deal-pinned tape stuck in a seven-cent range — a six-cent breakout is not a tradeable move. Rules find candidates; context confirms trades.</p></details><details><summary>Is the VCP reliable?</summary><p class="text-slate-400">It is a probability, not a prediction — plenty fail. Its value comes from pairing it with strict risk control: small losses on the failures, room to run on the ones that work.</p></details></div>
     </section>
       
     <section class="mt-12">
