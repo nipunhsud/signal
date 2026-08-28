@@ -515,6 +515,22 @@ async function backfillRecentRs() {
       sectorFixed += r.count;
     }
     if (sectorFixed) console.log(`[rs-backfill] repaired sector on ${sectorFixed} rows`);
+
+    // VCP re-grade under the recalibrated definition (coil 0.7-0.9 + volume
+    // >= 2x). Pure DB math — no external data needed. Idempotent: rows WITH
+    // both metrics get the exact new verdict; old-definition badges on rows
+    // missing the metrics are cleared (unverifiable = no badge).
+    const regraded = await db.$executeRaw`
+      UPDATE "BreakoutSignal"
+      SET "isVcp" = ("breakoutType" = 'Type1' AND "coilRatio" >= 0.7 AND "coilRatio" < 0.9 AND "volumeRatio" >= 2)
+      WHERE "createdAt" >= ${cutoff}
+        AND "coilRatio" IS NOT NULL AND "volumeRatio" IS NOT NULL
+        AND "isVcp" IS DISTINCT FROM ("breakoutType" = 'Type1' AND "coilRatio" >= 0.7 AND "coilRatio" < 0.9 AND "volumeRatio" >= 2)`;
+    const cleared = await db.$executeRaw`
+      UPDATE "BreakoutSignal" SET "isVcp" = false
+      WHERE "createdAt" >= ${cutoff} AND "isVcp" = true
+        AND ("coilRatio" IS NULL OR "volumeRatio" IS NULL)`;
+    if (regraded || cleared) console.log(`[rs-backfill] VCP re-grade: ${regraded} recomputed, ${cleared} unverifiable badges cleared`);
   } catch (e) {
     console.warn('[rs-backfill] failed:', e.message);
   }

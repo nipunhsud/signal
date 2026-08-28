@@ -262,6 +262,12 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     if (priorBaseRangePercent >= 10 && priorBaseRangePercent < 20) {
       confidence = Math.max(0.5, confidence - 0.05);
     }
+    // Shallow is contextual, not good per se: shallow AT blue sky wins 56.5%,
+    // but shallow-and-buried wins just 26.0% (median -8) — a tight base far
+    // below the highs is usually a weak bounce, not quiet accumulation.
+    if (priorBaseRangePercent > 0 && priorBaseRangePercent < 10 && !isBlueSky) {
+      confidence = Math.max(0.5, confidence - 0.06);
+    }
   } else if (breakoutType === "Type1b") {
     // Weak-volume clean breakout: same shape math as Type1 but capped at 85%
     // so it never outranks a true Type1 in the sorted list.
