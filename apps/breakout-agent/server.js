@@ -915,10 +915,11 @@ app.get('/api/signals', async (req, res) => {
         barsInRange: s.barsInRange || 0,
         signalType,
         weakVolume,
-        // Extensions have two faces: price extended ABOVE entry (chasing zone)
-        // vs pulled back to/below entry while holding structure (retest — the
-        // second-chance zone). Same classification, different label.
-        extensionPhase: isExtension ? (pctGainFromEntry != null && pctGainFromEntry > 1 ? 'extended' : 'retest') : null,
+        // Retest: an alerted breakout whose price is back within 3% of the buy
+        // point and not stopped — the actionable second-chance zone. Stays
+        // signalType 'extension' internally (levels/overlays unchanged);
+        // isRetest drives the badge, the filter, and the demotion exemption.
+        isRetest: isExtension && !stoppedOut && pctGainFromEntry != null && pctGainFromEntry <= 3,
         isVcp: s.isVcp === true,
         rsRating: s.rsRating != null ? Number(s.rsRating) : null,
         upDownVolumeRatio: s.upDownVolumeRatio != null ? Number(s.upDownVolumeRatio) : null,
@@ -1064,6 +1065,7 @@ app.get('/api/signals', async (req, res) => {
     // holders monitoring an open position — not as entry candidates.
     const isStaleExtension = (s) =>
       s.signalType === 'extension' &&
+      !s.isRetest && // within 3% of the buy point = actionable at any age
       s.daysSinceBreakout != null &&
       s.daysSinceBreakout > 5 &&
       !s.stoppedOut;
