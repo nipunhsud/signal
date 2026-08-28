@@ -1279,17 +1279,83 @@
         this.render();
       }
 
-      // Chart-page ticker search: any symbol, flagged by the agent or not.
-      chartSearch() {
-        const el = document.getElementById('chart-ticker-search');
-        const sym = (el?.value || '').trim().toUpperCase();
-        if (!sym) return;
-        if (!/^[A-Z][A-Z0-9.\-^]{0,11}$/.test(sym)) {
-          this.toast('Ticker looks invalid — letters, dots, dashes only', { kind: 'warn' });
-          return;
+      // Chart-page ticker typeahead: any symbol, flagged by the agent or not.
+      // Custom dropdown (native datalist is unstylable): filters known assets
+      // as you type, ↑↓/Enter/Esc handled locally so the global shortcuts
+      // (space-nav, esc-back) never fire mid-typing.
+      _chartSearchIndex() {
+        if (this._csIndex && this._csIndexAt === this.lastFetchAt) return this._csIndex;
+        const m = new Map();
+        for (const s of [...(this.signals || []), ...(this.trackingSignals || [])]) {
+          if (!m.has(s.asset)) m.set(s.asset, { sector: s.sector, type: s.signalType });
         }
-        el.value = '';
-        this.openChartView(sym);
+        for (const i of this.shortlist || []) {
+          if (!m.has(i.asset)) m.set(i.asset, { sector: null, type: 'shortlist' });
+        }
+        this._csIndex = [...m.entries()].map(([asset, x]) => ({ asset, ...x })).sort((a, b) => a.asset.localeCompare(b.asset));
+        this._csIndexAt = this.lastFetchAt;
+        return this._csIndex;
+      }
+
+      chartSearchInput() {
+        const q = (document.getElementById('chart-ticker-search')?.value || '').trim().toUpperCase();
+        if (!q) { this.closeChartSearch(); return; }
+        const idx = this._chartSearchIndex();
+        const starts = idx.filter((x) => x.asset.startsWith(q));
+        const contains = idx.filter((x) => !x.asset.startsWith(q) && x.asset.includes(q));
+        const hits = [...starts, ...contains].slice(0, 7);
+        const exact = hits.some((h) => h.asset === q);
+        this._csState = { q, hits, active: 0, showRaw: !exact && /^[A-Z][A-Z0-9.\-^]{0,11}$/.test(q) };
+        this._renderChartSearchDd();
+      }
+
+      _renderChartSearchDd() {
+        const dd = document.getElementById('chart-search-dd');
+        const st = this._csState;
+        if (!dd || !st || (!st.hits.length && !st.showRaw)) { this.closeChartSearch(); return; }
+        const badge = (t) => t === 'breakout' ? '<span class="text-[9px] font-bold text-green-400">BREAKOUT</span>'
+          : t === 'setup' ? '<span class="text-[9px] font-bold text-blue-400">SETUP</span>'
+          : t === 'extension' ? '<span class="text-[9px] font-bold text-yellow-400">EXT</span>'
+          : t === 'shortlist' ? '<span class="text-[9px] font-bold text-amber-300">★</span>' : '';
+        const rows = st.hits.map((h, i) => `
+          <button onmousedown="event.preventDefault(); dashboard.selectChartSearch('${h.asset.replace(/'/g, "\\'")}')"
+            class="w-full text-left px-3 py-2 flex items-center justify-between gap-2 ${i === st.active ? 'bg-blue-500/15' : 'hover:bg-gray-700/50'} transition">
+            <span class="font-mono font-semibold text-sm text-white">${h.asset}</span>
+            <span class="flex items-center gap-2 min-w-0">${h.sector && h.sector !== 'Unclassified' ? `<span class="text-[10px] text-gray-500 truncate">${h.sector}</span>` : ''}${badge(h.type)}</span>
+          </button>`).join('');
+        const raw = st.showRaw ? `
+          <button onmousedown="event.preventDefault(); dashboard.selectChartSearch('${st.q}')"
+            class="w-full text-left px-3 py-2 border-t border-gray-700/60 ${st.active === st.hits.length ? 'bg-blue-500/15' : 'hover:bg-gray-700/50'} transition">
+            <span class="text-xs text-gray-400">Open </span><span class="font-mono font-semibold text-sm text-blue-300">${st.q}</span><span class="text-xs text-gray-500"> — chart any ticker →</span>
+          </button>` : '';
+        dd.innerHTML = rows + raw;
+        dd.classList.remove('hidden');
+      }
+
+      chartSearchKey(e) {
+        const st = this._csState;
+        if (e.key === 'Escape') { e.stopPropagation(); this.closeChartSearch(); e.target.blur(); return; }
+        if (!st) { if (e.key === 'Enter') e.preventDefault(); return; }
+        const total = st.hits.length + (st.showRaw ? 1 : 0);
+        if (e.key === 'ArrowDown') { e.preventDefault(); st.active = (st.active + 1) % total; this._renderChartSearchDd(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); st.active = (st.active - 1 + total) % total; this._renderChartSearchDd(); }
+        else if (e.key === 'Enter') {
+          e.preventDefault();
+          const sym = st.active < st.hits.length ? st.hits[st.active].asset : st.q;
+          this.selectChartSearch(sym);
+        }
+      }
+
+      selectChartSearch(sym) {
+        this.closeChartSearch();
+        const el = document.getElementById('chart-ticker-search');
+        if (el) el.value = '';
+        this.openChartView(sym.toUpperCase());
+      }
+
+      closeChartSearch() {
+        this._csState = null;
+        document.getElementById('chart-search-dd')?.classList.add('hidden');
       }
 
       // Admin: pause/resume all FMP fetching (agents flip to Yahoo-only data on
@@ -2613,14 +2679,15 @@
                   <!-- Any-ticker search: works for symbols the agent never flagged
                        (chart/bases are Yahoo-backed) — those just render without
                        signal levels. Datalist suggests known signals + shortlist. -->
-                  <form onsubmit="event.preventDefault(); dashboard.chartSearch();" class="flex items-center">
-                    <input id="chart-ticker-search" list="chart-ticker-options" placeholder="Any ticker… ⏎"
+                  <div class="relative">
+                    <input id="chart-ticker-search" placeholder="Any ticker…"
                       autocomplete="off" spellcheck="false"
-                      class="w-32 bg-gray-800 text-gray-200 text-xs font-mono uppercase rounded px-2.5 py-1.5 ring-1 ring-gray-700/60 focus:ring-blue-500 outline-none placeholder:normal-case placeholder:font-sans" />
-                    <datalist id="chart-ticker-options">
-                      ${[...new Set([...(this.signals || []), ...(this.trackingSignals || [])].map(s => s.asset).concat((this.shortlist || []).map(i => i.asset)))].sort().map(a => `<option value="${a}"></option>`).join('')}
-                    </datalist>
-                  </form>
+                      oninput="dashboard.chartSearchInput()"
+                      onkeydown="dashboard.chartSearchKey(event)"
+                      onblur="setTimeout(() => dashboard.closeChartSearch(), 150)"
+                      class="w-36 bg-gray-800 text-gray-200 text-xs font-mono uppercase rounded px-2.5 py-1.5 ring-1 ring-gray-700/60 focus:ring-blue-500 outline-none placeholder:normal-case placeholder:font-sans" />
+                    <div id="chart-search-dd" class="absolute left-0 top-full mt-1 z-40 w-64 hidden bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl overflow-hidden"></div>
+                  </div>
                 </div>
                 <div class="flex items-center gap-1.5 flex-wrap">
                   ${['3m', '6m', '1y', '2y'].map(r => `<button onclick="dashboard.setChartRange('${r}')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartRange === r)}">${r.toUpperCase()}</button>`).join('')}
