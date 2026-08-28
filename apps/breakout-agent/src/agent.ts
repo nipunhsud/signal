@@ -442,7 +442,6 @@ export class BreakoutAgent {
       const volumeRatio = data.volume / data.avgVolume;
       // Volume tiers (2,074-base study): outcomes scale with breakout volume —
       // 1.2x barely clears noise, ≥2x is where the mean jumps, ≥4x is best.
-      const alertVolumeOk = volumeRatio >= 2;
       const premiumVolume = volumeRatio >= 4;
       const volumeIncreasing = volumeRatio > 1.3;
 
@@ -611,6 +610,7 @@ export class BreakoutAgent {
       }
 
       const localReasoning = [
+        breakoutAnalysis.cohort ? `Cohort ${breakoutAnalysis.cohort} (${{ S: "67% hist. win — sky+16wk+2x vol", A: "57-60% hist. win — blue sky", B: "47% hist. win — long base + volume", C: "29-41% hist. win — baseline grade" }[breakoutAnalysis.cohort]})` : null,
         premiumVolume ? `🔥 Premium volume (${volumeRatio.toFixed(1)}x avg)` : null,
         breakoutAnalysis.isVcp
           ? `VCP ✓ (ATR ${breakoutAnalysis.atrPercent.toFixed(1)}%, contraction ${breakoutAnalysis.contractionRatio.toFixed(2)}, expansion ${breakoutAnalysis.expansionRatio.toFixed(1)}x)`
@@ -707,14 +707,15 @@ export class BreakoutAgent {
         pctAboveEntry >= 0 &&
         pctAboveEntry <= 5;
 
-      // Signals below the 2x alert tier stay visible on the dashboard but
-      // don't email (alertVolumeOk declared beside volumeRatio above).
+      // Alert-all-with-ranking: every qualifying Type1 emails, graded by its
+      // evidence cohort (S 67% win / A 57-60% / B 47% / C 29-41% historical) —
+      // the grade travels in the subject so the reader can prioritize, instead
+      // of a hard volume gate silently hiding C-tier signals.
       const shouldAlert =
         (isType1Breakout &&
           isValid &&
           breakoutAnalysis.maStack &&
-          breakoutAnalysis.breakoutSignal &&
-          alertVolumeOk) ||
+          breakoutAnalysis.breakoutSignal) ||
         isType1bBreakout ||
         isFreshlyCaughtExtension;
 
@@ -832,6 +833,7 @@ export class BreakoutAgent {
               isBlueSky: breakoutAnalysis.isBlueSky,
               coilRatio: breakoutAnalysis.coilRatio || null,
               isStaircase: breakoutAnalysis.isStaircase,
+              cohort: breakoutAnalysis.cohort,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
@@ -1055,7 +1057,8 @@ export class BreakoutAgent {
         : "";
 
     const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : latestRecord.breakoutType === "EP" ? "⚡ Episodic Pivot (catalyst)" : "Breakout";
-    const subject = `${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
+    const grade = (latestRecord as any).cohort ? `[${(latestRecord as any).cohort}] ` : '';
+    const subject = `${grade}${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Trade setup for Type 1 & Type 3 — read frozen entry/stop that were

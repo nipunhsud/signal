@@ -87,3 +87,17 @@ bq(
   { ...base, upDownVolumeRatio: 2.3, failedPokes: 2, coilRatio: 0.8 },
   (a) => a.upDownVolumeRatio === 2.3 && a.failedPokes === 2 && a.coilRatio === 0.8,
 );
+
+// Cohort grading (full-history factor grid)
+const co = (name: string, md: MarketData, expect: string | null) => {
+  const a = analyzeBreakout(md);
+  const ok = a.cohort === expect;
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}: cohort=${a.cohort} (expected ${expect})`);
+  if (!ok) process.exitCode = 1;
+};
+// base fixture: priorBaseDays 20 (short), vol 1.5x, high52w 0 (no sky) -> C
+co("Type1 short/quiet/buried -> C", base, "C");
+co("blue sky alone -> A", { ...base, high52w: 102 }, "A");
+co("sky + long + loud -> S", { ...base, high52w: 102, priorBaseDays: 90, volume: 2_500_000 }, "S");
+co("long + loud, no sky -> B", { ...base, priorBaseDays: 90, volume: 2_500_000 }, "B");
+co("Type3 has no cohort", { ...base, extensionPriorBreakoutBarsAgo: 3, priorBaseDays: 2, priorBaseRangePercent: 40 }, null);

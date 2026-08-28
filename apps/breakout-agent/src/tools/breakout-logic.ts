@@ -50,6 +50,12 @@ export interface BreakoutAnalysis {
   coilRatio: number; // 2nd-half range / 1st-half — <1 = tightening
   isStaircase: boolean; // progressive thirds contraction — the VCP "road"
   isBlueSky: boolean; // pivot within 2% of the 52-week high — no overhead supply
+  // Evidence cohort (full-history 8-cell grid, 20,061 bases, 1973-2026):
+  //   S = sky + >=16wk base + >=2x vol   (67.2% win / 16% stopped, n=323)
+  //   A = blue sky, any other mix        (56.7-59.6% win)
+  //   B = no sky, but >=16wk AND >=2x    (47.2% win)
+  //   C = everything else                (29-41% win, flat-to-negative means)
+  cohort: "S" | "A" | "B" | "C" | null;
 }
 
 export interface SetupAnalysis {
@@ -337,6 +343,16 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     confidence = 0.15;
   }
 
+  // Cohort grade for fresh breakouts (Type1/1b) from the measured factor grid
+  // (full-history study, 20,061 bases): S = sky+long+loud 67.2% win · A = any
+  // blue sky 56.7-59.6% · B = long+loud without sky 47.2% · C = rest 29-41%.
+  let cohort: "S" | "A" | "B" | "C" | null = null;
+  if (breakoutType === "Type1" || breakoutType === "Type1b") {
+    const longBase = priorBaseDays >= 80;
+    const loudVol = avgVolume > 0 && volume >= avgVolume * 2;
+    cohort = isBlueSky && longBase && loudVol ? "S" : isBlueSky ? "A" : longBase && loudVol ? "B" : "C";
+  }
+
   return {
     resistance,
     support,
@@ -377,6 +393,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     coilRatio,
     isStaircase,
     isBlueSky,
+    cohort,
   };
 }
 
