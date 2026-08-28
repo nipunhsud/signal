@@ -306,6 +306,7 @@ export interface MarketData {
   high: number;
   low: number;
   close: number;
+  prevClose?: number; // prior session close — day-gain for episodic-pivot detection
   volume: number;
   avgVolume: number;
   timestamp: Date;
@@ -1218,6 +1219,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         high: latest.high,
         low: latest.low,
         close: latest.close,
+        prevClose: allBars.length >= 2 ? allBars[allBars.length - 2].close : undefined,
         volume: latest.volume,
         avgVolume,
         timestamp: new Date(latest.date),

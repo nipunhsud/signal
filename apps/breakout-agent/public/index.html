@@ -1878,6 +1878,8 @@
                       ? '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                       : signal.signalType === 'extension'
                         ? '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>'
+                      : signal.signalType === 'ep'
+                        ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class: huge-volume repricing day, no trend requirement. Stop = event day low; wider risk, size accordingly."><span class="badge-dot"></span>⚡ EP · catalyst</span>'
                         : ''}
                   ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Price closed at/below the stop — trade is stopped out"><span class="badge-dot"></span>Stopped out</span>' : ''}
                   ${signal.confidence >= 90 && !signal.stoppedOut ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
@@ -4199,6 +4201,8 @@
                                 : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
                           : signal.signalType === 'extension'
                             ? `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
+                            : signal.signalType === 'ep'
+                            ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class repricing on huge volume; stop = event day low, wider risk"><span class="badge-dot"></span>⚡ EP</span>'
                             : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>';
                         const price = CUR + this.safeNum(signal.currentPrice, 2);
                         const levels = signal.signalType === 'breakout'

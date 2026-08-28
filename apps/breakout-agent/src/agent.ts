@@ -669,7 +669,7 @@ export class BreakoutAgent {
         latestForAsset?.stopLoss != null && data.close <= latestForAsset.stopLoss;
       const isActiveStreak =
         latestForAsset &&
-        latestForAsset.breakoutType !== "unknown" &&
+        ["Type1", "Type1b", "Type3"].includes(latestForAsset.breakoutType) &&
         latestForAsset.entryPrice != null &&
         lastRowAgeMs <= STREAK_MAX_GAP_MS &&
         !stopBreached;
@@ -848,6 +848,57 @@ export class BreakoutAgent {
         }
       }
 
+      // ── Episodic Pivot (EP): catalyst-class signal, separate from Type1 ──
+      // Trigger (validated on the 523-event study): volume >= 5x average AND
+      // day gain >= 8% on a green candle. NO trend requirement — EPs work BEST
+      // in broken stocks (below-200MA cohort: 50.4% win, +18.4% mean; post-
+      // crash: +42.4%). Entry = event close, stop = event day LOW (wider than
+      // -8%; different risk class, never blended into breakout stats).
+      const dayGainPct =
+        data.prevClose && data.prevClose > 0
+          ? ((data.close - data.prevClose) / data.prevClose) * 100
+          : 0;
+      const isEp =
+        volumeRatio >= 5 &&
+        dayGainPct >= 8 &&
+        data.close > data.open &&
+        breakoutAnalysis.liquidityOk;
+      if (isEp) {
+        const epToday = await db.breakoutSignal.findFirst({
+          where: {
+            asset,
+            breakoutType: "EP",
+            createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+        });
+        if (!epToday) {
+          const epAlert = volumeRatio >= 10; // study: >=10x is the strong cohort
+          await db.breakoutSignal.create({
+            data: {
+              asset,
+              assetType: mode === "etfs" ? "etf" : "stock",
+              confidence: epAlert ? 0.85 : 0.75,
+              agentDecision: `⚡ Episodic Pivot: +${dayGainPct.toFixed(1)}% on ${volumeRatio.toFixed(1)}x avg volume — catalyst repricing. Entry ${data.close.toFixed(2)}, stop = day low ${data.low.toFixed(2)} (${(((data.low - data.close) / data.close) * 100).toFixed(1)}%). Catalyst class: no trend requirement, wider risk, size accordingly.`,
+              shouldAlert: epAlert,
+              resistance: breakoutAnalysis.resistance,
+              support: breakoutAnalysis.support,
+              currentPrice: data.close,
+              entryPrice: data.close,
+              stopLoss: data.low,
+              breakoutType: "EP",
+              volumeRatio,
+              sector: breakoutAnalysis.sector,
+              industry: breakoutAnalysis.industry,
+              rsRating,
+              isBlueSky: breakoutAnalysis.isBlueSky,
+              liquidityOk: breakoutAnalysis.liquidityOk,
+              signalDate: data.timestamp,
+            },
+          });
+          console.log(`⚡ EP ${asset}: +${dayGainPct.toFixed(1)}% on ${volumeRatio.toFixed(1)}x vol${epAlert ? " (ALERT)" : ""}`);
+        }
+      }
+
       // Store setup signals (Type 2 green cone) in Signal table with metadata.
       // Only tradable handles (tight + ≥5 bars) become per-row signals; loose
       // "base" setups feed the market-breadth aggregate written at scan-end.
@@ -957,7 +1008,7 @@ export class BreakoutAgent {
     }
 
     // Type 1/1b/3 only alert during market hours (US 9:30-16:00 ET / NSE 9:15-15:30 IST, Mon-Fri)
-    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3") && !isMarketOpen(new Date(), regionOf(result.asset))) {
+    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3" || latestRecord.breakoutType === "EP") && !isMarketOpen(new Date(), regionOf(result.asset))) {
       console.log(
         `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
@@ -1003,7 +1054,7 @@ export class BreakoutAgent {
         ? `\nExpense Ratio: ${latestRecord.expenseRatio}%`
         : "";
 
-    const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : "Breakout";
+    const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : latestRecord.breakoutType === "EP" ? "⚡ Episodic Pivot (catalyst)" : "Breakout";
     const subject = `${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 

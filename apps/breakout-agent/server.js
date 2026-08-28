@@ -871,6 +871,7 @@ app.get('/api/signals', async (req, res) => {
       //   Type1  = fresh breakout (strong volume), signalType 'breakout'
       //   Type1b = clean breakout on weak volume, signalType 'breakout' + weakVolume flag
       //   Type3  = continuation, signalType 'extension'
+      const isEp = s.breakoutType === 'EP';
       const isType1 = s.breakoutType === 'Type1';
       const isType1b = s.breakoutType === 'Type1b';
       const isType3 = s.breakoutType === 'Type3';
@@ -881,7 +882,7 @@ app.get('/api/signals', async (req, res) => {
       // dead — keep it visible but flag it and drop it out of alerts/high-conf.
       const stoppedOut = persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
 
-      const signalType = isExtension ? 'extension' : 'breakout';
+      const signalType = isEp ? 'ep' : isExtension ? 'extension' : 'breakout';
       const pctGainFromEntry = (isExtension && entryResistance > 0)
         ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
         : null;
