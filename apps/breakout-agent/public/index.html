@@ -1118,6 +1118,13 @@
             return;
           }
 
+          // "c": jump to the full chart of whatever is in focus — the open
+          // drawer's asset, or (already on the chart page) a no-op.
+          if (e.key === 'c' && this.selectedAsset && this.view !== 'chart') {
+            this.openChartView(this.selectedAsset.asset);
+            return;
+          }
+
           // Nav list depends on which view is active: shortlist vs main table.
           // Without this, pressing space in the shortlist would jump into the dashboard's filtered signals.
           const navList = this.getNavList();
@@ -1900,7 +1907,7 @@
 
               <div class="px-5 pb-2 text-[10px] text-gray-500 flex justify-between font-mono">
                 <span>${assetPosition}</span>
-                <span>space next · ← → nav · esc close</span>
+                <span>space next · ← → nav · c chart · esc close</span>
               </div>
             </div>
 
@@ -1921,9 +1928,9 @@
                   const bl = bc && bc.asset === signal.asset && bc.data && Array.isArray(bc.data.bases) ? bc.data.bases : null;
                   if (!bl || !bl.length) return '';
                   const nb = bl[bl.length - 1];
-                  return `<div class="text-[11px] text-gray-500 mb-1.5">${bl.length} base${bl.length === 1 ? '' : 's'} in 2y · newest: ${nb.weeks} wks, ${nb.depthPct}% deep · <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">X-ray ⤢</button></div>`;
+                  return `<div class="text-[11px] text-gray-500 mb-1.5">${bl.length} base${bl.length === 1 ? '' : 's'} in 2y · newest: ${nb.weeks} wks, ${nb.depthPct}% deep · <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">all bases ⤢</button></div>`;
                 })()}
-                <div id="chart-container" style="height:260px;" class="w-full rounded overflow-hidden bg-gray-900"></div>
+                <div id="chart-container" style="height:260px;" onclick="dashboard.openChartView('${assetEscaped}')" title="Click for the full chart with base X-ray" class="w-full rounded overflow-hidden bg-gray-900 cursor-pointer hover:ring-1 hover:ring-blue-500/40 transition"></div>
                 ${this.chartLegend()}
               </div>
 
@@ -2651,6 +2658,7 @@
           ${item('✗', 'text-red-400', 'failed poke', 'Price wicked up to the pivot but closed well below it — sellers defended the level. 2+ inside a base means supply overhead.')}
           ${item('▲', 'text-yellow-500', 'breakout bar', 'The session that cleared the pivot and fired the signal.')}
           ${item('↳', 'text-gray-400', 'hi·lo in view', 'Chart furniture: the highest and lowest prices currently visible. Moves as you pan or zoom.')}
+          ${item('E', 'text-purple-300', 'earnings', 'Earnings report dates — the purple E under a bar marks the session the company reported (or is scheduled to).')}
         </div>`;
       }
 
@@ -2700,7 +2708,7 @@
                 </div>
               </div>
               <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
-              <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}</span><span>space next · ← → nav · esc back</span></div>
+              <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}<span id="next-earnings" class="text-purple-300"></span></span><span>space next · ← → nav · esc back</span></div>
               ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
             </div>
@@ -2742,12 +2750,43 @@
             chart.createIndicator('VOL', false, { height: 90 });
             this._applySignalOverlays(chart, sig, bars, { daily: this.chartTf !== 'w', skipBaseBox: true });
             this._ensureBases(chart, token);
+            this._addEarningsMarkers(chart, bars, token);
           })
           .catch(err => {
             const el = document.getElementById('chart-page-container');
             if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-sm">Chart failed to load</div>';
             console.error('Chart error:', err);
           });
+      }
+
+      // Earnings-date markers: purple E under each report-day bar (daily tf),
+      // and "next earnings" in the caption. Absent when FMP is paused.
+      async _addEarningsMarkers(chart, bars, token) {
+        try {
+          let ed = this._earnDatesCache;
+          if (!ed || ed.asset !== this.chartAsset) {
+            const r = await fetch(`/api/earnings-dates/${encodeURIComponent(this.chartAsset)}`);
+            ed = { asset: this.chartAsset, dates: r.ok ? ((await r.json()).dates || []) : [] };
+            this._earnDatesCache = ed;
+          }
+          const nextEl = document.getElementById('next-earnings');
+          if (nextEl) {
+            const today = new Date().toISOString().slice(0, 10);
+            const next = ed.dates.find((d) => d.date >= today);
+            nextEl.textContent = next ? ` · 📅 next earnings ${next.date}` : '';
+          }
+          if (token !== this._pageChartToken || this.view !== 'chart' || this.chartTf === 'w') return;
+          const byTime = new Map(bars.map((b) => [b.time, b]));
+          for (const d of ed.dates) {
+            const bar = byTime.get(d.date);
+            if (!bar) continue;
+            chart.createOverlay({
+              name: 'dqMark', lock: true,
+              points: [{ timestamp: new Date(bar.time + 'T00:00:00Z').getTime(), value: bar.low }],
+              extendData: { text: 'E', color: '#a855f7', baseline: 'top', dy: 14, size: 10 },
+            });
+          }
+        } catch (e) { /* markers are decoration — never break the chart */ }
       }
 
       // ── Base X-ray (/api/bases) ──
@@ -2896,7 +2935,7 @@
 
         el.innerHTML = `
           <div class="mb-3">
-            <h2 class="text-lg font-bold text-white">Base X-ray</h2>
+            <h2 class="text-lg font-bold text-white">Previous bases</h2>
             <p class="text-xs text-gray-500">Every base in the last 2 years — forming and resolved. Click a card to locate it on the chart.</p>
           </div>
           <div class="space-y-3">${shown.map(card).join('')}</div>
@@ -4189,6 +4228,7 @@
                                 <a href="${tvUrl}" target="_blank" rel="noopener noreferrer" class="row-asset text-blue-400 hover:text-blue-300 font-bold text-base tracking-tight" title="Open on TradingView">
                                   ${signal.asset}
                                 </a>
+                                <button onclick="dashboard.openChartView('${assetEscaped}'); event.stopPropagation();" class="text-gray-500 hover:text-blue-300 transition flex-shrink-0" title="Open full chart with base X-ray">⤢</button>
                                 <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${signal.assetType === 'etf' ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700/40' : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'}">
                                   ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
                                 </span>

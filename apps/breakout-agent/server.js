@@ -1821,6 +1821,32 @@ app.get('/og/pulse.png', async (req, res) => {
   }
 });
 
+// Earnings dates for chart markers. FMP /stable/earnings returns past AND
+// upcoming report dates; day-cached; fails open (empty = no markers) when FMP
+// is paused or the key is missing.
+const earnDatesCache = new Map(); // symbol -> { data, expiresAt }
+app.get('/api/earnings-dates/:symbol', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!/^[A-Z][A-Z0-9.\-^]{0,11}$/.test(symbol)) return res.status(400).json({ error: 'bad symbol' });
+  const cached = earnDatesCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.data);
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey || (await fmpOff())) return res.json({ symbol, dates: [] });
+  try {
+    const r = await fetch(`https://financialmodelingprep.com/stable/earnings?symbol=${encodeURIComponent(symbol)}&limit=12&apikey=${apiKey}`);
+    const rows = r.ok ? await r.json() : [];
+    const dates = (Array.isArray(rows) ? rows : [])
+      .map((x) => ({ date: String(x.date || '').slice(0, 10), reported: x.epsActual != null }))
+      .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const data = { symbol, dates };
+    earnDatesCache.set(symbol, { data, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+    res.json(data);
+  } catch (e) {
+    res.json({ symbol, dates: [] });
+  }
+});
+
 // ── Email capture (pulse page) ──────────────────────────────────────────────
 const subscribeHits = new Map(); // ip -> { count, resetAt } — light abuse guard
 app.post('/api/subscribe', async (req, res) => {
