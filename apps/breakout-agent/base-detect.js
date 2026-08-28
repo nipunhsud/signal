@@ -83,6 +83,16 @@ function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
   const secondHalf = range(inside.slice(Math.floor(n / 2)));
   const coilRatio = firstHalf > 0 ? secondHalf / firstHalf : 0;
 
+  // The "road": progressive contraction in thirds — Minervini's staircase.
+  // r1 >= r2 >= r3 (3% slack) with >=10% net shrink. Alone it predicts
+  // nothing (45.1% vs 44.2%), but INSIDE the coil+volume gate it separates
+  // 59.6%-win bases from 50.7% — real absorption vs lucky shape.
+  const t3 = Math.floor(n / 3);
+  const r1 = range(inside.slice(0, t3));
+  const r2 = range(inside.slice(t3, 2 * t3));
+  const r3 = range(inside.slice(2 * t3));
+  const isStaircase = t3 >= 3 && r1 > 0 && r2 <= r1 * 1.03 && r3 <= r2 * 1.03 && r3 < r1 * 0.9;
+
   // Blue sky: the pivot is (within 2% of) the highest price seen so far
   const priorHigh = Math.max(...bars.slice(0, pivotIdx + 1).map((b) => b.high));
   const isBlueSky = pivot >= priorHigh * 0.98;
@@ -117,6 +127,7 @@ function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
     upDownVolumeRatio: round(upDownVolumeRatio, 2),
     failedPokes,
     coilRatio: round(coilRatio, 2),
+    isStaircase,
     isBlueSky,
     // VCP-ish: tightening into the pivot on drying volume
     isVcpShape: coilRatio > 0 && coilRatio < 0.8 && volumeDryUp > 0 && volumeDryUp < 0.9,

@@ -363,6 +363,7 @@ export interface MarketData {
   expansionRatio?: number; // today's true range / base ATR(14) — breakout-bar expansion
   // Base-quality metrics (20-bar base window, today's bar excluded)
   upDownVolumeRatio?: number; // up-day volume / down-day volume — >1.5 = accumulation
+  isStaircase?: boolean; // thirds contracting progressively — Minervini's staircase
   failedPokes?: number; // bars that wicked within 0.5% of the pivot but closed >1% below it
   coilRatio?: number; // 2nd-half range / 1st-half range — <1 = tightening into the pivot
 }
@@ -469,6 +470,7 @@ interface BaseQualityMetrics {
   upDownVolumeRatio: number;
   failedPokes: number;
   coilRatio: number;
+  isStaircase: boolean;
 }
 
 /**
@@ -483,6 +485,7 @@ function calculateBaseQualityMetrics(allBars: any[]): BaseQualityMetrics {
     upDownVolumeRatio: 0,
     failedPokes: 0,
     coilRatio: 0,
+    isStaircase: false,
   };
   if (allBars.length < 22) return empty;
 
@@ -511,7 +514,14 @@ function calculateBaseQualityMetrics(allBars: any[]): BaseQualityMetrics {
   const secondHalfRange = range(base.slice(10));
   const coilRatio = firstHalfRange > 0 ? secondHalfRange / firstHalfRange : 0;
 
-  return { upDownVolumeRatio, failedPokes, coilRatio };
+  // Staircase (thirds contracting progressively): validated to stratify the
+  // VCP-gate cohort 59.6% vs 50.7% win in the base study.
+  const r1 = range(base.slice(0, 7));
+  const r2 = range(base.slice(7, 14));
+  const r3 = range(base.slice(14));
+  const isStaircase = r1 > 0 && r2 <= r1 * 1.03 && r3 <= r2 * 1.03 && r3 < r1 * 0.9;
+
+  return { upDownVolumeRatio, failedPokes, coilRatio, isStaircase };
 }
 
 function calculateBarsInRange(allBars: any[]): ConsolidationResult {
@@ -1258,6 +1268,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         upDownVolumeRatio: baseQuality.upDownVolumeRatio,
         failedPokes: baseQuality.failedPokes,
         coilRatio: baseQuality.coilRatio,
+        isStaircase: baseQuality.isStaircase,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });

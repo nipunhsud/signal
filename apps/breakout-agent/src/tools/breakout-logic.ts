@@ -48,6 +48,7 @@ export interface BreakoutAnalysis {
   upDownVolumeRatio: number; // up-day vol / down-day vol — >1.5 = accumulation
   failedPokes: number; // wicks that reached the pivot but closed >1% below it
   coilRatio: number; // 2nd-half range / 1st-half — <1 = tightening
+  isStaircase: boolean; // progressive thirds contraction — the VCP "road"
   isBlueSky: boolean; // pivot within 2% of the 52-week high — no overhead supply
 }
 
@@ -102,6 +103,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     upDownVolumeRatio = 0,
     failedPokes = 0,
     coilRatio = 0,
+    isStaircase = false,
   } = data;
   const MIN_STRUCTURE_BARS = 5;
   const MIN_AVG_VOLUME = 100_000; // Liquidity filter
@@ -268,6 +270,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     if (priorBaseRangePercent > 0 && priorBaseRangePercent < 10 && !isBlueSky) {
       confidence = Math.max(0.5, confidence - 0.06);
     }
+    // The "road" bonus: staircase alone predicts nothing, but inside the VCP
+    // gate it stratifies 59.6% vs 50.7% win (n=52 — bonus, not a hard gate,
+    // until live data grows the sample).
+    if (isVcp && isStaircase) confidence = Math.min(0.99, confidence + 0.03);
   } else if (breakoutType === "Type1b") {
     // Weak-volume clean breakout: same shape math as Type1 but capped at 85%
     // so it never outranks a true Type1 in the sorted list.
@@ -369,6 +375,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     upDownVolumeRatio,
     failedPokes,
     coilRatio,
+    isStaircase,
     isBlueSky,
   };
 }

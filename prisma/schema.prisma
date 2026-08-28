@@ -71,6 +71,7 @@ model BreakoutSignal {
   failedPokes Int @default(0) // bars that wicked to within 0.5% of the pivot but closed >1% below it
   isBlueSky Boolean @default(false) // pivot within 2% of the 52-week high — no trapped sellers overhead
   coilRatio Float? // base 2nd-half range / 1st-half range — <1 = tightening into the pivot
+  isStaircase Boolean @default(false) // progressive thirds contraction — the VCP "road"
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout

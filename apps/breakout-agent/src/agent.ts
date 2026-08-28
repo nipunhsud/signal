@@ -831,6 +831,7 @@ export class BreakoutAgent {
               failedPokes: breakoutAnalysis.failedPokes,
               isBlueSky: breakoutAnalysis.isBlueSky,
               coilRatio: breakoutAnalysis.coilRatio || null,
+              isStaircase: breakoutAnalysis.isStaircase,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
