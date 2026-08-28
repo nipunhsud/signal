@@ -915,6 +915,10 @@ app.get('/api/signals', async (req, res) => {
         barsInRange: s.barsInRange || 0,
         signalType,
         weakVolume,
+        // Extensions have two faces: price extended ABOVE entry (chasing zone)
+        // vs pulled back to/below entry while holding structure (retest — the
+        // second-chance zone). Same classification, different label.
+        extensionPhase: isExtension ? (pctGainFromEntry != null && pctGainFromEntry > 1 ? 'extended' : 'retest') : null,
         isVcp: s.isVcp === true,
         rsRating: s.rsRating != null ? Number(s.rsRating) : null,
         upDownVolumeRatio: s.upDownVolumeRatio != null ? Number(s.upDownVolumeRatio) : null,
