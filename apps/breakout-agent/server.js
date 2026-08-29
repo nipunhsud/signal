@@ -531,6 +531,23 @@ async function backfillRecentRs() {
       WHERE "createdAt" >= ${cutoff} AND "isVcp" = true
         AND ("coilRatio" IS NULL OR "volumeRatio" IS NULL)`;
     if (regraded || cleared) console.log(`[rs-backfill] VCP re-grade: ${regraded} recomputed, ${cleared} unverifiable badges cleared`);
+
+    // Cohort backfill for fresh breakouts minted before the column existed.
+    // Same 8-cell grid as breakout-logic.ts: S = sky + >=80d base + >=2x vol,
+    // A = any blue sky, B = long+loud without sky, C = rest. Only fills nulls
+    // with all three inputs present — the scanner's own verdict is never
+    // overwritten.
+    const cohortFilled = await db.$executeRaw`
+      UPDATE "BreakoutSignal"
+      SET "cohort" = CASE
+        WHEN "isBlueSky" AND "priorBaseDays" >= 80 AND "volumeRatio" >= 2 THEN 'S'
+        WHEN "isBlueSky" THEN 'A'
+        WHEN "priorBaseDays" >= 80 AND "volumeRatio" >= 2 THEN 'B'
+        ELSE 'C' END
+      WHERE "createdAt" >= ${cutoff} AND "cohort" IS NULL
+        AND "breakoutType" IN ('Type1', 'Type1b')
+        AND "volumeRatio" IS NOT NULL`;
+    if (cohortFilled) console.log(`[rs-backfill] cohort backfill: graded ${cohortFilled} rows`);
   } catch (e) {
     console.warn('[rs-backfill] failed:', e.message);
   }
