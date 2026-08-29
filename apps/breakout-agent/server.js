@@ -532,11 +532,17 @@ async function backfillRecentRs() {
         AND ("coilRatio" IS NULL OR "volumeRatio" IS NULL)`;
     if (regraded || cleared) console.log(`[rs-backfill] VCP re-grade: ${regraded} recomputed, ${cleared} unverifiable badges cleared`);
 
-    // Cohort backfill for fresh breakouts minted before the column existed.
-    // Same 8-cell grid as breakout-logic.ts: S = sky + >=80d base + >=2x vol,
-    // A = any blue sky, B = long+loud without sky, C = rest. Only fills nulls
-    // with all three inputs present — the scanner's own verdict is never
-    // overwritten.
+  } catch (e) {
+    console.warn('[rs-backfill] failed:', e.message);
+  }
+
+  // Cohort backfill for fresh breakouts minted before the column existed.
+  // Same 8-cell grid as breakout-logic.ts: S = sky + >=80d base + >=2x vol,
+  // A = any blue sky, B = long+loud without sky, C = rest. Only fills nulls
+  // with all three inputs present — the scanner's own verdict is never
+  // overwritten. Own error scope: an RS/FMP failure above must not starve it.
+  try {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const cohortFilled = await db.$executeRaw`
       UPDATE "BreakoutSignal"
       SET "cohort" = CASE
@@ -549,7 +555,7 @@ async function backfillRecentRs() {
         AND "volumeRatio" IS NOT NULL`;
     if (cohortFilled) console.log(`[rs-backfill] cohort backfill: graded ${cohortFilled} rows`);
   } catch (e) {
-    console.warn('[rs-backfill] failed:', e.message);
+    console.warn('[rs-backfill] cohort backfill failed:', e.message);
   }
 }
 setTimeout(backfillRecentRs, 20 * 1000); // after boot, once DB is warm
@@ -780,6 +786,8 @@ app.get('/api/signals', async (req, res) => {
           bs."coilRatio",
           bs."isStaircase",
           bs."cohort",
+          bs."volumeRatio",
+          bs."priorBaseDays",
           bs."extensionPriorBreakoutBarsAgo",
           bs."signalDate",
           bs."earningsTone",
@@ -826,6 +834,8 @@ app.get('/api/signals', async (req, res) => {
         "coilRatio",
         "isStaircase",
         "cohort",
+        "volumeRatio",
+        "priorBaseDays",
         "extensionPriorBreakoutBarsAgo",
         "signalDate",
         "earningsTone",
@@ -946,7 +956,15 @@ app.get('/api/signals', async (req, res) => {
         isBlueSky: s.isBlueSky === true,
         coilRatio: s.coilRatio != null ? Number(s.coilRatio) : null,
         isStaircase: s.isStaircase === true,
-        cohort: s.cohort || null,
+        // Read-time fallback mirrors the scanner's 8-cell grid so rows minted
+        // before the column existed still show a grade even if the DB
+        // backfill hasn't caught them yet. Never overrides a stored verdict.
+        cohort: s.cohort || (
+          (s.breakoutType === 'Type1' || s.breakoutType === 'Type1b') && s.volumeRatio != null
+            ? (s.isBlueSky && Number(s.priorBaseDays) >= 80 && Number(s.volumeRatio) >= 2 ? 'S'
+              : s.isBlueSky ? 'A'
+              : Number(s.priorBaseDays) >= 80 && Number(s.volumeRatio) >= 2 ? 'B' : 'C')
+            : null),
         displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
         firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
         entryResistance,
