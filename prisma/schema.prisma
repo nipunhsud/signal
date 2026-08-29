@@ -338,3 +338,20 @@ model TranscriptAnalysis {
   @@index([asset, createdAt])
   @@index([xPostedAt])
 }
+
+// Owned EOD price archive. Written by the scanner: seeded once per symbol
+// (250 bars), then extended with 1-2 bar deltas per day — cuts FMP bars
+// bandwidth ~130x and survives deploys. Prices are split/dividend-adjusted
+// as served by FMP at write time; a corporate action triggers a full-range
+// rewrite for that symbol (overlap-close check in market-data.ts).
+model DailyBar {
+  symbol String
+  date   String // trading day, "YYYY-MM-DD"
+  open   Float
+  high   Float
+  low    Float
+  close  Float
+  volume Float
+
+  @@id([symbol, date])
+}

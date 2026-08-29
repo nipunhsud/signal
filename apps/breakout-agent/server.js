@@ -578,7 +578,11 @@ app.post('/api/admin/fmp-toggle', async (req, res) => {
 });
 
 app.get('/api/admin/status', async (req, res) => {
-  res.json({ isAdmin: await isAdmin(req), fmpDisabled: await fmpOff() });
+  // dailyBars: rows in the owned EOD archive — watch it fill after the
+  // DailyBar rollout and grow by ~1 bar/symbol/day thereafter.
+  let dailyBars = null;
+  try { dailyBars = await db.dailyBar.count(); } catch {}
+  res.json({ isAdmin: await isAdmin(req), fmpDisabled: await fmpOff(), dailyBars });
 });
 
 // No requireAuth() here — that middleware redirects unauthenticated requests to

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { globalRateLimiter } from "./rate-limiter.js";
+import { db } from "../db.js";
 
 const cache = new Map<string, { data: MarketData; expires: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -45,6 +46,129 @@ function writeDiskEod(symbol: string, today: string, bars: any[]): void {
     fsCache.mkdirSync(CACHE_DIR, { recursive: true });
     fsCache.writeFileSync(cacheFile(symbol), JSON.stringify({ date: today, bars }));
   } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// DailyBar store: owned EOD history in Postgres. Bandwidth model: one 250-bar
+// pull per symbol EVER (seeded from the legacy disk cache when present, so
+// shipping this costs almost nothing), then ~2-bar deltas per day (~500 bytes
+// vs the old 67KB full re-pull). FMP serves split/dividend-ADJUSTED prices,
+// so a corporate action rewrites the whole history — the delta re-fetches the
+// last stored date as an overlap bar, and a close mismatch >0.2% triggers a
+// full-range refetch for that symbol. Yahoo-mode bars are NOT persisted:
+// mixing sources would trip the mismatch check on every symbol when FMP
+// comes back.
+
+const BAR_WINDOW = 250; // what indicators consume (~1 trading year → 52w high)
+const DB_BAR_TAKE = 1500; // history kept hot for repair + future research reads
+
+type EodBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
+
+// Legacy disk-cache read that ignores the date stamp — stale bars are a fine
+// DB seed because the delta fetch immediately tops them up.
+function readDiskEodAnyDate(symbol: string): EodBar[] | null {
+  if (!CACHE_DIR) return null;
+  try {
+    const raw = JSON.parse(fsCache.readFileSync(cacheFile(symbol), "utf8"));
+    if (Array.isArray(raw?.bars) && raw.bars.length) return raw.bars;
+  } catch {}
+  return null;
+}
+
+async function fetchFmpEodRange(
+  symbol: string,
+  apiKey: string,
+  params: Record<string, string | number>,
+): Promise<EodBar[]> {
+  const data = await globalRateLimiter.execute(async () => {
+    const res = await axios.get(
+      `https://financialmodelingprep.com/stable/historical-price-eod/full`,
+      { params: { symbol, apikey: apiKey, ...params }, timeout: 10000 },
+    );
+    return res.data;
+  });
+  const rows = Array.isArray(data) ? data : data?.historical;
+  if (!rows || rows.length === 0) return [];
+  return rows.reverse().map((d: any) => ({
+    date: d.date,
+    open: d.open,
+    high: d.high,
+    low: d.low,
+    close: d.close,
+    volume: d.volume || 0,
+  }));
+}
+
+async function loadStoredBars(symbol: string): Promise<EodBar[]> {
+  const rows = await db.dailyBar.findMany({
+    where: { symbol },
+    orderBy: { date: "desc" },
+    take: DB_BAR_TAKE,
+  });
+  return rows
+    .reverse()
+    .map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
+}
+
+// Persist finalized bars only — a bar dated today may still be mid-session.
+// Tomorrow's delta picks up the closed version.
+async function persistBars(symbol: string, bars: EodBar[], today: string): Promise<void> {
+  const finalized = bars.filter((b) => b.date < today);
+  if (!finalized.length) return;
+  await db.dailyBar.createMany({
+    data: finalized.map((b) => ({ symbol, ...b })),
+    skipDuplicates: true,
+  });
+}
+
+async function replaceBars(symbol: string, bars: EodBar[], today: string): Promise<void> {
+  const finalized = bars.filter((b) => b.date < today);
+  await db.$transaction([
+    db.dailyBar.deleteMany({ where: { symbol } }),
+    db.dailyBar.createMany({ data: finalized.map((b) => ({ symbol, ...b })) }),
+  ]);
+}
+
+async function getDailyBarsViaDb(symbol: string, apiKey: string, today: string): Promise<EodBar[]> {
+  let stored = await loadStoredBars(symbol);
+
+  if (stored.length === 0) {
+    const diskSeed = readDiskEodAnyDate(symbol);
+    if (diskSeed) {
+      await persistBars(symbol, diskSeed, today);
+      stored = diskSeed.filter((b) => b.date < today);
+    }
+    if (stored.length === 0) {
+      const full = await fetchFmpEodRange(symbol, apiKey, { limit: BAR_WINDOW });
+      if (!full.length) throw new Error(`No data found for ${symbol}`);
+      await persistBars(symbol, full, today);
+      return full.slice(-BAR_WINDOW);
+    }
+  }
+
+  const last = stored[stored.length - 1];
+  if (last.date >= today) return stored.slice(-BAR_WINDOW);
+
+  const delta = await fetchFmpEodRange(symbol, apiKey, { from: last.date });
+  if (delta.length) {
+    const overlap = delta.find((b) => b.date === last.date);
+    if (overlap && last.close > 0 && Math.abs(overlap.close - last.close) / last.close > 0.002) {
+      console.log(
+        `[Bars] ${symbol}: adjusted history changed on ${last.date} (${last.close} -> ${overlap.close}) — refetching full range`,
+      );
+      const full = await fetchFmpEodRange(symbol, apiKey, { from: stored[0].date });
+      if (full.length) {
+        await replaceBars(symbol, full, today);
+        return full.slice(-BAR_WINDOW);
+      }
+    }
+    const fresh = delta.filter((b) => b.date > last.date);
+    if (fresh.length) {
+      await persistBars(symbol, fresh, today);
+      return [...stored, ...fresh].slice(-BAR_WINDOW);
+    }
+  }
+  return stored.slice(-BAR_WINDOW);
 }
 
 // Emergency Yahoo-only mode: FMP_DISABLED=true routes daily bars and live
@@ -860,46 +984,28 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const hc = histCache.get(symbol);
       let eodBars: any[];
 
-      const diskBars = hc && hc.date === today ? null : readDiskEod(symbol, today);
       if (hc && hc.date === today) {
         eodBars = hc.bars;
-      } else if (diskBars) {
-        eodBars = diskBars;
-        histCache.set(symbol, { date: today, bars: eodBars });
       } else if (fmpDisabled) {
-        eodBars = await fetchYahooDailyBars(symbol);
+        // Yahoo-only mode stays ephemeral (memory + disk): persisting
+        // Yahoo-adjusted closes next to FMP-adjusted ones would trip the
+        // corporate-action mismatch check across the universe on re-enable.
+        const diskBars = readDiskEod(symbol, today);
+        if (diskBars) {
+          eodBars = diskBars;
+        } else {
+          eodBars = await fetchYahooDailyBars(symbol);
+          writeDiskEod(symbol, today, eodBars);
+        }
         const latestYd = new Date(eodBars[eodBars.length - 1].date);
         if ((Date.now() - latestYd.getTime()) / (1000 * 60 * 60 * 24) > 5) {
           throw new Error(`[STALE] ${symbol}: last Yahoo data from ${eodBars[eodBars.length - 1].date}`);
         }
         histCache.set(symbol, { date: today, bars: eodBars });
-        writeDiskEod(symbol, today, eodBars);
       } else {
-        const data = await globalRateLimiter.execute(async () => {
-          const priceResponse = await axios.get(
-            `https://financialmodelingprep.com/stable/historical-price-eod/full`,
-            {
-              params: { symbol, apikey: apiKey, limit: 250 },
-              timeout: 10000,
-            },
-          );
-          return priceResponse.data;
-        });
-
-        // Response is directly an array, not wrapped in {historical: [...]}
-        const historicalData = Array.isArray(data) ? data : data.historical;
-        if (!historicalData || historicalData.length === 0) {
-          throw new Error(`No data found for ${symbol}`);
-        }
-
-        eodBars = historicalData.reverse().map((d: any) => ({
-          date: d.date,
-          open: d.open,
-          high: d.high,
-          low: d.low,
-          close: d.close,
-          volume: d.volume,
-        }));
+        // Postgres-backed bar store: one-time seed, then ~2-bar daily deltas.
+        eodBars = await getDailyBarsViaDb(symbol, apiKey!, today);
+        if (!eodBars.length) throw new Error(`No data found for ${symbol}`);
 
         // Skip if latest data is > 5 days old
         const latestDate = new Date(eodBars[eodBars.length - 1].date);
@@ -909,7 +1015,6 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         }
 
         histCache.set(symbol, { date: today, bars: eodBars });
-        writeDiskEod(symbol, today, eodBars);
       }
 
       // Clone so the live-quote splice below never mutates the cached array.
