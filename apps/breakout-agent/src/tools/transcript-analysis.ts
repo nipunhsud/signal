@@ -3,6 +3,7 @@ import axios from "axios";
 import { z } from "zod";
 import { db } from "../db.js";
 import { globalRateLimiter } from "./rate-limiter.js";
+import { isFmpDisabled } from "./market-data.js";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const MAX_TRANSCRIPT_CHARS = 60000;
@@ -44,14 +45,48 @@ interface FmpTranscript {
   content: string;
 }
 
-async function fetchLatestTranscript(symbol: string): Promise<FmpTranscript | null> {
+// Latest transcript quarter/year via the v4 dates endpoint — a few hundred
+// bytes vs. the multi-MB full-history payload the bare v3 endpoint returns.
+// Lets the DB cache be checked BEFORE any transcript text is downloaded.
+async function fetchLatestTranscriptMeta(
+  symbol: string,
+): Promise<{ quarter: number; year: number; date: string } | null> {
   const apiKey = process.env.FMP_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey || isFmpDisabled()) return null;
 
   try {
     const data = await globalRateLimiter.execute(async () => {
       const res = await axios.get(
-        `https://financialmodelingprep.com/api/v3/earning_call_transcript/${symbol}?apikey=${apiKey}`,
+        `https://financialmodelingprep.com/api/v4/earning_call_transcript?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+        { timeout: 10000 },
+      );
+      return res.data;
+    });
+    // Rows are [quarter, year, date], newest first.
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const [q, y, date] = Array.isArray(data[0]) ? data[0] : [];
+    if (!Number(q) || !Number(y)) return null;
+    return { quarter: Number(q), year: Number(y), date: String(date || "") };
+  } catch (error: any) {
+    if (error?.response?.status === 404) return null;
+    console.warn(`[Transcript] FMP meta fetch failed for ${symbol}:`, error?.message);
+    return null;
+  }
+}
+
+// Download exactly one transcript (cache-miss path only).
+async function fetchTranscript(
+  symbol: string,
+  quarter: number,
+  year: number,
+): Promise<FmpTranscript | null> {
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey || isFmpDisabled()) return null;
+
+  try {
+    const data = await globalRateLimiter.execute(async () => {
+      const res = await axios.get(
+        `https://financialmodelingprep.com/api/v3/earning_call_transcript/${encodeURIComponent(symbol)}?quarter=${quarter}&year=${year}&apikey=${apiKey}`,
         { timeout: 10000 },
       );
       return res.data;
@@ -63,8 +98,8 @@ async function fetchLatestTranscript(symbol: string): Promise<FmpTranscript | nu
 
     return {
       symbol,
-      quarter: Number(latest.quarter) || 0,
-      year: Number(latest.year) || 0,
+      quarter: Number(latest.quarter) || quarter,
+      year: Number(latest.year) || year,
       date: latest.date || "",
       content: latest.content,
     };
@@ -184,15 +219,39 @@ export interface StoredTranscriptAnalysis extends TranscriptAnalysis {
 export async function getOrAnalyzeTranscript(
   symbol: string,
 ): Promise<StoredTranscriptAnalysis | null> {
-  const transcript = await fetchLatestTranscript(symbol);
-  if (!transcript || !transcript.quarter || !transcript.year) return null;
+  // Meta first (tiny payload), then cache check — the full transcript text is
+  // only ever downloaded once per (symbol, quarter). If FMP is unreachable or
+  // disabled, serve the newest stored analysis rather than nothing: a
+  // quarter-old tone read still beats a null for confidence scoring.
+  const meta = await fetchLatestTranscriptMeta(symbol);
+  if (!meta) {
+    const latest = await db.transcriptAnalysis.findFirst({
+      where: { asset: symbol },
+      orderBy: [{ year: "desc" }, { quarter: "desc" }],
+    });
+    if (!latest) return null;
+    return {
+      asset: latest.asset,
+      quarter: latest.quarter,
+      year: latest.year,
+      tone: latest.tone as TranscriptAnalysis["tone"],
+      toneScore: latest.toneScore,
+      guidanceDirection:
+        latest.guidanceDirection as TranscriptAnalysis["guidanceDirection"],
+      riskFlags: (latest.riskFlags as string[]) || [],
+      highlights: (latest.highlights as string[]) || [],
+      summary: latest.summary,
+      modelUsed: latest.modelUsed,
+      createdAt: latest.createdAt,
+    };
+  }
 
   const cached = await db.transcriptAnalysis.findUnique({
     where: {
       asset_quarter_year: {
         asset: symbol,
-        quarter: transcript.quarter,
-        year: transcript.year,
+        quarter: meta.quarter,
+        year: meta.year,
       },
     },
   });
@@ -213,6 +272,9 @@ export async function getOrAnalyzeTranscript(
       createdAt: cached.createdAt,
     };
   }
+
+  const transcript = await fetchTranscript(symbol, meta.quarter, meta.year);
+  if (!transcript) return null;
 
   const result = await analyzeWithClaude(symbol, transcript.content);
   if (!result) return null;

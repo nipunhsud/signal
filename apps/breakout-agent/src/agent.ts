@@ -98,9 +98,21 @@ export class BreakoutAgent {
   private breadthHandleCount = 0;
   private breadthTotalScanned = 0;
 
+  // Screener universe cached per trading day: membership churns daily at most,
+  // yet the uncached ~2-3MB screener payload was re-downloaded on every
+  // 15-minute scan (x2 modes) — pure bandwidth waste.
+  private universeCache = new Map<string, { date: string; symbols: string[] }>();
+
   async fetchAssetsFromFMP(mode: "stocks" | "etfs" = "stocks"): Promise<string[]> {
     const apiKey = process.env.FMP_API_KEY;
     if (!apiKey) throw new Error("FMP_API_KEY not set");
+
+    const cacheDate = new Date().toISOString().slice(0, 10);
+    const cachedUniverse = this.universeCache.get(mode);
+    if (cachedUniverse && cachedUniverse.date === cacheDate && cachedUniverse.symbols.length > 0) {
+      console.log(`[FMP] Universe cache hit for ${mode}: ${cachedUniverse.symbols.length} symbols (fetched earlier today)`);
+      return cachedUniverse.symbols;
+    }
 
     const MIN_MARKET_CAP = parseInt(process.env.MIN_MARKET_CAP || "300000000"); // $300M default
     const MIN_VOLUME = parseInt(process.env.MIN_VOLUME || "100000"); // 100k shares default
@@ -180,9 +192,15 @@ export class BreakoutAgent {
         }
       }
 
+      if (activeAssets.length > 0) this.universeCache.set(mode, { date: cacheDate, symbols: activeAssets });
       return activeAssets;
     } catch (error) {
       console.error("[FMP] Asset fetch failed:", error);
+      // Stale universe beats a skipped scan when the screener endpoint hiccups.
+      if (cachedUniverse && cachedUniverse.symbols.length > 0) {
+        console.warn(`[FMP] Falling back to ${cachedUniverse.date} cached universe (${cachedUniverse.symbols.length} ${mode})`);
+        return cachedUniverse.symbols;
+      }
       throw error;
     }
   }
