@@ -891,7 +891,11 @@ export class BreakoutAgent {
           },
         });
         if (!epToday) {
-          const epAlert = volumeRatio >= 10; // study: >=10x is the strong cohort
+          // Email at >=5x (was >=10x): the full-history re-study (11.5k events,
+          // Sep 2026) showed the 5-10x band OUTPERFORMS the >=10x tail —
+          // ~52.7% win / +5.9% mean vs 50.4% / +4.94% — so the 10x bar was
+          // filtering out the better half of the signal.
+          const epAlert = volumeRatio >= 5;
           await db.breakoutSignal.create({
             data: {
               asset,
