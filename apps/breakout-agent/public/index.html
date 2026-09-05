@@ -4214,6 +4214,16 @@
         if (forming) {
           return `<span class="badge ${cls} ring-1 opacity-70" title="${tip} — base still FORMING: price ${CUR}${this.safeNum(signal.currentPrice, 2)} has not closed above the pivot ${CUR}${this.safeNum(signal.basePivot, 2)} yet"><span class="badge-dot"></span>${g}${wk} · forming</span>`;
         }
+        // Beyond the 5% buy zone above the pivot = extension of that base's
+        // move, not an entry (VLO: broke its $316.57 pivot Aug 11, then kept
+        // re-minting "Breakout" rows at the rolling 20-bar high while +16%
+        // extended). The badge says so instead of dressing it as fresh.
+        const pctFromPivot = signal.basePivot > 0 && signal.currentPrice > 0
+          ? ((signal.currentPrice - signal.basePivot) / signal.basePivot) * 100
+          : null;
+        if (pctFromPivot != null && pctFromPivot > 5) {
+          return `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30" title="${tip} — broke out above the ${CUR}${this.safeNum(signal.basePivot, 2)} pivot and is now +${pctFromPivot.toFixed(1)}% beyond it: an EXTENSION, outside the 5% buy zone. Wait for a new base."><span class="badge-dot"></span>${g}${wk} · ext +${pctFromPivot.toFixed(0)}%</span>`;
+        }
         return `<span class="badge ${cls} ring-1" title="${tip}"><span class="badge-dot"></span>${g}${wk}${vt}</span>`;
       }
 
