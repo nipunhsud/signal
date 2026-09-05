@@ -886,6 +886,7 @@
           { id: 'sig:setup',     label: 'Filter: Setups',     desc: 'Show pre-breakout Type 2 setups', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'setup'); this.closePalette(); this.toast('Filter → Setups', { kind: 'info' }); } },
           { id: 'sig:extension', label: 'Filter: Extensions',           desc: 'Continuation of a recent breakout', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'extension'); this.closePalette(); this.toast('Filter → Extension', { kind: 'info' }); } },
           { id: 'sig:retest',    label: 'Filter: Retests',    desc: 'Alerted breakouts back within 3% of the buy point', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'retest'); this.closePalette(); this.toast('Filter → Retest', { kind: 'info' }); } },
+          { id: 'sig:ep',        label: 'Filter: Episodic Pivots', desc: 'Catalyst-class ⚡ EP repricings (≥5x volume, +8% day)', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'ep'); this.closePalette(); this.toast('Filter → EP', { kind: 'info' }); } },
           { id: 'ast:all',       label: 'Show: All assets',   desc: 'Stocks + ETFs', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'all'); this.closePalette(); } },
           { id: 'ast:stock',     label: 'Show: Stocks only',  desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'stock'); this.closePalette(); } },
           { id: 'ast:etf',       label: 'Show: ETFs only',    desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'etf'); this.closePalette(); } },
@@ -1882,7 +1883,9 @@
                     : signal.signalType === 'setup'
                       ? '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                       : signal.signalType === 'extension'
-                        ? (signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
+                        ? (signal.baseGrade && signal.baseGrade !== 'X'
+                            ? this.gradeBadgeHtml(signal)
+                            : signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
                       : signal.signalType === 'ep'
                         ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class: huge-volume repricing day, no trend requirement. Stop = event day low; wider risk, size accordingly."><span class="badge-dot"></span>⚡ EP · catalyst</span>'
                         : ''}
@@ -4256,7 +4259,9 @@
                                 ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" title="Volatility Contraction Pattern: tight base (ATR<2.5%), volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>'
                                 : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
                           : signal.signalType === 'extension'
-                            ? (signal.isRetest
+                            ? (signal.baseGrade && signal.baseGrade !== 'X'
+                                ? this.gradeBadgeHtml(signal)
+                                : signal.isRetest
                                 ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
                                 : `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`)
                             : signal.signalType === 'ep'

@@ -925,7 +925,20 @@ app.get('/api/signals', async (req, res) => {
       // dead — keep it visible but flag it and drop it out of alerts/high-conf.
       const stoppedOut = persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
 
-      const signalType = isEp ? 'ep' : isExtension ? 'extension' : 'breakout';
+      // Grade-first bucketing: a graded breakout more than 5% past its base
+      // pivot is an EXTENSION of that base's move, not an entry — it leaves
+      // the breakout list (VLO/MPC kept presenting as fresh breakout rows off
+      // the rolling Donchian while +16-21% extended past pivots they broke
+      // weeks earlier). Forming/fresh graded rows stay in the breakout list;
+      // the badge carries the state.
+      const pctFromPivot = s.basePivot > 0 && s.currentPrice > 0
+        ? ((s.currentPrice - s.basePivot) / s.basePivot) * 100 : null;
+      const gradeState = !s.baseGrade ? null
+        : s.baseGrade === 'X' ? 'unqualified'
+        : pctFromPivot != null && pctFromPivot < -0.1 ? 'forming'
+        : pctFromPivot != null && pctFromPivot > 5 ? 'extended'
+        : 'fresh';
+      const signalType = isEp ? 'ep' : (isExtension || gradeState === 'extended') ? 'extension' : 'breakout';
       const pctGainFromEntry = (isExtension && entryResistance > 0)
         ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
         : null;
@@ -987,6 +1000,8 @@ app.get('/api/signals', async (req, res) => {
         basePivot: s.basePivot != null ? Number(s.basePivot) : null,
         baseBars: s.baseBars != null ? Number(s.baseBars) : null,
         baseDepthPct: s.baseDepthPct != null ? Number(s.baseDepthPct) : null,
+        gradeState,
+        pctFromPivot: pctFromPivot != null ? Math.round(pctFromPivot * 10) / 10 : null,
         displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
         firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
         entryResistance,
