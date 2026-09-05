@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dashboard": "node server.js",
-    "lint": "prettier --check ."
+    "lint": "prettier --check .",
+    "test:nav": "node test/nav/nav.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
@@ -30,6 +31,7 @@
     "@types/node": "^20.0.0",
     "@types/node-cron": "^3.0.0",
     "@types/nodemailer": "^6.4.0",
+    "playwright-core": "^1.58.2",
     "typescript": "^5.0.0"
   }
 }

@@ -401,6 +401,7 @@
           <div class="border-t border-gray-800 my-1.5"></div>
           <div class="nav-menu-heading">Account</div>
           <button type="button" role="menuitem" class="nav-menu-item" onclick="dashboard.openBilling()">Manage billing <small>Stripe</small></button>
+          <button type="button" role="menuitem" class="nav-menu-item" onclick="dashboard.signOut()">Sign out</button>
           <div class="border-t border-gray-800 my-1.5"></div>
           <div class="nav-menu-heading">Keyboard</div>
           <div class="px-2 pb-1.5 grid gap-x-3 gap-y-1.5 text-[11px] text-gray-400" style="grid-template-columns:auto 1fr;">
@@ -496,6 +497,12 @@
     ];
     const VIEW_KEYS = VIEWS.map(v => v.key);
     const viewDef = (key) => VIEWS.find(v => v.key === key);
+    // Injected by the server (serveDashboard); empty when it isn't configured or
+    // the file is served statically. Only used to lazy-load Clerk for Sign out.
+    const CLERK_PUBLISHABLE_KEY = '__CLERK_PUBLISHABLE_KEY__'.startsWith('__') ? '' : '__CLERK_PUBLISHABLE_KEY__';
+    // Base-grade order for sort/filter: S › A+ › A › ungraded › X (unqualified).
+    const GRADE_RANK = { S: 5, 'A+': 4, A: 3, X: 1 };
+    const gradeRank = (s) => GRADE_RANK[s?.baseGrade] ?? 2;
     const CUR = REGION === 'in' ? '₹' : '$';
     const REGION_Q = 'region=' + REGION;
 
@@ -518,7 +525,9 @@
         // legacy single sortBy/sortDirection pref.
         this.sortKeys = Array.isArray(prefs.sortKeys) && prefs.sortKeys.length
           ? prefs.sortKeys.filter(k => k && k.key)
-          : [{ key: prefs.sortBy ?? 'confidence', dir: prefs.sortDirection ?? 'desc' }];
+          : prefs.sortBy
+            ? [{ key: prefs.sortBy, dir: prefs.sortDirection ?? 'desc' }]
+            : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]; // best-graded bases first
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
@@ -549,6 +558,7 @@
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
         // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
         this.qualityFilters = prefs.qualityFilters ?? { vcp: false, blueSky: false, leaders: false };
+        this.gradeFilter = prefs.gradeFilter ?? 'all'; // minimum base grade: 'all' | 'S' | 'A+' | 'A'
         this.sectorFilter = prefs.sectorFilter ?? 'all';
         this.assetTypeFilter = prefs.assetTypeFilter ?? 'all';
         this._searchDebounceTimer = null;
@@ -592,7 +602,7 @@
         if (name === 'home') name = 'dashboard';
         if (!VIEW_KEYS.includes(name)) return;
         this.view = name;
-        this.closeDrawer();
+        this.closeDrawer({ silent: true });
         this.closeNavMenu();
         if (!opts.fromHistory) this.syncUrl();
         if (name === 'backtest' && !this.backtest && !this.backtestLoading) {
@@ -615,42 +625,66 @@
       // /dashboard/chart/NVDA …) so refresh, back/forward and shared links land
       // on the same screen. The /$SYM and /s/SYM deep links are left alone: they
       // open the ticker drawer over Signals.
-      pathForState() {
-        if (this.view === 'chart' && this.chartAsset) return `${DASH_BASE}/chart/${encodeURIComponent(this.chartAsset)}`;
-        const v = viewDef(this.view);
-        return DASH_BASE + (v ? v.path : '');
+      // URL for the current state: the view path, plus ?s=SYM while the drawer
+      // is open so the mobile back gesture closes it and a ticker is linkable.
+      urlForState() {
+        const path = this.view === 'chart' && this.chartAsset
+          ? `${DASH_BASE}/chart/${encodeURIComponent(this.chartAsset)}`
+          : DASH_BASE + (viewDef(this.view)?.path || '');
+        const s = this.selectedAsset?.asset;
+        return s ? `${path}?s=${encodeURIComponent(s)}` : path;
       }
 
-      syncUrl(replace = false) {
-        const path = this.pathForState();
-        if (location.pathname === path) return;
-        try { history[replace ? 'replaceState' : 'pushState']({ view: this.view, asset: this.chartAsset }, '', path); } catch (e) {}
+      // Reflect state in the URL.
+      //  opts.replace — overwrite the current entry (stepping tickers inside an
+      //                 open drawer/chart) instead of adding one per step.
+      //  opts.tag     — label the entry we push ('drawer' | 'chart'); the entry
+      //                 also remembers `base`, the URL beneath it.
+      //  opts.pop     — we are undoing the thing pushed under that tag. Walk
+      //                 back only when the entry beneath is exactly where we're
+      //                 going (so open/close pairs don't pile up); otherwise
+      //                 rewrite this entry, keeping its lineage for a later pop.
+      syncUrl(opts = {}) {
+        const url = this.urlForState();
+        const cur = location.pathname + location.search;
+        if (cur === url) return;
+        try {
+          const st = history.state || {};
+          const here = { view: this.view, asset: this.chartAsset, drawer: this.selectedAsset?.asset || null };
+          if (opts.pop) {
+            if (st.pushed === opts.pop && st.base === url) { history.back(); return; }
+            history.replaceState({ ...st, ...here }, '', url);
+            return;
+          }
+          if (opts.replace) { history.replaceState({ ...st, ...here }, '', url); return; }
+          history.pushState({ ...here, pushed: opts.tag || null, base: cur }, '', url);
+        } catch (e) {}
       }
 
-      // Ticker from a /$NVDA or /s/NVDA deep link, else null.
-      deepLinkAsset() {
-        const m = decodeURIComponent(location.pathname).match(/^\/(?:\$|s\/)([A-Za-z.\-]+)$/);
-        return m ? m[1].toUpperCase() : null;
-      }
-
+      // Parse the URL into { view, asset (chart ticker), drawer (open ticker) }.
+      // /$NVDA and /s/NVDA deep links map to Signals with the drawer open.
       routeFromLocation() {
         const p = decodeURIComponent(location.pathname).replace(/\/+$/, '');
-        if (p !== DASH_BASE && !p.startsWith(DASH_BASE + '/')) return { view: 'dashboard', asset: this.deepLinkAsset() };
+        const qs = new URLSearchParams(location.search).get('s') || '';
+        const drawer = qs.replace(/[^A-Za-z.\-]/g, '').toUpperCase() || null;
+        if (p !== DASH_BASE && !p.startsWith(DASH_BASE + '/')) {
+          const m = p.match(/^\/(?:\$|s\/)([A-Za-z.\-]+)$/);
+          return { view: 'dashboard', asset: null, drawer: m ? m[1].toUpperCase() : drawer };
+        }
         const rest = p.slice(DASH_BASE.length);
         const chart = rest.match(/^\/chart\/([A-Za-z.\-]+)$/);
-        if (chart) return { view: 'chart', asset: chart[1].toUpperCase() };
+        if (chart) return { view: 'chart', asset: chart[1].toUpperCase(), drawer };
         const v = VIEWS.find(v => v.path && v.path === rest);
-        return { view: v ? v.key : 'dashboard' };
+        return { view: v ? v.key : 'dashboard', asset: null, drawer };
       }
 
+      // Bring the app to the state a URL describes (initial load, back/forward).
       applyRoute(route) {
         if (!route) return;
-        if (route.view === 'chart') {
-          this.openChartView(route.asset, { fromHistory: true });
-          return;
-        }
-        this.setView(route.view, { fromHistory: true });
-        if (route.asset) this.openAsset(route.asset);
+        if (route.view === 'chart') this.openChartView(route.asset, { fromHistory: true });
+        else this.setView(route.view, { fromHistory: true });
+        if (route.drawer) this.openAsset(route.drawer, { fromHistory: true });
+        else if (this.selectedAsset) this.closeDrawer({ fromHistory: true });
       }
 
       // Tab clicks: plain clicks route in-app; modifier/middle clicks fall
@@ -699,6 +733,39 @@
           this.toast(body.error || 'Billing portal unavailable', { kind: 'warn' });
         } catch (err) {
           this.toast('Billing portal unavailable', { kind: 'warn' });
+        }
+      }
+
+      // Clerk's browser SDK isn't needed for anything else here (the session
+      // cookie does the work), so it loads on demand for Sign out only.
+      loadClerk() {
+        if (window.Clerk?.loaded) return Promise.resolve(window.Clerk);
+        if (this._clerkLoading) return this._clerkLoading;
+        if (!CLERK_PUBLISHABLE_KEY) return Promise.reject(new Error('Clerk key not configured'));
+        // Frontend-API host is base64-encoded inside the key (after pk_live_/pk_test_).
+        const frontendApi = atob(CLERK_PUBLISHABLE_KEY.split('_').slice(2).join('_') || '').replace(/\$+$/, '');
+        this._clerkLoading = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+          script.async = true;
+          script.crossOrigin = 'anonymous';
+          script.dataset.clerkPublishableKey = CLERK_PUBLISHABLE_KEY;
+          script.onload = () => window.Clerk.load().then(() => resolve(window.Clerk), reject);
+          script.onerror = () => reject(new Error('Clerk SDK failed to load'));
+          document.head.appendChild(script);
+        }).catch(err => { this._clerkLoading = null; throw err; });
+        return this._clerkLoading;
+      }
+
+      async signOut() {
+        this.closeNavMenu();
+        this.toast('Signing out…', { kind: 'info' });
+        try {
+          const clerk = await this.loadClerk();
+          await clerk.signOut({ redirectUrl: '/' });
+        } catch (err) {
+          console.error('Sign-out failed:', err);
+          this.toast('Sign-out failed — try again from the home page', { kind: 'warn' });
         }
       }
 
@@ -838,7 +905,7 @@
       // Open the unified drawer for a ticker from any tab. Merges every list's
       // row for that ticker, signals winning on conflicts (it has the full
       // chart/levels data); other lists fill in price/sector when it's absent.
-      openAsset(asset) {
+      openAsset(asset, opts = {}) {
         const a = (asset || '').toUpperCase();
         const pools = [this.signals || [], this.winners?.winners || [], this.beatRaise?.stocks || [], this.unusualVolume?.stocks || []];
         let best = null;
@@ -846,7 +913,7 @@
           const hit = pool.find(s => (s.asset||'').toUpperCase() === a);
           if (hit) best = { ...hit, ...best };
         }
-        this.openDrawer(best || { asset });
+        this.openDrawer(best || { asset }, opts);
       }
 
       // Navigate to a specific list tab focused on a ticker (drawer strip links).
@@ -966,6 +1033,7 @@
             minConfidence: this.minConfidence,
             lookbackDays: this.lookbackDays,
             qualityFilters: this.qualityFilters,
+            gradeFilter: this.gradeFilter,
           }));
         } catch {}
       }
@@ -1027,6 +1095,14 @@
           { id: 'sig:extension', label: 'Filter: Extensions',           desc: 'Continuation of a recent breakout', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'extension'); this.closePalette(); this.toast('Filter → Extension', { kind: 'info' }); } },
           { id: 'sig:retest',    label: 'Filter: Retests',    desc: 'Alerted breakouts back within 3% of the buy point', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'retest'); this.closePalette(); this.toast('Filter → Retest', { kind: 'info' }); } },
           { id: 'sig:ep',        label: 'Filter: Episodic Pivots', desc: 'Catalyst-class ⚡ EP repricings (≥5x volume, +8% day)', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'ep'); this.closePalette(); this.toast('Filter → EP', { kind: 'info' }); } },
+          { id: 'grade:S',       label: 'Filter: Grade S only', desc: '16wk+ tight blue-sky bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'S'); this.closePalette(); this.toast('Grade ≥ S', { kind: 'info' }); } },
+          { id: 'grade:A+',      label: 'Filter: Grade A+ and better', desc: 'S and A+ bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A+'); this.closePalette(); this.toast('Grade ≥ A+', { kind: 'info' }); } },
+          { id: 'grade:A',       label: 'Filter: Any graded base', desc: 'S, A+ and A — drops ungraded and unqualified', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A'); this.closePalette(); this.toast('Grade ≥ A', { kind: 'info' }); } },
+          { id: 'grade:all',     label: 'Filter: Any grade', desc: 'Clear the grade filter', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'all'); this.closePalette(); } },
+          { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then confidence', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:conf',     label: 'Sort: Confidence', desc: 'Highest confidence first', kind: 'action', run: () => { this.setSortPreset([{ key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:rs',       label: 'Sort: Relative strength', desc: 'Leaders first', kind: 'action', run: () => { this.setSortPreset([{ key: 'rs', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:updated',  label: 'Sort: Newest first', desc: 'Most recently updated signals first', kind: 'action', run: () => { this.setSortPreset([{ key: 'updated', dir: 'desc' }]); this.closePalette(); } },
           { id: 'ast:all',       label: 'Show: All assets',   desc: 'Stocks + ETFs', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'all'); this.closePalette(); } },
           { id: 'ast:stock',     label: 'Show: Stocks only',  desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'stock'); this.closePalette(); } },
           { id: 'ast:etf',       label: 'Show: ETFs only',    desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'etf'); this.closePalette(); } },
@@ -1035,6 +1111,7 @@
           ...(this.selectedAsset?.asset ? [{ id: 'chart', label: `Open chart: ${this.selectedAsset.asset}`, desc: 'Full-page chart (c)', kind: 'action', run: () => { const a = this.selectedAsset.asset; this.closePalette(); this.openChartView(a); } }] : []),
           { id: 'pulse',         label: 'Go to Market Pulse', desc: 'Public market-health page', kind: 'action', run: () => { location.href = '/pulse'; } },
           { id: 'learn',         label: 'Go to Learn',        desc: 'Guides: VCP, RS, distribution days…', kind: 'action', run: () => { location.href = '/learn'; } },
+          { id: 'signout',       label: 'Sign out',           desc: '', kind: 'action', run: () => { this.closePalette(); this.signOut(); } },
           { id: 'scan',          label: 'Trigger scan now',   desc: 'Runs a fresh scan in the background', kind: 'action', run: async () => {
             this.closePalette();
             this.toast('Scan started…', { kind: 'info' });
@@ -1186,11 +1263,6 @@
 
       async init() {
         const signalsReady = this.fetchSignals();
-        // Deep link from X posts (dataquant.ai/$hpe): open that ticker's drawer
-        // once signals load.
-        // Both deep-link shapes: /$NVDA and the cashtag-free /s/NVDA used in tweets
-        const deepLink = this.deepLinkAsset();
-        if (deepLink) signalsReady.then(() => this.openAsset(deepLink));
         this.fetchShortlistLists();
         // Prefetch the other lists so cross-reference chips are accurate on
         // any tab without visiting each first. ponytail: one-shot; each list
@@ -1201,7 +1273,10 @@
         // Land on the view the URL names (/dashboard/winners, /dashboard/chart/NVDA …)
         // and follow the browser's back/forward buttons from then on.
         const initialRoute = this.routeFromLocation();
-        if (initialRoute.view !== 'dashboard') this.applyRoute({ ...initialRoute, asset: initialRoute.view === 'chart' ? initialRoute.asset : null });
+        if (initialRoute.view !== 'dashboard') this.applyRoute({ ...initialRoute, drawer: null });
+        // The drawer (?s=SYM, or an X deep link /$SYM, /s/SYM) waits for signals
+        // so it opens with the full row, not a bare ticker.
+        if (initialRoute.drawer) signalsReady.then(() => this.openAsset(initialRoute.drawer, { fromHistory: true }));
         window.addEventListener('popstate', () => this.applyRoute(this.routeFromLocation()));
         // ⋯ menu closes on any click outside it.
         document.addEventListener('click', (e) => {
@@ -1276,11 +1351,14 @@
               e.target.blur();
               return;
             }
+            if (this.selectedAsset) {
+              this.closeDrawer();
+              return;
+            }
             if (this.view === 'chart') {
               this.backFromChart();
               return;
             }
-            this.closeDrawer();
             return;
           }
 
@@ -1331,36 +1409,15 @@
               : 0;
             if (!step) return;
             e.preventDefault();
-            const idx = navList.findIndex(s => s.asset === this.chartAsset);
-            const cur = idx >= 0 ? idx : this.currentAssetIndex;
-            this.currentAssetIndex = (cur + step + navList.length) % navList.length;
-            this.openChartView(navList[this.currentAssetIndex].asset);
+            this.stepChart(step);
             return;
           }
 
-          // Re-sync from the drawer that's actually open: openAsset (row
-          // clicks) never updates currentAssetIndex, so stepping from the
-          // stale value jumped to an unrelated ticker on the first keypress.
-          const openAssetName = this.selectedAsset?.asset;
-          if (openAssetName) {
-            const oi = navList.findIndex(s => s.asset === openAssetName);
-            if (oi >= 0) this.currentAssetIndex = oi;
-          }
-          if (this.currentAssetIndex >= navList.length) this.currentAssetIndex = 0;
-
-          // openAsset (not openDrawer) so tickers that only exist in the
-          // Winners/B&R/UV pools still get their full merged drawer data.
-          if (e.code === 'Space') {
-            e.preventDefault();
-            this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
-            this.openAsset(navList[this.currentAssetIndex].asset);
-          } else if (e.code === 'ArrowLeft') {
-            this.currentAssetIndex = (this.currentAssetIndex - 1 + navList.length) % navList.length;
-            this.openAsset(navList[this.currentAssetIndex].asset);
-          } else if (e.code === 'ArrowRight') {
-            this.currentAssetIndex = (this.currentAssetIndex + 1) % navList.length;
-            this.openAsset(navList[this.currentAssetIndex].asset);
-          }
+          // space / → next, ← previous — same walk as the drawer's arrow buttons.
+          const step = e.code === 'Space' || e.code === 'ArrowRight' ? 1 : e.code === 'ArrowLeft' ? -1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          this.stepAsset(step);
         });
 
         // Drawer resize handling
@@ -2023,14 +2080,32 @@
         }
       }
 
-      openDrawer(signal) {
+      openDrawer(signal, opts = {}) {
+        const wasOpen = !!this.selectedAsset;
         this.selectedAsset = signal;
         this.renderDrawer();
+        // On the chart page the drawer is part of the chart's entry (replace);
+        // on a list it gets its own so the back gesture closes it.
+        if (!opts.fromHistory) this.syncUrl({ tag: 'drawer', replace: wasOpen || this.view === 'chart' });
       }
 
-      closeDrawer() {
+      // opts.silent: the caller owns the URL (tab switch pushes its own entry).
+      // opts.fromHistory: the URL already changed (back button). Otherwise pop
+      // the entry we pushed when the drawer opened.
+      closeDrawer(opts = {}) {
+        const wasOpen = !!this.selectedAsset;
         this.selectedAsset = null;
         this.renderDrawer();
+        if (wasOpen && !opts.silent && !opts.fromHistory) this.syncUrl({ pop: 'drawer' });
+      }
+
+      // Chart page: the drawer changes the chart pane's width — let klinecharts
+      // re-measure once the 0.2s width transition ends, and reflect open/closed
+      // on the header's Details button without rebuilding the chart.
+      _afterDrawerResize(open) {
+        const b = document.getElementById('chart-details-btn');
+        if (b) b.className = `px-2.5 py-1.5 rounded-md text-xs font-semibold transition ${open ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60'}`;
+        if (this.view === 'chart') setTimeout(() => { try { this._pageKline?.resize?.(); } catch (e) {} }, 230);
       }
 
       renderDrawer() {
@@ -2041,12 +2116,14 @@
           drawer.style.width = '0px';
           drawer.innerHTML = '';
           app.classList.remove('drawer-open');
+          this._afterDrawerResize(false);
           return;
         }
         // Cap at the viewport: a desktop-persisted drawer width (up to 900px)
         // must not overflow a phone screen and squeeze the chart pane.
         drawer.style.width = Math.min(this.drawerWidth, window.innerWidth) + 'px';
         app.classList.add('drawer-open');
+        this._afterDrawerResize(true);
 
         const signal = this.selectedAsset;
         const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
@@ -2149,9 +2226,13 @@
                 `;
               })()}
 
-              <div class="px-5 pb-2 text-[10px] text-gray-500 flex justify-between font-mono">
-                <span>${assetPosition}</span>
-                <span>space next · ← → nav · c chart · esc close</span>
+              <div class="px-5 pb-2 text-[10px] text-gray-500 flex justify-between items-center font-mono">
+                <span class="inline-flex items-center gap-1">
+                  <button onclick="dashboard.stepAsset(-1)" class="w-6 h-6 rounded inline-flex items-center justify-center text-xs text-gray-300 bg-gray-700/60 hover:bg-gray-600 hover:text-white transition" aria-label="Previous ticker" title="Previous (←)">←</button>
+                  <span class="px-1 tabular-nums">${assetPosition || '—'}</span>
+                  <button onclick="dashboard.stepAsset(1)" class="w-6 h-6 rounded inline-flex items-center justify-center text-xs text-gray-300 bg-gray-700/60 hover:bg-gray-600 hover:text-white transition" aria-label="Next ticker" title="Next (space / →)">→</button>
+                </span>
+                <span class="hidden sm:inline">space next · ← → nav · c chart · esc close</span>
               </div>
             </div>
 
@@ -2863,14 +2944,18 @@
 
       openChartView(asset, opts = {}) {
         if (!asset) return;
-        if (this.view !== 'chart') this._chartReturnView = this.view;
+        const wasChart = this.view === 'chart';
+        if (!wasChart) this._chartReturnView = this.view;
         if (this.chartAsset !== asset) this._showAllBases = false;
         this.chartAsset = asset;
         this.view = 'chart';
         this._chartKey = null; // force rebuild
-        this.closeDrawer();
         this.closeNavMenu();
-        if (!opts.fromHistory) this.syncUrl();
+        // The drawer stays open on the chart page and follows the ticker.
+        if (this.selectedAsset && this.selectedAsset.asset !== asset) this.openAsset(asset, { fromHistory: true });
+        // Stepping ticker-to-ticker on the chart replaces the entry; arriving
+        // from a list pushes one, which backFromChart() pops again.
+        if (!opts.fromHistory) this.syncUrl({ tag: 'chart', replace: wasChart });
         this.render();
       }
 
@@ -2878,8 +2963,56 @@
         this._disposePageChart();
         this._chartKey = null;
         this.view = VIEW_KEYS.includes(this._chartReturnView) ? this._chartReturnView : 'dashboard';
-        this.syncUrl();
+        this.syncUrl({ pop: 'chart' });
         this.render();
+      }
+
+      // Prev/next ticker for whatever is open: the chart page steps the chart
+      // (the drawer follows), a list view steps the drawer. Re-syncs from the
+      // ticker actually showing, since row clicks never touch currentAssetIndex.
+      stepAsset(step) {
+        if (this.view === 'chart') return this.stepChart(step);
+        const navList = this.getNavList();
+        if (!navList.length) return;
+        const cur = navList.findIndex(s => s.asset === this.selectedAsset?.asset);
+        const from = cur >= 0 ? cur : Math.min(this.currentAssetIndex, navList.length - 1);
+        this.currentAssetIndex = (from + step + navList.length) % navList.length;
+        // openAsset (not openDrawer) so tickers that only exist in the
+        // Winners/B&R/UV pools still get their full merged drawer data.
+        this.openAsset(navList[this.currentAssetIndex].asset);
+      }
+
+      // Prev/next ticker on the chart page, in the order of the list it was
+      // opened from — the same walk as space / ← →.
+      stepChart(step) {
+        const navList = this.getNavList();
+        if (!navList.length) return;
+        const idx = navList.findIndex(s => s.asset === this.chartAsset);
+        const cur = idx >= 0 ? idx : this.currentAssetIndex;
+        this.currentAssetIndex = (cur + step + navList.length) % navList.length;
+        this.openChartView(navList[this.currentAssetIndex].asset);
+      }
+
+      // Header control for stepChart(): "3 / 24 · Winners" with arrows. Hidden
+      // when the originating list is empty (e.g. an any-ticker search).
+      chartStepperHtml() {
+        const navList = this.getNavList();
+        if (!navList.length) return '';
+        const idx = navList.findIndex(s => s.asset === this.chartAsset);
+        const listLabel = viewDef(this._chartReturnView)?.label || 'Signals';
+        const pos = idx >= 0 ? `${idx + 1} / ${navList.length}` : `— / ${navList.length}`;
+        const btn = 'px-2.5 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition';
+        return `
+          <div class="inline-flex items-center rounded-md ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" title="Step through the ${listLabel} list (space / ← →)">
+            <button onclick="dashboard.stepChart(-1)" class="${btn}" aria-label="Previous ticker">←</button>
+            <span class="px-2 text-[11px] text-gray-400 tabular-nums font-mono whitespace-nowrap">${pos} <span class="text-gray-600">·</span> ${listLabel}</span>
+            <button onclick="dashboard.stepChart(1)" class="${btn}" aria-label="Next ticker">→</button>
+          </div>`;
+      }
+
+      toggleChartDrawer() {
+        if (this.selectedAsset) this.closeDrawer();
+        else this.openAsset(this.chartAsset);
       }
 
       setChartRange(r) {
@@ -2922,7 +3055,13 @@
         // Auto-refresh guard: fetchSignals() re-renders every 5s — leave the live
         // chart DOM alone unless asset/range/tf/MA state actually changed.
         const key = [this.chartAsset, this.chartRange, this.chartTf, this.chartMA50, this.chartMA200].join('|');
-        if (key === this._chartKey && document.getElementById('chart-page-container')) return;
+        if (key === this._chartKey && document.getElementById('chart-page-container')) {
+          // Signals can arrive after the first paint (direct load of a chart
+          // URL): keep the list stepper current without rebuilding the chart.
+          const st = document.getElementById('chart-stepper');
+          if (st) st.innerHTML = this.chartStepperHtml();
+          return;
+        }
         this._chartKey = key;
 
         const sig = (this.signals || []).find(s => s.asset === this.chartAsset) || null;
@@ -2940,6 +3079,8 @@
                   <h1 class="text-2xl font-bold font-mono tracking-tight text-white">${this.chartAsset}</h1>
                   ${price ? `<span class="font-mono text-lg text-gray-300 tabular-nums">${price}</span>` : ''}
                   <a href="${this.getTradingViewUrl(this.chartAsset)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">TradingView ↗</a>
+                  <span id="chart-stepper" class="contents">${this.chartStepperHtml()}</span>
+                  <button id="chart-details-btn" onclick="dashboard.toggleChartDrawer()" class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition ${this.selectedAsset ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60'}" title="Signal details, levels, earnings and shortlist in the side panel">Details</button>
                   <!-- Any-ticker search: works for symbols the agent never flagged
                        (chart/bases are Yahoo-backed) — those just render without
                        signal levels. Datalist suggests known signals + shortlist. -->
@@ -3482,6 +3623,13 @@
         if (q.blueSky) filtered = filtered.filter(s => s.isBlueSky);
         if (q.leaders) filtered = filtered.filter(s => s.rsRating != null && s.rsRating >= 70);
 
+        // Minimum base grade (S ⊂ A+ ⊂ A). Ungraded rows (setups, EPs) and
+        // unqualified bases drop out whenever a minimum is set.
+        if (this.gradeFilter && this.gradeFilter !== 'all') {
+          const min = GRADE_RANK[this.gradeFilter] || 0;
+          filtered = filtered.filter(s => s.baseGrade && s.baseGrade !== 'X' && gradeRank(s) >= min);
+        }
+
         if (this.filtering) {
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
         }
@@ -3495,8 +3643,12 @@
           asset: (s) => s.asset,
           rs: (s) => s.rsRating,
           earnings: (s) => s.earningsSortScore,
+          grade: (s) => gradeRank(s),
+          sector: (s) => s.sector || null,
+          price: (s) => s.currentPrice || null,
+          updated: (s) => new Date(s.createdAt).getTime() || null,
         };
-        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'confidence', dir: 'desc' }];
+        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }];
         filtered.sort((a, b) => {
           if (!!a.stoppedOut !== !!b.stoppedOut) return a.stoppedOut ? 1 : -1;
           for (const { key, dir } of keys) {
@@ -3519,7 +3671,7 @@
 
       toggleSort(field, additive = false) {
         // Numeric columns start descending (best first); Asset starts A→Z.
-        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc' };
+        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc' };
         const keys = [...(this.sortKeys || [])];
         const i = keys.findIndex(k => k.key === field);
         if (additive) {
@@ -3534,6 +3686,14 @@
           keys.unshift({ key: field, dir: defaults[field] || 'desc' });
         }
         this.sortKeys = keys.slice(0, 3); // deeper than 3 levels is noise
+        this.savePrefs();
+        this.render();
+      }
+
+      // Palette / mobile entry point for a whole sort order (headers are hidden
+      // in the stacked mobile layout).
+      setSortPreset(keys) {
+        this.sortKeys = keys.slice(0, 3);
         this.savePrefs();
         this.render();
       }
@@ -3562,7 +3722,7 @@
         this.assetTypeFilter = 'stock';
         this.sectorFilter = sector;
         this.savePrefs();
-        this.closeDrawer();
+        this.closeDrawer({ silent: true });
         this.setView('dashboard');
         this.fetchSignals();
         this.toast(`${sector} stocks`, { kind: 'info' });
@@ -3588,6 +3748,7 @@
         this.assetTypeFilter = 'all';
         this.sectorFilter = 'all';
         this.qualityFilters = { vcp: false, blueSky: false, leaders: false };
+        this.gradeFilter = 'all';
         this.savePrefs();
         this.fetchSignals();
         this.toast('Filters reset', { kind: 'info' });
@@ -4741,6 +4902,12 @@
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.blueSky ? 'bg-sky-500/20 text-sky-300 ring-sky-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">Blue Sky</button>
                     <button onclick="dashboard.toggleQualityFilter('leaders')" data-tip="Only leaders: relative strength 70+, i.e. outperforming at least 70% of the scanned market — O'Neil and Minervini's minimum bar. Hides signals whose RS isn't computed yet."
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.leaders ? 'bg-green-500/20 text-green-300 ring-green-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">RS ≥ 70</button>
+                    <span class="w-px h-4 bg-gray-700 mx-0.5"></span>
+                    <!-- Minimum base grade: S ⊂ A+ ⊂ A. Picking A+ shows S and A+. -->
+                    <div class="inline-flex items-center rounded ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" data-tip="Minimum base grade. S = 16wk+ tight blue-sky base (62.6% historical win) · A+ = 5wk+ (57.7%) · A = any blue-sky base (54.8%). Picking A+ shows S and A+; ungraded setups and unqualified bases drop out.">
+                      <span class="pl-2 pr-1.5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Grade</span>
+                      ${[['all', 'Any'], ['S', 'S'], ['A+', 'A+'], ['A', 'A']].map(([v, l]) => `<button onclick="dashboard.setFilter('gradeFilter', '${v}')" class="px-2 py-1 text-xs font-semibold transition ${this.gradeFilter === v ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white'}">${l}</button>`).join('')}
+                    </div>
                   </div>
 
                 </div>
@@ -4760,6 +4927,7 @@
                 if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
                 if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
                 if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
+                if (this.gradeFilter && this.gradeFilter !== 'all') chips.push({ label: `Grade ≥ ${this.gradeFilter}`, clear: `dashboard.setFilter('gradeFilter', 'all')` });
                 if (chips.length === 0) return '';
                 return `
                 <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
@@ -4829,18 +4997,18 @@
                         <th style="min-width:160px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings', event.shiftKey);">
                           <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> ${this.sortIndicator('earnings')}
                         </th>
-                        <th style="min-width:140px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
-                        <th style="min-width:120px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                          <span data-tip="Actionable = fresh breakout from a clean base. Setup = pre-breakout consolidation. Extension = continuation of a recent breakout.">Signal</span>
+                        <th style="min-width:140px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('sector', event.shiftKey);">Sector ${this.sortIndicator('sector')}</th>
+                        <th style="min-width:120px;" title="Click to sort by base grade (S › A+ › A) · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('grade', event.shiftKey);">
+                          <span data-tip="Actionable = fresh breakout from a clean base. Setup = pre-breakout consolidation. Extension = continuation of a recent breakout. Sorts by base grade: S › A+ › A › ungraded › unqualified.">Signal</span> ${this.sortIndicator('grade')}
                         </th>
-                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:90px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('price', event.shiftKey);">Price ${this.sortIndicator('price')}</th>
                         <th style="min-width:150px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                           <span data-tip="R = Resistance (breakout level). S = Support (recent low). Entry = original breakout resistance for extensions.">Levels</span>
                         </th>
                         <th style="min-width:170px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                           <span data-tip="Handle = tight late-stage consolidation before breakout. Base = broader flat consolidation zone. 'from MA20' = % distance from 20-day moving average.">Detail</span>
                         </th>
-                        <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Updated</th>
+                        <th style="min-width:80px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('updated', event.shiftKey);">Updated ${this.sortIndicator('updated')}</th>
                       </tr>
                     </thead>
                     <tbody>
