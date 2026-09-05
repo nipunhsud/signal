@@ -4206,6 +4206,14 @@
           'A':  ['bg-sky-500/15 text-sky-300 ring-sky-500/30',       'Grade A — blue-sky base · 54.8% historical win, 32.1% stop-touch'],
         };
         const [cls, tip] = styles[g] || styles['A'];
+        // Price still under the base pivot = the base hasn't resolved. Show
+        // "forming" instead of the volume tag — the tag describes a breakout
+        // bar, and there hasn't been one (NVDA wore "power" off its earnings
+        // day's volume while sitting 3.6% below its pivot).
+        const forming = signal.basePivot > 0 && signal.currentPrice > 0 && signal.currentPrice < signal.basePivot * 0.999;
+        if (forming) {
+          return `<span class="badge ${cls} ring-1 opacity-70" title="${tip} — base still FORMING: price ${CUR}${this.safeNum(signal.currentPrice, 2)} has not closed above the pivot ${CUR}${this.safeNum(signal.basePivot, 2)} yet"><span class="badge-dot"></span>${g}${wk} · forming</span>`;
+        }
         return `<span class="badge ${cls} ring-1" title="${tip}"><span class="badge-dot"></span>${g}${wk}${vt}</span>`;
       }
 
