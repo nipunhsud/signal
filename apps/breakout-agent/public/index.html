@@ -1872,7 +1872,9 @@
                     ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
                   </span>
                   ${signal.signalType === 'breakout'
-                    ? (signal.weakVolume
+                    ? (signal.baseGrade
+                        ? this.gradeBadgeHtml(signal)
+                        : signal.weakVolume
                         ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
                         : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
                     : signal.signalType === 'setup'
@@ -4189,6 +4191,24 @@
         `;
       }
 
+      // Grade badge (graded base system, Sep 2026): the stored evidence tier
+      // replaces the old type/volume pills wherever a grade exists. S/A+/A are
+      // the actionable tiers; X = evaluated and unqualified under the rules.
+      gradeBadgeHtml(signal) {
+        const g = signal.baseGrade;
+        if (!g) return '';
+        const wk = signal.baseBars ? ` · ${Math.round(signal.baseBars / 5)}wk` : '';
+        const vt = signal.volumeTag ? ` · ${signal.volumeTag}` : '';
+        if (g === 'X') return `<span class="badge bg-gray-600/20 text-gray-400 ring-1 ring-gray-600/40" title="Unqualified under the graded base rules — no blue-sky pivot, base >25% deep, or below the 200MA at signal time (32% historical win). Not alerted."><span class="badge-dot"></span>Unqualified${wk}</span>`;
+        const styles = {
+          'S':  ['bg-amber-500/15 text-amber-300 ring-amber-500/30', 'Grade S — 16wk+ tight blue-sky base · 62.6% historical win, 11.6% stop-touch (210k-breakout full-history study)'],
+          'A+': ['bg-green-500/15 text-green-400 ring-green-500/30', 'Grade A+ — 5wk+ tight blue-sky base · 57.7% historical win, 22.6% stop-touch'],
+          'A':  ['bg-sky-500/15 text-sky-300 ring-sky-500/30',       'Grade A — blue-sky base · 54.8% historical win, 32.1% stop-touch'],
+        };
+        const [cls, tip] = styles[g] || styles['A'];
+        return `<span class="badge ${cls} ring-1" title="${tip}"><span class="badge-dot"></span>${g}${wk}${vt}</span>`;
+      }
+
       // One signals-table <tr>. sourceExpr is the JS expression (as a string)
       // the row's onclick resolves its backing list from — main-table rows use
       // the filtered list, the Tracking section uses dashboard.trackingSignals.
@@ -4198,7 +4218,9 @@
                         const inShortlist = this.isInShortlist(signal.asset);
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
                         const signalLabel = signal.signalType === 'breakout'
-                          ? (signal.weakVolume
+                          ? (signal.baseGrade
+                              ? this.gradeBadgeHtml(signal)
+                              : signal.weakVolume
                               ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
                               : signal.isVcp
                                 ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" title="Volatility Contraction Pattern: tight base (ATR<2.5%), volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>'

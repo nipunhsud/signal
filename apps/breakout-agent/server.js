@@ -979,6 +979,14 @@ app.get('/api/signals', async (req, res) => {
               : s.isBlueSky ? 'A'
               : Number(s.priorBaseDays) >= 80 && Number(s.volumeRatio) >= 2 ? 'B' : 'C')
             : null),
+        // Graded system (Sep 2026): stored grade travels to the UI verbatim —
+        // S/A+/A actionable tiers, "X" = evaluated and unqualified, null = not
+        // yet evaluated (pre-backfill rows, Yahoo-404 assets).
+        baseGrade: s.baseGrade || null,
+        volumeTag: s.volumeTag || null,
+        basePivot: s.basePivot != null ? Number(s.basePivot) : null,
+        baseBars: s.baseBars != null ? Number(s.baseBars) : null,
+        baseDepthPct: s.baseDepthPct != null ? Number(s.baseDepthPct) : null,
         displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
         firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
         entryResistance,
