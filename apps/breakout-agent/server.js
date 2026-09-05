@@ -210,6 +210,16 @@ function serveLanding(req, res) {
 app.get('/', serveLanding);
 app.get('/landing.html', serveLanding);
 
+// Dashboard SPA shell. Same key injection as the landing so the ⋯ menu's
+// Sign out can lazy-load the Clerk browser SDK; nothing else needs it.
+function serveDashboard(req, res) {
+  const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
+  const html = fs
+    .readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+    .replaceAll('__CLERK_PUBLISHABLE_KEY__', pk);
+  res.type('html').send(html);
+}
+
 // Upgrade page — where expired trials / churned users land.
 app.get('/upgrade', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upgrade.html'));
@@ -225,15 +235,11 @@ app.get('/pulse', (req, res) => {
 // Dashboard is behind the paywall. Sub-paths (/dashboard/winners,
 // /dashboard/chart/NVDA …) are client-side routes of the same SPA, so refresh,
 // back/forward and shared links land on the right screen.
-app.get(['/dashboard', '/dashboard/*'], paywall, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get(['/dashboard', '/dashboard/*'], paywall, serveDashboard);
 
 // India dashboard — same SPA, same paywall. The page detects region from the
 // /in path prefix and scopes its API calls + currency (₹) accordingly.
-app.get(['/in/dashboard', '/in/dashboard/*'], paywall, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get(['/in/dashboard', '/in/dashboard/*'], paywall, serveDashboard);
 app.get('/in', (req, res) => res.redirect('/in/dashboard'));
 
 // Public OG scorecard image (1200×630 PNG) for X/social link previews. No
@@ -276,9 +282,7 @@ app.get(/^\/\$[A-Za-z.\-]+$/, async (req, res, next) => {
     next();
   }
 });
-app.get(/^\/\$[A-Za-z.\-]+$/, paywall, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get(/^\/\$[A-Za-z.\-]+$/, paywall, serveDashboard);
 
 // Cashtag-free alias for the same deep link: X limits posts to ONE cashtag,
 // and "/$NVDA" inside a tweeted URL counts as a second one. Tweets link
@@ -296,9 +300,7 @@ app.get('/s/:symbol([A-Za-z.\\-]+)', async (req, res, next) => {
     next();
   }
 });
-app.get('/s/:symbol([A-Za-z.\\-]+)', paywall, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/s/:symbol([A-Za-z.\\-]+)', paywall, serveDashboard);
 
 // Fallback for the CTA hrefs. The landing JS normally intercepts these to open
 // the Clerk modal, but a click that lands before the Clerk SDK finishes loading
