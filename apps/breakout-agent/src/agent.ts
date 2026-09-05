@@ -1046,26 +1046,32 @@ export class BreakoutAgent {
 
     const now = new Date();
 
-    // If alert was already sent, only re-alert if price moved ±2% or more (for extensions, check gained ≥3%)
-    if (existingAlert && existingAlert.lastAlertPrice) {
-      const priceChange =
-        Math.abs(
-          (result.currentPrice - existingAlert.lastAlertPrice) /
-            existingAlert.lastAlertPrice,
-        ) * 100;
-      const isExtension = latestRecord.breakoutType === "Type3";
-      const threshold = isExtension ? 3 : 2; // Extensions require 3% movement
-      const shouldRealert = priceChange >= threshold;
-
-      if (!shouldRealert) {
+    // One alert per base episode. An asset emails when its graded base
+    // resolves, then lives on the dashboard as a tracked extension — a second
+    // email requires a NEW base (different pivot). The old ±2% price-drift
+    // re-alert is gone: price drifting through a band is not a chart event
+    // and carried no information (VLO 2026: first alert Jul 16, real base
+    // breakout Aug 11 unalerted, then a drift re-fire Aug 31 — all noise).
+    if (existingAlert) {
+      const prevPivot = (existingAlert as any).basePivot as number | null;
+      const curPivot = (latestRecord as any).basePivot as number | null;
+      const sameBase =
+        prevPivot != null && curPivot != null && Math.abs(prevPivot - curPivot) < 0.01;
+      // Legacy alerts (pre-grade rows have no pivot): treat any alert in the
+      // last 45 days as the same episode so the cutover doesn't replay them.
+      const legacySameEpisode =
+        prevPivot == null &&
+        existingAlert.alertSentAt != null &&
+        Date.now() - new Date(existingAlert.alertSentAt).getTime() <
+          45 * 24 * 60 * 60 * 1000;
+      if (sameBase || legacySameEpisode) {
         console.log(
-          `⊘ Skip re-alert ${result.asset}: Price change ${priceChange.toFixed(2)}% < ${threshold}% threshold`,
+          `⊘ Skip ${result.asset}: base already alerted (pivot $${prevPivot?.toFixed(2) ?? "legacy"}) — tracking as extension`,
         );
         return;
       }
-
       console.log(
-        `↻ Re-alert ${result.asset}: Price moved ${priceChange.toFixed(2)}% (from $${existingAlert.lastAlertPrice} to $${result.currentPrice})`,
+        `↻ New episode ${result.asset}: new base pivot $${curPivot?.toFixed(2)} (prev $${prevPivot?.toFixed(2) ?? "n/a"})`,
       );
     }
 
