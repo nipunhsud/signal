@@ -938,7 +938,15 @@ app.get('/api/signals', async (req, res) => {
         : pctFromPivot != null && pctFromPivot < -0.1 ? 'forming'
         : pctFromPivot != null && pctFromPivot > 5 ? 'extended'
         : 'fresh';
-      const signalType = isEp ? 'ep' : (isExtension || gradeState === 'extended') ? 'extension' : 'breakout';
+      // The grade decides the bucket in BOTH directions: extended graded rows
+      // leave the breakout list (VLO +16% past its pivot), and forming/fresh
+      // graded rows leave the extension list (ROKU: old classifier said Type3
+      // off a held Donchian breakout while price sat in the buy zone of its
+      // A+ base pivot). Ungraded/unqualified rows keep the legacy mapping.
+      const signalType = isEp ? 'ep'
+        : gradeState === 'extended' ? 'extension'
+        : (gradeState === 'fresh' || gradeState === 'forming') ? 'breakout'
+        : isExtension ? 'extension' : 'breakout';
       const pctGainFromEntry = (isExtension && entryResistance > 0)
         ? Math.round(((s.currentPrice - entryResistance) / entryResistance) * 1000) / 10
         : null;
