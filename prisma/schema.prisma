@@ -73,6 +73,16 @@ model BreakoutSignal {
   coilRatio Float? // base 2nd-half range / 1st-half range — <1 = tightening into the pivot
   isStaircase Boolean @default(false) // progressive thirds contraction — the VCP "road"
   cohort String? // evidence grade S/A/B/C from the full-history factor grid
+  // X-ray base grade (210k-breakout full-history validation, Sep 2026):
+  // S = sky + >=80 bars + <=15% deep (62.6% win / 11.6% stop-touch),
+  // A+ = sky + >=25 bars + <=15% (57.7%/22.6%), A = sky + <=25% any length
+  // (54.8%/32.1%), "X" = evaluated but unqualified (backfill only), null = not
+  // evaluated. Volume never gates the grade — it travels as volumeTag.
+  baseGrade    String?
+  volumeTag    String? // quiet <1.2x · confirmed 1.2-2x · power >=2x
+  basePivot    Float?  // X-ray base pivot — the close-above trigger and frozen entry
+  baseBars     Int?    // bars inside the graded base
+  baseDepthPct Float?  // base depth %
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout

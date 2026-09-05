@@ -1,6 +1,9 @@
 import axios from "axios";
 import { globalRateLimiter } from "./rate-limiter.js";
 import { db } from "../db.js";
+// @ts-ignore — plain-JS base segmentation at the app root, shared with the
+// dashboard's /api/bases so scanner and chart X-ray agree on what "the base" is.
+import { detectBases } from "../../base-detect.js";
 
 const cache = new Map<string, { data: MarketData; expires: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -491,6 +494,20 @@ export interface MarketData {
   isStaircase?: boolean; // thirds contracting progressively — Minervini's staircase
   failedPokes?: number; // bars that wicked within 0.5% of the pivot but closed >1% below it
   coilRatio?: number; // 2nd-half range / 1st-half range — <1 = tightening into the pivot
+  // X-ray base: the most recent base-detect segment over the full bar window,
+  // and whether TODAY resolved it by closing above its pivot. Feeds baseGrade
+  // in breakout-logic; brokeOutToday is the validated alert trigger (close
+  // above the full-base pivot: 57% win vs 23% for intrabar-poke entries).
+  gradedBase?: {
+    pivot: number;
+    pivotDate: string;
+    bars: number;
+    depthPct: number;
+    sky: boolean; // pivot within 2% of the highest prior high in the window
+    status: "breakout" | "forming";
+    breakoutDate?: string;
+    brokeOutToday: boolean;
+  };
 }
 
 /**
@@ -1128,6 +1145,37 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
 
+      // X-ray base segmentation — same detector as the dashboard's base X-ray.
+      // The last segment is the active base; if today's close resolved it, the
+      // breakout date equals today's bar and brokeOutToday flips true.
+      let gradedBase: MarketData["gradedBase"];
+      try {
+        const xray = detectBases(
+          allBars.map((b: any) => ({
+            time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+          })),
+        );
+        const lastBase = xray[xray.length - 1];
+        if (lastBase) {
+          const pIdx = allBars.findIndex((b: any) => b.date === lastBase.pivotDate);
+          const beforePivot = allBars.slice(Math.max(0, pIdx - 251), pIdx + 1);
+          const priorHigh = Math.max(...beforePivot.map((b: any) => b.high));
+          gradedBase = {
+            pivot: lastBase.pivot,
+            pivotDate: lastBase.pivotDate,
+            bars: lastBase.bars,
+            depthPct: lastBase.depthPct,
+            sky: lastBase.pivot >= priorHigh * 0.98,
+            status: lastBase.status,
+            breakoutDate: lastBase.breakout?.date,
+            brokeOutToday:
+              lastBase.breakout?.date === latest.date && latest.close > lastBase.pivot,
+          };
+        }
+      } catch (e: any) {
+        console.warn(`[Xray] ${symbol}: base segmentation failed: ${e?.message}`);
+      }
+
       // Trailing returns (moving winners screen). Undefined if too little history.
       const returnAt = (barsBack: number): number | undefined => {
         if (allBars.length <= barsBack) return undefined;
@@ -1376,6 +1424,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         failedPokes: baseQuality.failedPokes,
         coilRatio: baseQuality.coilRatio,
         isStaircase: baseQuality.isStaircase,
+        gradedBase,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });

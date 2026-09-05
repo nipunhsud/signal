@@ -628,6 +628,9 @@ export class BreakoutAgent {
       }
 
       const localReasoning = [
+        breakoutAnalysis.baseGrade
+          ? `Grade ${breakoutAnalysis.baseGrade} (${{ S: "63% hist. win — 16wk+ tight sky base", "A+": "58% hist. win — 5wk+ tight sky base", A: "55% hist. win — blue-sky base" }[breakoutAnalysis.baseGrade]}) · ${(breakoutAnalysis.baseBarsCount / 5).toFixed(0)}wk base, ${breakoutAnalysis.baseDepthPct.toFixed(1)}% deep, pivot $${breakoutAnalysis.basePivot.toFixed(2)} · ${breakoutAnalysis.volumeTag} volume`
+          : null,
         breakoutAnalysis.cohort ? `Cohort ${breakoutAnalysis.cohort} (${{ S: "67% hist. win — sky+16wk+2x vol", A: "57-60% hist. win — blue sky", B: "47% hist. win — long base + volume", C: "29-41% hist. win — baseline grade" }[breakoutAnalysis.cohort]})` : null,
         premiumVolume ? `🔥 Premium volume (${volumeRatio.toFixed(1)}x avg)` : null,
         breakoutAnalysis.isVcp
@@ -675,6 +678,14 @@ export class BreakoutAgent {
         where: { asset },
         orderBy: { createdAt: "desc" },
       });
+
+      // Graded breakout (Sep 2026 system): today CLOSED above the X-ray base
+      // pivot and the base grades S/A+/A. Computed here so the frozen-entry
+      // logic below can use the base pivot as the entry on a fresh flip.
+      const isGradedBreakout =
+        breakoutAnalysis.baseGrade !== null &&
+        breakoutAnalysis.gradedBreakoutToday &&
+        breakoutAnalysis.liquidityOk;
       const lastRowAgeMs = latestForAsset
         ? Date.now() - new Date(latestForAsset.createdAt).getTime()
         : Infinity;
@@ -687,55 +698,35 @@ export class BreakoutAgent {
         latestForAsset?.stopLoss != null && data.close <= latestForAsset.stopLoss;
       const isActiveStreak =
         latestForAsset &&
-        ["Type1", "Type1b", "Type3"].includes(latestForAsset.breakoutType) &&
+        (["Type1", "Type1b", "Type3"].includes(latestForAsset.breakoutType) ||
+          (latestForAsset as any).baseGrade != null) &&
         latestForAsset.entryPrice != null &&
         lastRowAgeMs <= STREAK_MAX_GAP_MS &&
         !stopBreached;
+      // Fresh flip: entry = the X-ray base pivot when today is a graded
+      // breakout (the level the whole base actually resolved through), else
+      // the 20-bar Donchian resistance as before.
       const entryPrice = isActiveStreak
         ? (latestForAsset!.entryPrice as number)
-        : breakoutAnalysis.resistance;
+        : isGradedBreakout && breakoutAnalysis.basePivot > 0
+          ? breakoutAnalysis.basePivot
+          : breakoutAnalysis.resistance;
       const stopLoss = isActiveStreak
         ? (latestForAsset!.stopLoss as number)
         : entryPrice * 0.93;
 
-      // Alerts: Type1 (fresh breakout) and Type1b (weak-vol clean breakout).
-      // Type1b already passed goodStructure + cleanConsolidation + hasGoodPriorBase
-      // in classification, so trust it — the isValid/breakoutSignal gates would
-      // reject it because both require volumeOk which Type1b lacks by definition.
-      const isType1Breakout = breakoutAnalysis.breakoutType === "Type1";
-      const isType1bBreakout = breakoutAnalysis.breakoutType === "Type1b";
-
-      // Grace window: detectPriorBreakout reads raw candles, so a real breakout
-      // that fired while this asset wasn't being scanned comes back as Type3
-      // (ago>0) the first time we finally observe it — and Type3 never emails, so
-      // the alert is lost. Recover it: on the FIRST observation of a Type3 whose
-      // breakout is only a bar or two old and price is still within 5% of entry
-      // (the actionable re-entry zone), fire the breakout alert once. The
-      // !isActiveStreak gate guarantees "once" — the next scan is a continuation.
-      const barsAgo = data.extensionPriorBreakoutBarsAgo || 0;
-      const pctAboveEntry =
-        entryPrice > 0 ? ((data.close - entryPrice) / entryPrice) * 100 : Infinity;
-      const isFreshlyCaughtExtension =
-        breakoutAnalysis.breakoutType === "Type3" &&
-        !isActiveStreak &&
-        breakoutAnalysis.maStack &&
-        breakoutAnalysis.liquidityOk &&
-        barsAgo >= 1 &&
-        barsAgo <= 2 &&
-        pctAboveEntry >= 0 &&
-        pctAboveEntry <= 5;
-
-      // Alert-all-with-ranking: every qualifying Type1 emails, graded by its
-      // evidence cohort (S 67% win / A 57-60% / B 47% / C 29-41% historical) —
-      // the grade travels in the subject so the reader can prioritize, instead
-      // of a hard volume gate silently hiding C-tier signals.
-      const shouldAlert =
-        (isType1Breakout &&
-          isValid &&
-          breakoutAnalysis.maStack &&
-          breakoutAnalysis.breakoutSignal) ||
-        isType1bBreakout ||
-        isFreshlyCaughtExtension;
+      // Alerts (graded system, Sep 2026 — replaces the Type1/Type1b/grace
+      // gates): actionable = today CLOSED above the X-ray base pivot AND the
+      // base grades S/A+/A (blue-sky pivot, <=25% deep, above the 200MA).
+      // Full-history validation (210k breakouts, 1970s-2026): S 62.6% win /
+      // 11.6% stop-touch · A+ 57.7%/22.6% · A 54.8%/32.1% vs 32.1% win for
+      // everything unqualified. Volume no longer gates — quiet breakouts from
+      // graded bases WIN MORE with HALF the stop risk (57.5%/22.0%); volume
+      // travels as volumeTag in the labels. The close-above-pivot trigger
+      // replaces the intrabar Donchian poke (57.0% win vs 22.8%; 81% of pokes
+      // are traps). Type1/Type3/EP classification continues for tracking, the
+      // dashboard, and streak bookkeeping — it just no longer decides emails.
+      const shouldAlert = isGradedBreakout;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -782,9 +773,12 @@ export class BreakoutAgent {
         shouldAlert,
       };
 
-      // Only persist classified breakouts. Green-cone signals that failed the
-      // Type 1/3 rules (e.g. bad-base fall-through) are intentionally dropped.
-      const isMeaningfulBreakout = breakoutAnalysis.breakoutType !== "unknown";
+      // Persist classified breakouts AND graded breakouts. A graded breakout
+      // can carry breakoutType "unknown" (IBIT 2026-09-01: real base breakout,
+      // MA stack still inverted) — it must still persist or sendAlert finds no
+      // record. Green-cone signals failing both systems are dropped as before.
+      const isMeaningfulBreakout =
+        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout;
 
       if (isMeaningfulBreakout) {
         const latestBreakout = await db.breakoutSignal.findFirst({
@@ -852,6 +846,11 @@ export class BreakoutAgent {
               coilRatio: breakoutAnalysis.coilRatio || null,
               isStaircase: breakoutAnalysis.isStaircase,
               cohort: breakoutAnalysis.cohort,
+              baseGrade: breakoutAnalysis.baseGrade,
+              volumeTag: breakoutAnalysis.volumeTag,
+              basePivot: breakoutAnalysis.basePivot > 0 ? breakoutAnalysis.basePivot : null,
+              baseBars: breakoutAnalysis.baseBarsCount > 0 ? breakoutAnalysis.baseBarsCount : null,
+              baseDepthPct: breakoutAnalysis.baseDepthPct > 0 ? breakoutAnalysis.baseDepthPct : null,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
@@ -1074,8 +1073,14 @@ export class BreakoutAgent {
         ? `\nExpense Ratio: ${latestRecord.expenseRatio}%`
         : "";
 
-    const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : latestRecord.breakoutType === "EP" ? "⚡ Episodic Pivot (catalyst)" : "Breakout";
-    const grade = (latestRecord as any).cohort ? `[${(latestRecord as any).cohort}] ` : '';
+    const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : latestRecord.breakoutType === "EP" ? "⚡ Episodic Pivot (catalyst)" : "Base Breakout";
+    // Subject leads with the base grade + volume character + base length —
+    // the labels that replaced the type/volume gates. Cohort letter stays as
+    // fallback for rows without a grade (EPs, pre-migration re-alerts).
+    const rec = latestRecord as any;
+    const grade = rec.baseGrade
+      ? `[${rec.baseGrade}${rec.baseBars ? ` · ${Math.round(rec.baseBars / 5)}wk` : ''}${rec.volumeTag ? ` · ${rec.volumeTag}` : ''}] `
+      : rec.cohort ? `[${rec.cohort}] ` : '';
     const subject = `${grade}${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 

@@ -56,6 +56,27 @@ export interface BreakoutAnalysis {
   //   B = no sky, but >=16wk AND >=2x    (47.2% win)
   //   C = everything else                (29-41% win, flat-to-negative means)
   cohort: "S" | "A" | "B" | "C" | null;
+  // X-ray base grade (210k-breakout full-history validation, Sep 2026).
+  // Structure + location ONLY — volume never gates a grade, it travels as
+  // volumeTag. Requires close > 200MA (below it: 23.7% win / 82.7% stop-touch,
+  // never actionable) and a blue-sky pivot (non-sky bases: 22.9-45.1% win —
+  // dead at every slice tested). Tiered by length/depth:
+  //   S  = >=80 bars, <=15% deep   (62.6% win / 11.6% stop-touch)
+  //   A+ = >=25 bars, <=15% deep   (57.7% / 22.6%)
+  //   A  = <=25% deep, any length  (54.8% / 32.1%)
+  //   null = unqualified           (32.1% win / -4.5% mean)
+  baseGrade: "S" | "A+" | "A" | null;
+  // Volume character of today's bar: quiet <1.2x (steadier — 57.5% win / 22%
+  // stop), confirmed 1.2-2x, power >=2x (bigger mean, bumpier — 32% stop).
+  volumeTag: "quiet" | "confirmed" | "power";
+  basePivot: number; // the X-ray base pivot — close-above trigger and frozen entry
+  baseBarsCount: number;
+  baseDepthPct: number;
+  baseSky: boolean;
+  // TODAY closed above the base pivot — the validated trigger (57.0% win vs
+  // 22.8% entering on the intrabar poke; 81% of pokes are traps). This, plus
+  // a non-null grade, is the alert condition.
+  gradedBreakoutToday: boolean;
 }
 
 export interface SetupAnalysis {
@@ -353,6 +374,25 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     cohort = isBlueSky && longBase && loudVol ? "S" : isBlueSky ? "A" : longBase && loudVol ? "B" : "C";
   }
 
+  // X-ray base grade + volume tag (see interface for the validated numbers).
+  const gb = data.gradedBase;
+  const volumeTag: "quiet" | "confirmed" | "power" =
+    avgVolume > 0 && volume >= avgVolume * 2
+      ? "power"
+      : avgVolume > 0 && volume >= avgVolume * 1.2
+        ? "confirmed"
+        : "quiet";
+  let baseGrade: "S" | "A+" | "A" | null = null;
+  if (gb && gb.sky && close > ma200 && gb.depthPct <= 25) {
+    baseGrade =
+      gb.depthPct <= 15 && gb.bars >= 80
+        ? "S"
+        : gb.depthPct <= 15 && gb.bars >= 25
+          ? "A+"
+          : "A";
+  }
+  const gradedBreakoutToday = !!(gb && gb.brokeOutToday);
+
   return {
     resistance,
     support,
@@ -394,6 +434,13 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     isStaircase,
     isBlueSky,
     cohort,
+    baseGrade,
+    volumeTag,
+    basePivot: gb?.pivot ?? 0,
+    baseBarsCount: gb?.bars ?? 0,
+    baseDepthPct: gb?.depthPct ?? 0,
+    baseSky: gb?.sky ?? false,
+    gradedBreakoutToday,
   };
 }
 
