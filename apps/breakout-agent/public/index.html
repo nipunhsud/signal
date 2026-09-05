@@ -1247,11 +1247,14 @@
           : '';
         const breadthPct = c.breadth?.pctPositive1m;
 
-        const row = (title, score, max, body) => `
+        // scoreLabel overrides the default "score/max" readout — distribution
+        // days needs it: "0/25" beside "6 days" read as a broken counter when
+        // it actually means zero of 25 possible points awarded.
+        const row = (title, score, max, body, scoreLabel) => `
           <div class="border-t border-gray-700/50 pt-2.5 mt-2.5">
             <div class="flex justify-between items-baseline mb-1">
               <span class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">${title}</span>
-              <span class="font-mono text-xs ${score >= max * 0.7 ? 'text-green-400' : score >= max * 0.35 ? 'text-amber-300' : 'text-red-400'}">${score}/${max}</span>
+              <span class="font-mono text-xs ${score >= max * 0.7 ? 'text-green-400' : score >= max * 0.35 ? 'text-amber-300' : 'text-red-400'}">${scoreLabel || `${score}/${max}`}</span>
             </div>
             <div class="text-[12px] text-gray-300 leading-relaxed">${body}</div>
           </div>`;
@@ -1268,7 +1271,8 @@
             ${row('Trend', c.trend?.score ?? 0, 50, `${trendRows || 'Benchmark trend vs the 50 and 200-day averages.'}`)}
             ${row('Distribution days', c.distribution?.score ?? 0, 25, `
               <span class="${dd >= 4 ? 'text-red-400 font-semibold' : ''}">${dd} in the last 25 sessions</span>${ddPer ? ` <span class="text-gray-500">(${ddPer})</span>` : ''}.
-              Days the index fell on <em>rising</em> volume — institutions selling into strength. 4+ is a warning even while price holds up.`)}
+              Days the index fell on <em>rising</em> volume — institutions selling into strength. 4+ is a warning even while price holds up.`,
+              `${c.distribution?.score ?? 0} pts · ${dd} day${dd === 1 ? '' : 's'}`)}
             ${row('Breadth', c.breadth?.score ?? 0, 25, breadthPct != null
               ? `${breadthPct}% of the ${(c.breadth?.universe || 0).toLocaleString()} stocks we scan are positive over the last month${c.breadth?.pctPositive1w != null ? `, ${c.breadth.pctPositive1w}% over the last week` : ''} — the average stock's tape, not the index's.${c.breadth?.direction === 'deteriorating' ? ' <span class="text-red-400 font-semibold">Short-term weaker than the month — breadth is deteriorating.</span>' : c.breadth?.direction === 'improving' ? ' <span class="text-green-400 font-semibold">Short-term stronger than the month — breadth is improving.</span>' : ''}`
               : 'Populating — appears after the next scan cycles.')}
