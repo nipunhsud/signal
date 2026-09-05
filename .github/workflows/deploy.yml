@@ -1,18 +1,43 @@
-name: Deploy to droplet
+name: Test and deploy
 
-# Auto-deploy on merge/push to main. SSHes into the DO droplet and runs the same
-# deploy.sh you'd run by hand (git pull + rebuild --no-cache + up -d).
+# Pull requests: run the dashboard navigation suite. Pushes to main: run it,
+# then SSH into the DO droplet and run the same deploy.sh you'd run by hand
+# (git pull + rebuild --no-cache + up -d). A red suite blocks the deploy.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
-# Serialize deploys so two pushes can't rebuild on the droplet at once.
+# Serialize deploys so two pushes can't rebuild on the droplet at once; PR test
+# runs get their own group per branch and cancel superseded runs.
 concurrency:
-  group: droplet-deploy
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'push' && 'droplet-deploy' || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
+  test:
+    name: Dashboard navigation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9 # pinned to the version that wrote pnpm-lock.yaml (see Dockerfile)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # The suite only needs express + playwright-core; skip prisma generate etc.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Drives the runner's preinstalled Google Chrome (no browser download).
+      - run: pnpm -F breakout-agent test:nav
+
   deploy:
+    name: Deploy to droplet
+    needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Run deploy.sh on droplet over SSH
