@@ -17,12 +17,18 @@ interface Bar { date: string; open: number; high: number; low: number; close: nu
 
 async function yahooBars(symbol: string): Promise<Bar[]> {
   // period1/period2 epochs: range=max silently downgrades to monthly bars.
+  // Retries with backoff: under a sustained request stream Yahoo throws
+  // transient 404/429s even for live megacaps (BK 404'd mid-run) — a single
+  // failed fetch must not permanently skip an asset's rows.
   const from = Math.floor(new Date("2023-01-01").getTime() / 1000);
-  const res = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=9999999999&interval=1d`,
-    { headers: { "User-Agent": "Mozilla/5.0" } },
-  );
-  if (!res.ok) throw new Error(`Yahoo ${res.status}`);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=9999999999&interval=1d`;
+  let res: Response | null = null;
+  for (let a = 0; a < 4; a++) {
+    res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (res.ok) break;
+    if (a < 3) await new Promise((r) => setTimeout(r, 2000 * (a + 1) + Math.random() * 1000));
+  }
+  if (!res || !res.ok) throw new Error(`Yahoo ${res?.status}`);
   const r = ((await res.json()) as any)?.chart?.result?.[0];
   const ts = r?.timestamp, q = r?.indicators?.quote?.[0];
   if (!ts || !q) throw new Error("empty");
@@ -58,6 +64,7 @@ async function main() {
   console.log(`${assets.length} assets to backfill${dryRun ? " (dry run)" : ""}`);
 
   let updated = 0, unqualified = 0, skipped = 0, errors = 0;
+  const failedAssets: string[] = [];
   for (const { asset } of assets) {
     try {
       const rows = await db.breakoutSignal.findMany({
@@ -119,10 +126,14 @@ async function main() {
       await new Promise((r) => setTimeout(r, 120));
     } catch (e: any) {
       errors++;
+      failedAssets.push(asset);
       console.warn(`  ${asset}: ${e?.message}`);
     }
   }
   console.log(`\nDone. labeled=${updated} (unqualified X=${unqualified}) skipped=${skipped} asset-errors=${errors}${dryRun ? " — DRY RUN, nothing written" : ""}`);
+  if (failedAssets.length) {
+    console.log(`failed assets (re-run each with --asset to fill them in): ${failedAssets.join(" ")}`);
+  }
   await db.$disconnect();
 }
 
