@@ -222,14 +222,16 @@ app.get('/pulse', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'pulse.html'));
 });
 
-// Dashboard is behind the paywall.
-app.get('/dashboard', paywall, (req, res) => {
+// Dashboard is behind the paywall. Sub-paths (/dashboard/winners,
+// /dashboard/chart/NVDA …) are client-side routes of the same SPA, so refresh,
+// back/forward and shared links land on the right screen.
+app.get(['/dashboard', '/dashboard/*'], paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // India dashboard — same SPA, same paywall. The page detects region from the
 // /in path prefix and scopes its API calls + currency (₹) accordingly.
-app.get('/in/dashboard', paywall, (req, res) => {
+app.get(['/in/dashboard', '/in/dashboard/*'], paywall, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 app.get('/in', (req, res) => res.redirect('/in/dashboard'));
