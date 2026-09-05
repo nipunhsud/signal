@@ -1849,7 +1849,9 @@
           app.classList.remove('drawer-open');
           return;
         }
-        drawer.style.width = this.drawerWidth + 'px';
+        // Cap at the viewport: a desktop-persisted drawer width (up to 900px)
+        // must not overflow a phone screen and squeeze the chart pane.
+        drawer.style.width = Math.min(this.drawerWidth, window.innerWidth) + 'px';
         app.classList.add('drawer-open');
 
         const signal = this.selectedAsset;
@@ -2531,21 +2533,31 @@
               low: { color: '#9ca3af' },
             },
             tooltip: {
-              text: { color: '#d1d5db' },
+              text: { color: '#d1d5db', size: 10 },
               // Default legend plus a colored per-bar % change (vs the prior
               // bar's close — daily on D, weekly on W). Function form so the
-              // change value can carry its own green/red color.
+              // change value can carry its own green/red color. On narrow
+              // panes (phone / skinny drawer) the full 7-line legend buries
+              // the candles, so it collapses to close+chg only.
               custom: ({ prev, current }) => {
                 const prevClose = prev?.close ?? current?.close;
                 const chg = prevClose ? ((current.close - prevClose) / prevClose) * 100 : 0;
                 const chgColor = chg > 0 ? '#10b981' : chg < 0 ? '#ef4444' : '#9ca3af';
+                const chgItem = { title: { text: 'Chg: ', color: '#9ca3af' }, value: { text: `${chg > 0 ? '+' : ''}${chg.toFixed(2)}%`, color: chgColor } };
+                if ((el.clientWidth || 0) < 480) {
+                  return [
+                    { title: 'close', value: '{close}' },
+                    chgItem,
+                    { title: 'volume', value: '{volume}' },
+                  ];
+                }
                 return [
                   { title: 'time', value: '{time}' },
                   { title: 'open', value: '{open}' },
                   { title: 'high', value: '{high}' },
                   { title: 'low', value: '{low}' },
                   { title: 'close', value: '{close}' },
-                  { title: { text: 'Chg: ', color: '#9ca3af' }, value: { text: `${chg > 0 ? '+' : ''}${chg.toFixed(2)}%`, color: chgColor } },
+                  chgItem,
                   { title: 'volume', value: '{volume}' },
                 ];
               },

@@ -1030,8 +1030,10 @@ export class BreakoutAgent {
       return;
     }
 
-    // Type 1/1b/3 only alert during market hours (US 9:30-16:00 ET / NSE 9:15-15:30 IST, Mon-Fri)
-    if ((latestRecord.breakoutType === "Type1" || latestRecord.breakoutType === "Type1b" || latestRecord.breakoutType === "Type3" || latestRecord.breakoutType === "EP") && !isMarketOpen(new Date(), regionOf(result.asset))) {
+    // ALL alerts wait for market hours (US 9:30-16:00 ET / NSE 9:15-15:30 IST,
+    // Mon-Fri). Was type-gated — a graded breakout persisted on an "unknown"-
+    // type row slipped past and could email on a weekend scan.
+    if (!isMarketOpen(new Date(), regionOf(result.asset))) {
       console.log(
         `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
