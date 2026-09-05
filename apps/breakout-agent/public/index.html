@@ -37,6 +37,17 @@
        long ones (scrollbar) keep identical content width — otherwise centered
        content shifts sideways on every tab change. */
     #app, #app .overflow-auto { scrollbar-gutter: stable; }
+    /* Top-nav tab strip: scrolls sideways on narrow screens without a visible bar. */
+    .nav-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+    .nav-scroll::-webkit-scrollbar { display: none; }
+    .nav-menu-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 6px 8px; border-radius: 6px; color: #d1d5db; text-decoration: none;
+      width: 100%; text-align: left; background: none; border: 0; font: inherit; cursor: pointer;
+    }
+    .nav-menu-item:hover { background: #1f2937; color: #fff; }
+    .nav-menu-item small { font-size: 10px; color: #6b7280; }
+    .nav-menu-heading { padding: 4px 8px 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; font-weight: 600; }
     /* Desktop: pin the Asset column so horizontal scroll keeps the ticker in view.
        Cells need a solid background (rows use translucent tints) or scrolled
        content bleeds through underneath. */
@@ -349,16 +360,17 @@
   </style>
 </head>
 <body class="bg-gray-900 text-white m-0 p-0 flex flex-col h-screen w-screen">
-  <!-- Persistent top navigation. Server-rendered shell; JS updates the active tab
-       state based on Dashboard.view. Cmd+K still opens the palette from anywhere. -->
-  <nav id="top-nav" class="flex-shrink-0 h-12 bg-gray-950/95 backdrop-blur border-b border-gray-800 flex items-center gap-6 px-6 z-30">
-    <a href="#" onclick="dashboard.setView('dashboard'); return false;" class="flex items-center gap-2 group">
+  <!-- Persistent top navigation. Server-rendered shell; renderNavBar() fills the
+       tab strip from VIEWS and mirrors Dashboard.view + the URL. Cmd+K opens the
+       palette from anywhere; the ⋯ menu holds everything outside the dashboard. -->
+  <nav id="top-nav" class="flex-shrink-0 h-12 bg-gray-950/95 backdrop-blur border-b border-gray-800 flex items-center gap-3 sm:gap-5 px-3 sm:px-6 z-30">
+    <a href="/dashboard" onclick="return dashboard.navClick(event, 'dashboard')" class="flex items-center gap-2 group flex-shrink-0" title="Signals">
       <span class="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white group-hover:scale-105 transition">DQ</span>
-      <span class="font-semibold tracking-tight text-gray-100">Data Quant</span>
+      <span class="font-semibold tracking-tight text-gray-100 hidden lg:inline">Data Quant</span>
     </a>
-    <div id="region-toggle" class="flex items-center gap-0.5 text-[11px] bg-gray-900 rounded-md p-0.5 ring-1 ring-gray-800">
-      <a href="/dashboard" data-region="us" class="px-2 py-0.5 rounded transition">🇺🇸 US</a>
-      <a href="/in/dashboard" data-region="in" class="px-2 py-0.5 rounded transition">🇮🇳 India</a>
+    <div id="region-toggle" class="flex-shrink-0 flex items-center gap-0.5 text-[11px] bg-gray-900 rounded-md p-0.5 ring-1 ring-gray-800" title="Market region">
+      <a href="/dashboard" data-region="us" class="px-1.5 sm:px-2 py-0.5 rounded transition whitespace-nowrap">🇺🇸<span class="hidden sm:inline"> US</span></a>
+      <a href="/in/dashboard" data-region="in" class="px-1.5 sm:px-2 py-0.5 rounded transition whitespace-nowrap">🇮🇳<span class="hidden sm:inline"> India</span></a>
     </div>
     <script>
       (function () {
@@ -369,13 +381,39 @@
         });
       })();
     </script>
-    <div id="top-nav-tabs" class="flex items-center gap-1"></div>
-    <div class="ml-auto flex items-center gap-4">
-      <div id="top-nav-status" class="text-[11px] text-gray-500"></div>
+    <div id="top-nav-tabs" role="tablist" class="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto nav-scroll"></div>
+    <div class="ml-auto flex items-center gap-2 sm:gap-4 flex-shrink-0">
+      <div id="top-nav-status" class="text-[11px] text-gray-500 hidden md:block whitespace-nowrap"></div>
       <button onclick="dashboard.openPalette()" class="text-[11px] text-gray-500 hover:text-gray-300 transition inline-flex items-center gap-1.5" title="Command palette (Cmd+K)">
         <span class="sf-kbd" style="font-size:9px;">⌘K</span>
-        <span>Jump</span>
+        <span class="hidden sm:inline">Jump</span>
       </button>
+      <div class="relative">
+        <button id="top-nav-more" onclick="dashboard.toggleNavMenu(event)" aria-haspopup="menu" aria-expanded="false" aria-controls="top-nav-menu"
+          class="w-7 h-7 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 transition inline-flex items-center justify-center" title="More">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/></svg>
+        </button>
+        <div id="top-nav-menu" role="menu" hidden class="absolute right-0 top-9 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-1.5 z-40 text-sm">
+          <div class="nav-menu-heading">Explore</div>
+          <a href="/pulse" role="menuitem" class="nav-menu-item">Market Pulse <small>public</small></a>
+          <a href="/learn" role="menuitem" class="nav-menu-item">Learn <small>guides</small></a>
+          <a href="/" role="menuitem" class="nav-menu-item">Home page</a>
+          <div class="border-t border-gray-800 my-1.5"></div>
+          <div class="nav-menu-heading">Account</div>
+          <button type="button" role="menuitem" class="nav-menu-item" onclick="dashboard.openBilling()">Manage billing <small>Stripe</small></button>
+          <div class="border-t border-gray-800 my-1.5"></div>
+          <div class="nav-menu-heading">Keyboard</div>
+          <div class="px-2 pb-1.5 grid gap-x-3 gap-y-1.5 text-[11px] text-gray-400" style="grid-template-columns:auto 1fr;">
+            <span><span class="sf-kbd">⌘K</span></span><span>Jump to a ticker or action</span>
+            <span><span class="sf-kbd">[</span> <span class="sf-kbd">]</span></span><span>Previous / next tab</span>
+            <span><span class="sf-kbd">/</span></span><span>Search</span>
+            <span><span class="sf-kbd">1</span>–<span class="sf-kbd">5</span></span><span>Signal-type filter</span>
+            <span><span class="sf-kbd">space</span> <span class="sf-kbd">←</span><span class="sf-kbd">→</span></span><span>Step through tickers</span>
+            <span><span class="sf-kbd">c</span></span><span>Full chart of the open ticker</span>
+            <span><span class="sf-kbd">esc</span></span><span>Back / close</span>
+          </div>
+        </div>
+      </div>
     </div>
   </nav>
   <div id="container" class="flex flex-1 min-h-0 bg-gray-900">
@@ -444,6 +482,20 @@
     // Region is decided by the URL: /in/* → Indian (NSE) view (₹, IST hours),
     // everything else → US ($). Scopes every region-aware API call and currency.
     const REGION = location.pathname.startsWith('/in') ? 'in' : 'us';
+    // Route table — the single source of truth for the top-nav tabs, the command
+    // palette, URL routing and view validation. `path` is relative to DASH_BASE.
+    const DASH_BASE = REGION === 'in' ? '/in/dashboard' : '/dashboard';
+    const VIEWS = [
+      { key: 'dashboard',      label: 'Signals',        path: '',                group: 'screens', desc: 'Live breakout signals' },
+      { key: 'winners',        label: 'Winners',        path: '/winners',        group: 'screens', desc: 'Strongest movers over the window' },
+      { key: 'beat-raise',     label: 'Beat & Raise',   path: '/beat-raise',     group: 'screens', desc: 'Beat EPS and raised guidance last quarter' },
+      { key: 'unusual-volume', label: 'Unusual Volume', path: '/unusual-volume', group: 'screens', desc: '100%+ above-average volume on a bullish candle' },
+      { key: 'sectors',        label: 'Sectors',        path: '/sectors',        group: 'screens', desc: 'Sector strength ranked by trailing returns' },
+      { key: 'shortlist',      label: 'Shortlist',      path: '/shortlist',      group: 'tools',   desc: 'Your saved tickers' },
+      { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'Historical performance of past signals' },
+    ];
+    const VIEW_KEYS = VIEWS.map(v => v.key);
+    const viewDef = (key) => VIEWS.find(v => v.key === key);
     const CUR = REGION === 'in' ? '₹' : '$';
     const REGION_Q = 'region=' + REGION;
 
@@ -508,7 +560,7 @@
         // View routing — single source of truth. Legacy showBacktest/showShortlist
         // getters below stay so existing checks (e.g. skipping renders during
         // signal fetches) continue to work.
-        this.view = 'dashboard';      // 'dashboard' | 'backtest' | 'shortlist' | 'winners'
+        this.view = 'dashboard';      // one of VIEW_KEYS, or 'chart' (full-page chart)
         this.backtest = null;
         this.backtestLoading = false;
         this.backtestParams = { type: 'Type1', lookback: 30, horizon: 30 };
@@ -529,17 +581,20 @@
 
       // Back-compat shims for existing code that reads showBacktest/showShortlist.
       get showBacktest() { return this.view === 'backtest'; }
-      set showBacktest(v) { if (v) this.view = 'backtest'; else if (this.view === 'backtest') this.view = 'home'; }
+      set showBacktest(v) { if (v) this.view = 'backtest'; else if (this.view === 'backtest') this.view = 'dashboard'; }
       get showShortlist() { return this.view === 'shortlist'; }
       set showShortlist(v) { if (v) this.view = 'shortlist'; else if (this.view === 'shortlist') this.view = 'dashboard'; }
 
-      setView(name) {
-        const valid = ['dashboard', 'backtest', 'shortlist', 'winners', 'beat-raise', 'unusual-volume', 'sectors'];
+      // opts.fromHistory: the change came from the URL (initial load or
+      // back/forward), so don't push another history entry for it.
+      setView(name, opts = {}) {
         // Silently redirect legacy 'home' to dashboard so old bookmarks/palette entries still work.
         if (name === 'home') name = 'dashboard';
-        if (!valid.includes(name)) return;
+        if (!VIEW_KEYS.includes(name)) return;
         this.view = name;
         this.closeDrawer();
+        this.closeNavMenu();
+        if (!opts.fromHistory) this.syncUrl();
         if (name === 'backtest' && !this.backtest && !this.backtestLoading) {
           this.fetchBacktest();
         } else if (name === 'winners' && !this.winners && !this.winnersLoading) {
@@ -552,6 +607,98 @@
           this.fetchSectorStrength();
         } else {
           this.render();
+        }
+      }
+
+      // ── URL routing ─────────────────────────────────────────────────────
+      // Every view lives at a path under DASH_BASE (/dashboard/winners,
+      // /dashboard/chart/NVDA …) so refresh, back/forward and shared links land
+      // on the same screen. The /$SYM and /s/SYM deep links are left alone: they
+      // open the ticker drawer over Signals.
+      pathForState() {
+        if (this.view === 'chart' && this.chartAsset) return `${DASH_BASE}/chart/${encodeURIComponent(this.chartAsset)}`;
+        const v = viewDef(this.view);
+        return DASH_BASE + (v ? v.path : '');
+      }
+
+      syncUrl(replace = false) {
+        const path = this.pathForState();
+        if (location.pathname === path) return;
+        try { history[replace ? 'replaceState' : 'pushState']({ view: this.view, asset: this.chartAsset }, '', path); } catch (e) {}
+      }
+
+      // Ticker from a /$NVDA or /s/NVDA deep link, else null.
+      deepLinkAsset() {
+        const m = decodeURIComponent(location.pathname).match(/^\/(?:\$|s\/)([A-Za-z.\-]+)$/);
+        return m ? m[1].toUpperCase() : null;
+      }
+
+      routeFromLocation() {
+        const p = decodeURIComponent(location.pathname).replace(/\/+$/, '');
+        if (p !== DASH_BASE && !p.startsWith(DASH_BASE + '/')) return { view: 'dashboard', asset: this.deepLinkAsset() };
+        const rest = p.slice(DASH_BASE.length);
+        const chart = rest.match(/^\/chart\/([A-Za-z.\-]+)$/);
+        if (chart) return { view: 'chart', asset: chart[1].toUpperCase() };
+        const v = VIEWS.find(v => v.path && v.path === rest);
+        return { view: v ? v.key : 'dashboard' };
+      }
+
+      applyRoute(route) {
+        if (!route) return;
+        if (route.view === 'chart') {
+          this.openChartView(route.asset, { fromHistory: true });
+          return;
+        }
+        this.setView(route.view, { fromHistory: true });
+        if (route.asset) this.openAsset(route.asset);
+      }
+
+      // Tab clicks: plain clicks route in-app; modifier/middle clicks fall
+      // through to the real href so "open in new tab" works.
+      navClick(e, key) {
+        if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return true;
+        if (e) e.preventDefault();
+        this.setView(key);
+        return false;
+      }
+
+      // Step to the previous/next top-nav tab ([ and ] keys).
+      cycleView(step) {
+        const cur = VIEW_KEYS.indexOf(this.view === 'chart' ? (this._chartReturnView || 'dashboard') : this.view);
+        this.setView(VIEW_KEYS[(Math.max(cur, 0) + step + VIEW_KEYS.length) % VIEW_KEYS.length]);
+      }
+
+      // ── ⋯ menu (links outside the dashboard, billing, shortcuts) ────────
+      toggleNavMenu(e) {
+        if (e) e.stopPropagation();
+        const menu = document.getElementById('top-nav-menu');
+        const btn = document.getElementById('top-nav-more');
+        if (!menu) return;
+        const open = menu.hidden;
+        menu.hidden = !open;
+        if (btn) btn.setAttribute('aria-expanded', String(open));
+      }
+
+      closeNavMenu() {
+        const menu = document.getElementById('top-nav-menu');
+        const btn = document.getElementById('top-nav-more');
+        if (!menu || menu.hidden) return;
+        menu.hidden = true;
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+
+      // /api/billing-portal 302s to Stripe when configured and answers JSON
+      // otherwise — probe first so a misconfigured instance shows a toast, not
+      // a page of JSON.
+      async openBilling() {
+        this.closeNavMenu();
+        try {
+          const res = await fetch('/api/billing-portal', { redirect: 'manual' });
+          if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) { location.href = '/api/billing-portal'; return; }
+          const body = await res.json().catch(() => ({}));
+          this.toast(body.error || 'Billing portal unavailable', { kind: 'warn' });
+        } catch (err) {
+          this.toast('Billing portal unavailable', { kind: 'warn' });
         }
       }
 
@@ -746,16 +893,9 @@
         }
       }
 
-      openBacktest() {
-        this.view = 'backtest';
-        if (!this.backtest) this.fetchBacktest();
-        else this.render();
-      }
+      openBacktest() { this.setView('backtest'); }
 
-      closeBacktest() {
-        this.view = 'dashboard';
-        this.render();
-      }
+      closeBacktest() { this.setView('dashboard'); }
 
       setBacktestParam(key, value) {
         this.backtestParams[key] = value;
@@ -891,9 +1031,10 @@
           { id: 'ast:stock',     label: 'Show: Stocks only',  desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'stock'); this.closePalette(); } },
           { id: 'ast:etf',       label: 'Show: ETFs only',    desc: '', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'etf'); this.closePalette(); } },
           { id: 'reset',         label: 'Reset all filters',  desc: 'Back to defaults', kind: 'action', run: () => { this.resetFilters(); this.closePalette(); } },
-          { id: 'dashboard',     label: 'Open Dashboard',     desc: 'Live signals table', kind: 'action', run: () => { this.setView('dashboard'); this.closePalette(); } },
-          { id: 'shortlist',     label: 'Open Shortlist',     desc: '', kind: 'action', run: () => { this.setView('shortlist'); this.closePalette(); } },
-          { id: 'backtest',      label: 'Open Backtest',      desc: 'Historical performance of past signals', kind: 'action', run: () => { this.setView('backtest'); this.closePalette(); } },
+          ...VIEWS.map(v => ({ id: 'view:' + v.key, label: 'Open ' + v.label, desc: v.desc, kind: 'action', run: () => { this.setView(v.key); this.closePalette(); } })),
+          ...(this.selectedAsset?.asset ? [{ id: 'chart', label: `Open chart: ${this.selectedAsset.asset}`, desc: 'Full-page chart (c)', kind: 'action', run: () => { const a = this.selectedAsset.asset; this.closePalette(); this.openChartView(a); } }] : []),
+          { id: 'pulse',         label: 'Go to Market Pulse', desc: 'Public market-health page', kind: 'action', run: () => { location.href = '/pulse'; } },
+          { id: 'learn',         label: 'Go to Learn',        desc: 'Guides: VCP, RS, distribution days…', kind: 'action', run: () => { location.href = '/learn'; } },
           { id: 'scan',          label: 'Trigger scan now',   desc: 'Runs a fresh scan in the background', kind: 'action', run: async () => {
             this.closePalette();
             this.toast('Scan started…', { kind: 'info' });
@@ -955,29 +1096,56 @@
         if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest' });
       }
 
-      // Top nav — active-tab state + right-side status. Injected on every render.
+      // Top nav — tab strip from VIEWS (screens | tools), the chart crumb, the
+      // document title and the right-side status. Injected on every render.
       renderNavBar() {
         const tabsEl = document.getElementById('top-nav-tabs');
         const statusEl = document.getElementById('top-nav-status');
         if (!tabsEl || !statusEl) return;
-        const tabs = [
-          { key: 'dashboard', label: 'Signals' },
-          { key: 'winners',   label: 'Winners' },
-          { key: 'beat-raise', label: 'Beat & Raise' },
-          { key: 'unusual-volume', label: 'Unusual Volume' },
-          { key: 'sectors',   label: 'Sectors' },
-          { key: 'backtest',  label: 'Backtest' },
-          { key: 'shortlist', label: 'Shortlist' },
-        ];
-        tabsEl.innerHTML = tabs.map(t => {
-          const active = this.view === t.key;
-          return `
-            <button onclick="dashboard.setView('${t.key}')"
-              class="px-3 py-1 rounded-md text-xs font-medium transition ${active ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-400 hover:text-white'}">
-              ${t.label}
-            </button>
-          `;
-        }).join('');
+        const onChart = this.view === 'chart';
+        const activeKey = onChart ? (this._chartReturnView || 'dashboard') : this.view;
+        // On the chart page the tab you came from stays lit (dimmer) and the
+        // ticker appears as a crumb right after it, so "where am I" and "how do
+        // I get back" are both answered by the nav.
+        const crumb = `
+          <span class="text-gray-600 flex-shrink-0" aria-hidden="true">›</span>
+          <span class="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-md text-xs font-semibold font-mono bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30 whitespace-nowrap" aria-current="page">
+            ${this.chartAsset || ''}
+            <button onclick="dashboard.backFromChart()" class="w-4 h-4 rounded inline-flex items-center justify-center text-blue-300/70 hover:text-white hover:bg-blue-500/30 transition" title="Close chart (Esc)" aria-label="Close chart">×</button>
+          </span>`;
+        const tab = (v) => {
+          const active = v.key === activeKey;
+          const cls = !active ? 'text-gray-400 hover:text-white hover:bg-gray-800/60'
+            : onChart ? 'text-gray-200 ring-1 ring-gray-800'
+            : 'bg-gray-800 text-white ring-1 ring-gray-700';
+          const badge = v.key === 'shortlist' && this.shortlist.length
+            ? `<span class="ml-1 text-[10px] tabular-nums text-yellow-400/90">${this.shortlist.length}</span>` : '';
+          return `<a href="${DASH_BASE}${v.path}" role="tab" aria-selected="${active}" data-view="${v.key}"
+              onclick="return dashboard.navClick(event, '${v.key}')"
+              class="px-2.5 sm:px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap flex-shrink-0 transition ${cls}">${v.label}${badge}</a>`
+            + (active && onChart ? crumb : '');
+        };
+        const screens = VIEWS.filter(v => v.group === 'screens').map(tab).join('');
+        const tools = VIEWS.filter(v => v.group === 'tools').map(tab).join('');
+        tabsEl.innerHTML = `${screens}<span class="w-px h-4 bg-gray-800 mx-1 flex-shrink-0" aria-hidden="true"></span>${tools}`;
+        // Narrow screens: the strip scrolls — bring the active tab into view
+        // once per view change (not on every 5s refresh, or it fights the user).
+        const navKey = activeKey + (onChart ? ':' + this.chartAsset : '');
+        if (this._navScrolledFor !== navKey) {
+          this._navScrolledFor = navKey;
+          // Re-check a couple of times: Tailwind's runtime CSS and the shortlist
+          // badge land after the first paint and shift tab widths.
+          const reveal = () => {
+            const el = tabsEl.querySelector('[aria-selected="true"]');
+            if (!el) return;
+            const c = tabsEl.getBoundingClientRect(), b = el.getBoundingClientRect();
+            if (b.left < c.left + 8) tabsEl.scrollLeft -= (c.left - b.left) + 16;
+            else if (b.right > c.right - 8) tabsEl.scrollLeft += (b.right - c.right) + 16;
+          };
+          reveal(); setTimeout(reveal, 350); setTimeout(reveal, 1200);
+        }
+        const activeLabel = viewDef(activeKey)?.label || 'Dashboard';
+        document.title = onChart ? `${this.chartAsset} · Chart · Data Quant` : `${activeLabel} · Data Quant`;
         // Compact freshness dot in status area
         const mostRecent = this.signals.reduce((max, s) => {
           const t = new Date(s.createdAt).getTime();
@@ -989,7 +1157,7 @@
           const label = ageMin < 1 ? 'just now'
             : ageMin < 60 ? `${Math.round(ageMin)}m`
             : `${Math.round(ageMin / 60)}h`;
-          statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="fresh-dot" style="background:${color}"></span>Last scan <span class="text-gray-300">${label}</span> ago</span>`;
+          statusEl.innerHTML = `<span class="inline-flex items-center gap-1.5"><span class="fresh-dot" style="background:${color}"></span>Last scan <span class="text-gray-300">${label}</span>${ageMin < 1 ? '' : ' ago'}</span>`;
         } else {
           statusEl.innerHTML = '';
         }
@@ -1021,8 +1189,8 @@
         // Deep link from X posts (dataquant.ai/$hpe): open that ticker's drawer
         // once signals load.
         // Both deep-link shapes: /$NVDA and the cashtag-free /s/NVDA used in tweets
-        const deepLink = decodeURIComponent(location.pathname).match(/\/(?:\$|s\/)([A-Za-z.\-]+)/);
-        if (deepLink) signalsReady.then(() => this.openAsset(deepLink[1]));
+        const deepLink = this.deepLinkAsset();
+        if (deepLink) signalsReady.then(() => this.openAsset(deepLink));
         this.fetchShortlistLists();
         // Prefetch the other lists so cross-reference chips are accurate on
         // any tab without visiting each first. ponytail: one-shot; each list
@@ -1030,6 +1198,15 @@
         this.fetchWinners();
         this.fetchBeatRaise();
         this.fetchUnusualVolume();
+        // Land on the view the URL names (/dashboard/winners, /dashboard/chart/NVDA …)
+        // and follow the browser's back/forward buttons from then on.
+        const initialRoute = this.routeFromLocation();
+        if (initialRoute.view !== 'dashboard') this.applyRoute({ ...initialRoute, asset: initialRoute.view === 'chart' ? initialRoute.asset : null });
+        window.addEventListener('popstate', () => this.applyRoute(this.routeFromLocation()));
+        // ⋯ menu closes on any click outside it.
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest || !e.target.closest('#top-nav-menu, #top-nav-more')) this.closeNavMenu();
+        });
         setInterval(() => this.fetchSignals(), 5000);
         setInterval(() => { if (!this.showBacktest) this.render(); }, 60_000); // keep freshness dot label current
 
@@ -1089,6 +1266,11 @@
               this.closePalette();
               return;
             }
+            const navMenu = document.getElementById('top-nav-menu');
+            if (navMenu && !navMenu.hidden) {
+              this.closeNavMenu();
+              return;
+            }
             const tagEsc = e.target?.tagName;
             if (tagEsc === 'INPUT' && e.target.id === 'search-input') {
               e.target.blur();
@@ -1110,6 +1292,13 @@
             e.preventDefault();
             const s = document.getElementById('search-input');
             if (s) { s.focus(); s.select(); }
+            return;
+          }
+
+          // [ and ] step through the top-nav tabs
+          if (e.key === '[' || e.key === ']') {
+            e.preventDefault();
+            this.cycleView(e.key === ']' ? 1 : -1);
             return;
           }
 
@@ -2672,7 +2861,7 @@
 
       // ── Full chart page (this.view === 'chart') ──
 
-      openChartView(asset) {
+      openChartView(asset, opts = {}) {
         if (!asset) return;
         if (this.view !== 'chart') this._chartReturnView = this.view;
         if (this.chartAsset !== asset) this._showAllBases = false;
@@ -2680,14 +2869,16 @@
         this.view = 'chart';
         this._chartKey = null; // force rebuild
         this.closeDrawer();
+        this.closeNavMenu();
+        if (!opts.fromHistory) this.syncUrl();
         this.render();
       }
 
       backFromChart() {
         this._disposePageChart();
         this._chartKey = null;
-        const valid = ['dashboard', 'backtest', 'shortlist', 'winners', 'beat-raise', 'unusual-volume'];
-        this.view = valid.includes(this._chartReturnView) ? this._chartReturnView : 'dashboard';
+        this.view = VIEW_KEYS.includes(this._chartReturnView) ? this._chartReturnView : 'dashboard';
+        this.syncUrl();
         this.render();
       }
 
@@ -2745,7 +2936,7 @@
             <div class="max-w-7xl mx-auto">
               <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
                 <div class="flex items-center gap-3 flex-wrap min-w-0">
-                  <button onclick="dashboard.backFromChart()" class="px-3 py-1.5 rounded-md text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">← Signals</button>
+                  <button onclick="dashboard.backFromChart()" class="px-3 py-1.5 rounded-md text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition" title="Back (Esc)">← ${viewDef(this._chartReturnView)?.label || 'Signals'}</button>
                   <h1 class="text-2xl font-bold font-mono tracking-tight text-white">${this.chartAsset}</h1>
                   ${price ? `<span class="font-mono text-lg text-gray-300 tabular-nums">${price}</span>` : ''}
                   <a href="${this.getTradingViewUrl(this.chartAsset)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">TradingView ↗</a>
@@ -3439,12 +3630,9 @@
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
-                <div class="flex items-center gap-3">
-                  <button onclick="dashboard.closeBacktest();" class="text-gray-400 hover:text-white transition text-2xl leading-none" title="Back">←</button>
-                  <div>
-                    <h1 class="text-2xl font-bold tracking-tight">Backtest</h1>
-                    <p class="text-gray-500 text-sm">Historical forward return of persisted signals · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
-                  </div>
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Backtest</h1>
+                  <p class="text-gray-500 text-sm">Historical forward return of persisted signals · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
                 </div>
                 <div class="text-right text-[11px] text-gray-500">
                   ${bt?.generatedAt ? `Generated ${new Date(bt.generatedAt).toLocaleTimeString()}${bt.cached ? ' · cached' : ''}` : ''}
@@ -3630,12 +3818,9 @@
             <div class="max-w-7xl mx-auto">
               <!-- Header -->
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
-                <div class="flex items-center gap-3">
-                  <button onclick="dashboard.setView('dashboard')" class="text-gray-400 hover:text-white transition text-2xl leading-none" title="Back">←</button>
-                  <div>
-                    <h1 class="text-2xl font-bold tracking-tight">⭐ Shortlist</h1>
-                    <p class="text-gray-500 text-sm">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
-                  </div>
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">⭐ Shortlist</h1>
+                  <p class="text-gray-500 text-sm">${items.length} asset${items.length !== 1 ? 's' : ''}${activeName ? ` in ${activeName}` : ''}</p>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
                 ${activeId ? `<button onclick="dashboard.addTicker()" class="px-2.5 py-1 rounded text-xs font-semibold bg-green-500/20 text-green-300 ring-1 ring-green-500/40 hover:bg-green-500/30 transition" title="Add ticker(s) to this list">+ Add ticker</button>` : ''}
@@ -4399,16 +4584,9 @@
                   </div>
                   <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} after filters</p>
                 </div>
-                <div class="flex items-center gap-3">
-                  <button onclick="dashboard.setView('backtest')"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 ring-1 ring-purple-500/30 transition"
-                    title="View backtest / historical accuracy">
-                    <span>⌘</span> Backtest
-                  </button>
-                  <div class="flex flex-col items-end gap-1 text-xs">
-                    ${this.freshnessDot()}
-                    ${this.renderMarketStatus()}
-                  </div>
+                <div class="flex flex-col items-end gap-1 text-xs">
+                  ${this.freshnessDot()}
+                  ${this.renderMarketStatus()}
                 </div>
               </div>
 
@@ -4567,7 +4745,7 @@
 
                 </div>
                 <div class="text-[10px] text-gray-500 mt-1.5 font-mono">
-                  shortcuts: <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
+                  shortcuts: <kbd class="px-1 bg-gray-800 rounded">⌘K</kbd> jump · <kbd class="px-1 bg-gray-800 rounded">[</kbd>/<kbd class="px-1 bg-gray-800 rounded">]</kbd> tabs · <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
                 </div>
               </div>
 
