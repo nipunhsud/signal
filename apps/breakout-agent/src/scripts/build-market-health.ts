@@ -25,13 +25,17 @@ function gauge(bars: { date: string; close: number; volume: number }[]) {
     if (last > ma50) trend += 25;
     if (last > ma200) trend += 15;
     if (ma50 > prev) trend += 10;
+    // IBD count: a distribution day (close down >=0.2% on higher volume) stays
+    // on the books for 25 sessions, and is dropped early once the index closes
+    // 5% above that day's close. The dashboard's live gauge uses the plain
+    // 25-session window; the purge is what O'Neil's "five days" rule assumes.
     const win = bars.slice(i - 25, i + 1);
     const hasVolume = win.filter((b) => b.volume > 0).length > 20;
     let dist = 0;
     for (let k = 1; k < win.length; k++) {
       const downEnough = win[k].close <= win[k - 1].close * 0.998;
-      if (hasVolume) { if (downEnough && win[k].volume > win[k - 1].volume) dist++; }
-      else if (win[k].close <= win[k - 1].close * 0.99) dist++;
+      const isDist = hasVolume ? downEnough && win[k].volume > win[k - 1].volume : win[k].close <= win[k - 1].close * 0.99;
+      if (isDist && bars[i].close < win[k].close * 1.05) dist++;
     }
     out.set(bars[i].date, { trend, dist });
   }
@@ -64,7 +68,7 @@ function main() {
     const m = up1m.get(d), w = up1w.get(d);
     const pm = m && m[1] >= 50 ? m[0] / m[1] : null, pw = w && w[1] >= 50 ? w[0] / w[1] : null;
     const breadth = pm == null ? 12 : Math.round(pm * 15) + Math.round((pw ?? pm) * 10);
-    rows.push([+d.replace(/-/g, ""), trend + dist + breadth, trend, dist, breadth]);
+    rows.push([+d.replace(/-/g, ""), trend + dist + breadth, trend, dist, breadth, Math.max(a.dist, b.dist)]); // [5] = raw distribution days (worse index)
   }
   fs.writeFileSync(`${CACHE}/market-health.json`, JSON.stringify(rows));
   const scores = rows.map((r) => r[1]);

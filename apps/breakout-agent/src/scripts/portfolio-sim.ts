@@ -27,6 +27,10 @@ const SEEDS = arg("seeds", 1); // >1: average over random within-day orderings
 const NO_GRADE = process.argv.includes("--nograde"); // ignore grade priority when filling slots
 const REGIME = arg("regime", 0); // 50 | 200: enter only while S&P 500 closes above that SMA
 const REGIME_EXIT = process.argv.includes("--regime-exit"); // also flatten everything while below
+// O'Neil: "reduce investments and raise cash when general market indexes show
+// five or more days of volume distribution" (25-session window, worse of S&P/Nasdaq).
+const DIST_DAYS = arg("dist-days", 0); // block entries while distribution days >= this
+const DIST_EXIT = process.argv.includes("--dist-exit"); // also flatten while at/above it
 const HEALTH = arg("health", 0); // enter only while the replayed market-health score >= this
 const HEALTH_EXIT = arg("health-exit", 0); // flatten everything while the score < this
 // Circuit breakers ("stop trading when it isn't working"):
@@ -72,7 +76,7 @@ const SWAP_BELOW = arg("swap-below", 5); // transaction cost per side, basis poi
 const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
 const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
 const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
-const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, BK_WINDOW ? `breakout-health ${BK_WINDOW}/${BK_RULE} floor ${BK_FLOOR}%${BK_EXIT ? " exit" : ""}` : null, PROGRESSIVE ? `progressive exposure (window ${PE_WINDOW})` : null, PILOT ? `pilot ${PILOT}% add at +${ADD_AT}%` : null, STREAK_BUDGET ? `streak budget ${STREAK_BUDGET}%` : null, HEAT ? `heat cap ${HEAT}%` : null, PERIOD_LOSS ? `period loss cap ${PERIOD_LOSS}%/${PERIOD}d` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
+const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, DIST_DAYS ? `distribution days >= ${DIST_DAYS}${DIST_EXIT ? " (exit too)" : ""}` : null, BK_WINDOW ? `breakout-health ${BK_WINDOW}/${BK_RULE} floor ${BK_FLOOR}%${BK_EXIT ? " exit" : ""}` : null, PROGRESSIVE ? `progressive exposure (window ${PE_WINDOW})` : null, PILOT ? `pilot ${PILOT}% add at +${ADD_AT}%` : null, STREAK_BUDGET ? `streak budget ${STREAK_BUDGET}%` : null, HEAT ? `heat cap ${HEAT}%` : null, PERIOD_LOSS ? `period loss cap ${PERIOD_LOSS}%/${PERIOD}d` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -166,6 +170,24 @@ function regimeOn(date: string): boolean {
 }
 // Replayed dashboard market-health score (build-market-health.js).
 const healthByDate = new Map<string, number>();
+const distByDate = new Map<string, number>();
+if (DIST_DAYS > 0) {
+  const f = `${CACHE}/market-health.json`;
+  if (!fs.existsSync(f)) throw new Error(`${f} missing — run: node dist/scripts/build-market-health.js`);
+  for (const r of JSON.parse(fs.readFileSync(f, "utf8")) as number[][]) {
+    if (r[5] == null) throw new Error("market-health.json lacks distribution days — rebuild it");
+    const d = String(r[0]);
+    distByDate.set(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, r[5]);
+  }
+}
+let lastDist = 0;
+function distOn(date: string): { enter: boolean; exit: boolean } {
+  if (DIST_DAYS <= 0) return { enter: true, exit: false };
+  const v = distByDate.get(date);
+  if (v != null) lastDist = v;
+  const bad = lastDist >= DIST_DAYS;
+  return { enter: !bad, exit: DIST_EXIT && bad };
+}
 if (HEALTH > 0 || HEALTH_EXIT > 0) {
   const f = `${CACHE}/market-health.json`;
   if (!fs.existsSync(f)) throw new Error(`${f} missing — run: node dist/scripts/build-market-health.js`);
@@ -310,12 +332,13 @@ function simulate(name: string, pick: PathPicker): Result {
     const breakersOk = !ddHalted && eqMaOk && d >= pausedUntil && periodOk;
     if (!breakersOk) haltedDays++;
     const h = healthOn(dates[d]);
-    const switchOn = regimeOn(dates[d]) && h.enter;
+    const dist = distOn(dates[d]);
+    const switchOn = regimeOn(dates[d]) && h.enter && dist.enter;
     if (PROGRESSIVE && switchOn && !wasOn) { rung = 0; recent.length = 0; }
     wasOn = switchOn;
     const bk = bkLadder(d);
     const on = switchOn && breakersOk && bk > 0;
-    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || (DD_FLATTEN && ddHalted) || (BK_EXIT && bk <= BK_FLOOR / 100 && bk < 1)) && positions.length) {
+    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || dist.exit || (DD_FLATTEN && ddHalted) || (BK_EXIT && bk <= BK_FLOOR / 100 && bk < 1)) && positions.length) {
       // risk-off: flatten at today's mark
       for (const p of positions) {
         const r = p.data[p.start + Math.max(0, p.day)];

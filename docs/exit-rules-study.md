@@ -1343,6 +1343,108 @@ stop · trail 20%                       3.7%    2.5%    4.5%       17.8%   20.3%
 fixed42 · 7% stop                      6.9%    6.0%    8.0%       39.1%   40.6%    0.43         90    -10.1%       0.6      0%
 ```
 
+## The fourth pillar: O'Neil's distribution-day rule as the cash switch
+
+"Reduce investments and raise cash when general market indexes show five or
+more days of volume distribution" (IBD rule 7). Replayed on ^GSPC/^IXIC with
+IBD's bookkeeping — a distribution day is a close down ≥ 0.2 % on higher
+volume, it expires after 25 sessions or once the index closes 5 % above
+that day, the worse index counts — and tested as an entry block and as a
+flatten trigger, alone and on top of the 200MA switch. Base rate matters:
+even with the purge, ≥ 5 days is showing on **52 %** of all sessions, ≥ 6 on
+35 %, ≥ 8 on 11 %.
+
+| Switch (10 bp, 12 orderings) | Trail 20 %, 1990+ | Fixed 42, 1990+ | Trail, 2010+ |
+| --- | --- | --- | --- |
+| S&P > 200MA, entries + exit (shipped) | **12.9 % · 27 % DD** | 18.8 % · 55 % | **11.6 % · 27 %** |
+| ≥ 5 distribution days blocks entries | 12.0 % · 42 % | 11.6 % · 55 % | 8.5 % · 41 % |
+| ≥ 5 blocks and flattens | 4.6 % · 65 % | 4.3 % · 66 % | −1.3 % · 65 % |
+| ≥ 6 blocks and flattens | 7.4 % · 48 % | 11.9 % · 71 % | 3.3 % · 48 % |
+| ≥ 7 blocks and flattens | 13.2 % · 47 % | 13.3 % · 67 % | 7.9 % · 47 % |
+| ≥ 8 blocks and flattens | 9.7 % · 42 % | 11.7 % · 67 % | 8.8 % · 34 % |
+| 200MA switch + ≥ 6 blocks entries | 11.5 % · 45 % | 15.1 % · 66 % | 4.0 % · 45 % |
+| 200MA switch + ≥ 8 blocks and flattens | 11.0 % · 25 % | 16.2 % · 55 % | 8.2 % · 25 % |
+
+- **The distribution-day count is a worse switch than the 200MA in every
+  form**, and it makes the 200MA switch worse when stacked on it. Used as
+  O'Neil states it (five days, raise cash) it flattens the book on half of
+  all sessions and churns it to death at 10 bp: 4.6 % a year with a 65 %
+  drawdown.
+- **After 2010 it is close to useless** (−1 % to 9 %), the same decay the
+  dashboard's health score showed: index volume stopped meaning what it
+  meant in the 1990s once ETFs and passive flows dominated it.
+- The one variant that beats the 200MA on drawdown (200MA + ≥ 8 days
+  flatten: 25 % vs 27 %) gives up 2–3 points of return for it.
+
+So the fourth pillar is in the trader already, in the form that works on
+this data: cash when the S&P is below its 200-day average. The
+distribution-day count stays a dashboard reading, not a switch.
+
+```
+## O'Neil distribution-day switch · cost 10bp · 1990+
+### --regime 200 --regime-exit
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --dist-days 5
+stop · trail 20%                      12.0%   11.5%   12.8%       41.7%   45.7%    0.79         28    -23.5%       2.9      0%
+fixed42 · 7% stop                     11.6%   11.0%   12.1%       55.4%   59.9%    0.70         50    -24.5%       4.3      0%
+### --dist-days 5 --dist-exit
+stop · trail 20%                       4.6%    4.2%    5.0%       65.4%   67.9%    0.41         76    -30.4%       5.5      0%
+fixed42 · 7% stop                      4.3%    3.8%    4.8%       66.3%   68.8%    0.39         78    -32.9%       5.4      0%
+### --dist-days 6 --dist-exit
+stop · trail 20%                       7.4%    7.0%    7.7%       47.7%   51.3%    0.54         78    -29.5%       4.1      0%
+fixed42 · 7% stop                     11.9%   11.1%   12.2%       70.9%   73.3%    0.62         85    -20.4%       3.7      0%
+### --dist-days 7 --dist-exit
+stop · trail 20%                      13.2%   12.9%   14.0%       46.9%   48.1%    0.83         71    -11.1%       1.0      0%
+fixed42 · 7% stop                     13.3%   12.8%   13.7%       66.9%   69.8%    0.78         88    -16.5%       1.8      0%
+### --dist-days 8 --dist-exit
+stop · trail 20%                       9.7%    9.2%   10.5%       42.4%   43.6%    0.63         61    -20.0%       5.2      0%
+fixed42 · 7% stop                     11.7%   10.4%   12.8%       66.5%   70.8%    0.61         89    -22.0%       4.2      0%
+### --regime 200 --regime-exit --dist-days 6
+stop · trail 20%                      11.5%   10.7%   12.5%       44.5%   47.7%    0.80         34    -19.1%       2.5      0%
+fixed42 · 7% stop                     15.1%   14.1%   16.8%       66.0%   68.2%    0.73         59    -29.1%       3.3      0%
+### --regime 200 --regime-exit --dist-days 6 --dist-exit
+stop · trail 20%                       5.9%    5.5%    6.3%       49.9%   53.0%    0.47         71    -29.5%       3.3      0%
+fixed42 · 7% stop                      9.2%    8.5%    9.6%       72.6%   74.6%    0.52         77    -19.7%       2.7      0%
+### --regime 200 --regime-exit --dist-days 8 --dist-exit
+stop · trail 20%                      11.0%   10.6%   11.5%       24.6%   25.1%    0.73         56    -12.4%       1.0      0%
+fixed42 · 7% stop                     16.2%   15.3%   16.8%       54.6%   56.0%    0.73         79    -16.5%       1.6      0%
+### --regime 50 --regime-exit --dist-days 6 --dist-exit
+stop · trail 20%                       6.8%    6.2%    7.1%       48.7%   52.0%    0.52         80    -32.2%       5.2      0%
+fixed42 · 7% stop                      9.4%    8.9%    9.8%       54.0%   56.9%    0.55         85    -21.0%       4.2      0%
+## O'Neil distribution-day switch · cost 10bp · 2010+
+### --regime 200 --regime-exit
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --dist-days 5
+stop · trail 20%                       8.5%    6.9%   10.0%       40.5%   45.7%    0.56         30    -23.5%       1.0      0%
+fixed42 · 7% stop                      6.4%    5.2%    7.3%       55.4%   59.9%    0.41         53    -24.5%       4.3      0%
+### --dist-days 5 --dist-exit
+stop · trail 20%                      -1.3%   -2.1%   -0.6%       65.4%   67.9%   -0.03         87    -30.4%       3.5      0%
+fixed42 · 7% stop                     -0.8%   -1.7%    0.1%       66.3%   68.8%    0.01         88    -32.9%       3.4      0%
+### --dist-days 6 --dist-exit
+stop · trail 20%                       3.3%    2.5%    4.1%       47.7%   51.3%    0.28         81    -29.5%       3.1      0%
+fixed42 · 7% stop                      6.2%    5.5%    7.0%       70.9%   73.3%    0.35         88    -18.9%       2.7      0%
+### --dist-days 7 --dist-exit
+stop · trail 20%                       7.9%    7.3%    8.8%       46.9%   48.1%    0.51         77    -11.1%       1.0      0%
+fixed42 · 7% stop                      5.9%    4.4%    7.1%       66.9%   69.8%    0.39         92    -16.5%       1.8      0%
+### --dist-days 8 --dist-exit
+stop · trail 20%                       8.8%    7.9%   10.4%       33.7%   39.7%    0.55         61    -17.7%       2.2      0%
+fixed42 · 7% stop                      5.0%    2.7%    7.8%       66.5%   70.8%    0.31         91    -22.0%       3.2      0%
+### --regime 200 --regime-exit --dist-days 6
+stop · trail 20%                       4.0%    3.1%    5.4%       44.5%   47.7%    0.32         38    -19.1%       2.5      0%
+fixed42 · 7% stop                      6.2%    4.7%    9.5%       66.0%   68.2%    0.35         65    -29.1%       3.3      0%
+### --regime 200 --regime-exit --dist-days 6 --dist-exit
+stop · trail 20%                       1.8%    1.0%    2.5%       49.9%   53.0%    0.19         76    -29.5%       3.3      0%
+fixed42 · 7% stop                      3.9%    3.1%    4.7%       72.6%   74.6%    0.27         83    -19.7%       2.7      0%
+### --regime 200 --regime-exit --dist-days 8 --dist-exit
+stop · trail 20%                       8.2%    6.9%    9.1%       24.5%   24.7%    0.54         58    -12.4%       1.0      0%
+fixed42 · 7% stop                     10.3%    9.0%   11.6%       54.6%   56.0%    0.46         84    -16.5%       1.6      0%
+### --regime 50 --regime-exit --dist-days 6 --dist-exit
+stop · trail 20%                       3.1%    2.1%    3.9%       48.7%   52.0%    0.27         84    -32.2%       3.2      0%
+fixed42 · 7% stop                      7.6%    6.7%    8.4%       54.0%   56.9%    0.41         90    -19.9%       2.2      0%
+```
+
 ## Recommendation, revised after the portfolio simulation
 
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.
