@@ -125,6 +125,27 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => dashboard.toggleSort('price'));
   check((await page.evaluate(() => dashboard.sortKeys[0].key)) === 'price', 'Price header is sortable');
 
+  // Status / base-length filters and the clickable chips
+  await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }]));
+  await page.evaluate(() => dashboard.setFilter('statusFilter', 'live'));
+  const live = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
+  check(JSON.stringify(live) === JSON.stringify(['AAPL', 'NVDA']), `status=live keeps power+confirmed (${live.join(',')})`);
+  await page.evaluate(() => dashboard.setFilter('statusFilter', 'forming'));
+  check(JSON.stringify(await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset))) === '["MSFT"]', 'status=forming keeps the under-pivot base');
+  await page.evaluate(() => { dashboard.setFilter('statusFilter', 'all'); dashboard.setFilter('minBaseWeeks', 8); });
+  check(JSON.stringify(await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset))) === '["MSFT"]', 'base ≥ 8wk keeps only the 16wk base');
+  check((await page.locator('#app button:has-text("Base ≥ 8wk")').count()) === 1, 'active chip shows Base ≥ 8wk');
+  await page.evaluate(() => { dashboard.setFilter('minBaseWeeks', 0); dashboard.setSortPreset([{ key: 'weeks', dir: 'desc' }]); });
+  const byWk = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset).slice(0, 3));
+  check(JSON.stringify(byWk) === JSON.stringify(['MSFT', 'AAPL', 'NVDA']), `sort by base length: 16wk › 5wk › 4wk (${byWk.join(',')})`);
+  check((await page.locator('#app [data-status="forming"]').count()) === 1 && (await page.locator('#app [data-grade="S"]').count()) === 1, 'row shows grade and status chips');
+  await click(page, '#app [data-grade="A+"]'); await settle(page);
+  check((await page.evaluate(() => dashboard.gradeFilter)) === 'A+' && (await drawer()) === null, 'clicking a grade chip filters without opening the drawer');
+  await page.evaluate(() => dashboard.setFilter('gradeFilter', 'all'));
+  await click(page, '#app [data-status="forming"]'); await settle(page);
+  check((await page.evaluate(() => dashboard.statusFilter)) === 'forming', 'clicking a status chip filters by status');
+  await page.evaluate(() => dashboard.resetFilters());
+
   // Mobile: active tab visible, nothing off-screen
   await page.evaluate(() => dashboard.setView('shortlist')); await settle(page, 1400);
   const fit = await page.evaluate(() => {
