@@ -9,10 +9,17 @@ import {
   sizePosition,
 } from "./risk.js";
 import { afterClose, closedBelowMa, nyDate, trailingStop } from "./exits.js";
+import {
+  passesRsFloor,
+  rankCandidates,
+  regimeFrom,
+  type Regime,
+} from "./selection.js";
 
 export const KILL_SWITCH_KEY = "trading_halted"; // RuntimeFlag value "true" stops new entries
 const DAY_EQUITY_KEY = "trading_day_equity"; // RuntimeFlag JSON {date, equity}
 const DAILY_REVIEW_KEY = "trading_daily_review"; // RuntimeFlag: NY date of the last completed sell-rule review
+const REGIME_KEY = "trading_regime"; // RuntimeFlag JSON Regime — the market switch, refreshed once per NY date
 
 export interface CycleSummary {
   halted: string | null;
@@ -89,6 +96,11 @@ export class TradingAgent {
     if (flag?.value === "true")
       return "kill switch (RuntimeFlag trading_halted=true)";
 
+    const regime = await this.currentRegime();
+    if (regime && !regime.above) {
+      return `market regime: ${regime.symbol} $${regime.close.toFixed(2)} below its ${this.config.regimeMa}MA $${regime.ma.toFixed(2)} (${regime.date})`;
+    }
+
     const account = await this.broker.getAccount();
     const today = nyDate();
     const row = await db.runtimeFlag.findUnique({
@@ -118,6 +130,42 @@ export class TradingAgent {
       return `daily loss cap: equity $${account.equity.toFixed(0)} vs day start $${dayStart.equity.toFixed(0)} (${this.config.maxDailyLossPct}%)`;
     }
     return null;
+  }
+
+  /**
+   * Market switch, cached per NY date in RuntimeFlag. Computed from the
+   * benchmark's daily closes including the latest published bar.
+   */
+  private async currentRegime(): Promise<Regime | null> {
+    if (this.config.regimeMa <= 0) return null;
+    const today = nyDate();
+    const row = await db.runtimeFlag.findUnique({ where: { key: REGIME_KEY } });
+    if (row) {
+      try {
+        const cached = JSON.parse(row.value) as Regime;
+        if (cached.date === today && cached.symbol === this.config.regimeSymbol)
+          return cached;
+      } catch {
+        /* recompute */
+      }
+    }
+    const bars = await this.broker.getDailyBars(
+      this.config.regimeSymbol,
+      this.config.regimeMa + 10,
+    );
+    const regime = regimeFrom(
+      this.config.regimeSymbol,
+      today,
+      bars.map((b) => b.close),
+      this.config.regimeMa,
+    );
+    if (!regime) return null; // not enough history: fail open (no switch), logged once per cycle
+    await db.runtimeFlag.upsert({
+      where: { key: REGIME_KEY },
+      create: { key: REGIME_KEY, value: JSON.stringify(regime) },
+      update: { value: JSON.stringify(regime) },
+    });
+    return regime;
   }
 
   // ---------- reconcile ----------
@@ -430,16 +478,20 @@ export class TradingAgent {
     // "What we emailed" is the contract: shouldAlert + alertSentAt means the
     // grade gate, liquidity gate, market-hours gate and one-per-base dedup
     // in the breakout agent all passed. executedAt marks rows we've handled.
-    const candidates = await db.breakoutSignal.findMany({
-      where: {
-        shouldAlert: true,
-        alertSentAt: { gte: since },
-        executedAt: null,
-        baseGrade: { in: this.config.allowedGrades },
-      },
-      orderBy: { alertSentAt: "asc" },
-      take: 20,
-    });
+    // Strongest relative strength first (docs/exit-rules-study.md): when the
+    // cycle has more candidates than free slots, the order decides the book.
+    const candidates = rankCandidates(
+      await db.breakoutSignal.findMany({
+        where: {
+          shouldAlert: true,
+          alertSentAt: { gte: since },
+          executedAt: null,
+          baseGrade: { in: this.config.allowedGrades },
+        },
+        orderBy: { alertSentAt: "asc" },
+        take: 50,
+      }),
+    );
     if (!candidates.length) return;
 
     const marketOpen = await this.broker.isMarketOpen();
@@ -485,6 +537,11 @@ export class TradingAgent {
       };
 
       if (!isUsSymbol(s.asset)) return skip("non-US symbol", true);
+      if (!passesRsFloor(s.rsRating, this.config.rsMin))
+        return skip(
+          `RS ${s.rsRating ?? "n/a"} below floor ${this.config.rsMin}`,
+          true,
+        );
       if (s.assetType === "etf" && !this.config.allowEtfs)
         return skip("ETFs disabled", true);
       const symbol = toBrokerSymbol(s.asset);

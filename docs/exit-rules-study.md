@@ -692,12 +692,12 @@ trail 20% · 126-bar cap (180d)         9.2%    7.6%   10.7%       26.7%   31.5%
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.
 - **Trail 20% from the peak high on every grade.** This is now the trader's
   default (`TRADE_TRAIL_GRADES=S,A+,A`).
-- **Next for the trader**: fill slots by `rsRating` (strongest first) and add
-  a market-regime switch on SPY vs its 200-day MA that blocks entries and
-  flattens the book below it. Together they took the simulated book from 9%
-  to 14% a year and the worst drawdown from 39% to 26%. The dashboard's
-  health score is a weaker switch: only its risk-off line (< 45) is
-  actionable, and "caution" must stay tradable.
+- **In the trader now**: slots filled by `rsRating` strongest-first and a
+  SPY-vs-200MA switch that blocks entries and flattens the book below it
+  (`TRADE_REGIME_MA`, `TRADE_REGIME_EXIT`, `TRADE_RS_MIN`). Together they
+  took the simulated book from 9% to 14% a year and the worst drawdown from
+  39% to 26%. The dashboard's health score is a weaker switch: only its
+  risk-off line (< 45) is actionable, and "caution" must stay tradable.
 - **Size for the drawdown you can hold**, via the `TRADE_PROFILE` lever:
   `invested` (default: 10 slots / 1% risk, ~9%/yr, 38% DD) or `conservative`
   (5 slots / 1% risk, 71% invested, ~7%/yr, 31% DD). Raising risk per trade

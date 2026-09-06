@@ -59,7 +59,10 @@ async function main() {
       (config.trailPct
         ? ` + ${config.trailPct}% trail on ${config.trailGrades.join("/")}`
         : "") +
-      ` + ${config.holdDays}d backstop · grades ${config.allowedGrades.join("/")}`,
+      ` + ${config.holdDays}d backstop · grades ${config.allowedGrades.join("/")} · slots by RS${config.rsMin ? ` (floor ${config.rsMin})` : ""}` +
+      (config.regimeMa
+        ? ` · switch ${config.regimeSymbol}>${config.regimeMa}MA${config.regimeExit ? " (flatten below)" : ""}`
+        : ""),
   );
   await cycle();
   cron.schedule(config.cronSchedule, cycle, { timezone: "America/New_York" });

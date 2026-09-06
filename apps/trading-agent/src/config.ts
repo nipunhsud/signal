@@ -58,6 +58,10 @@ export interface TradingConfig {
   trailGrades: string[]; // grades managed by the trail instead of the MA exit (default S only)
   allowedGrades: string[];
   allowEtfs: boolean;
+  rsMin: number; // 0-99: skip candidates whose rsRating is below this (0 = no floor)
+  regimeMa: number; // market switch: SPY close vs this SMA; 0 disables
+  regimeExit: boolean; // also flatten the book while SPY is below the SMA
+  regimeSymbol: string;
   cronSchedule: string;
 }
 
@@ -119,6 +123,10 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): TradingConfig {
       .map((g) => g.trim())
       .filter(Boolean),
     allowEtfs: (env.TRADE_ALLOW_ETFS || "true") === "true",
+    rsMin: num("TRADE_RS_MIN", 0),
+    regimeMa: Math.floor(num("TRADE_REGIME_MA", 200)),
+    regimeExit: (env.TRADE_REGIME_EXIT || "true") === "true",
+    regimeSymbol: env.TRADE_REGIME_SYMBOL || "SPY",
     cronSchedule: env.TRADE_CRON_SCHEDULE || "*/5 * * * 1-5",
   };
 }

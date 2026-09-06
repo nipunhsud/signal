@@ -48,6 +48,22 @@ qty = min( equity × TRADE_RISK_PCT / (price − stop),   # 1 % of equity at ris
 Any explicit `TRADE_*` variable overrides the profile's value, so
 `TRADE_PROFILE=invested TRADE_MAX_OPEN_POSITIONS=8` is a valid middle.
 
+## Selection and the market switch
+
+- **Slots go to the strongest first.** Each cycle's candidates are ranked by
+  the scanner's `rsRating` (6-month relative strength, 1–99), grade breaking
+  ties, oldest alert last. `TRADE_RS_MIN` adds a floor (default 0: the study
+  found the *order* matters, a floor alone does not).
+- **Market switch.** `TRADE_REGIME_MA=200`: no new entries while SPY's latest
+  close sits below its 200-day SMA, and with `TRADE_REGIME_EXIT=true`
+  (default) the after-close review flags every open position `regime` so it
+  is sold at the next open. The reading is cached per NY date in `RuntimeFlag`
+  `trading_regime`. Below the MA the cycle log says `entries halted: market regime …`.
+- Caveat on ranking: the simulation ranked a whole day's signals at the close;
+  the live trader ranks whatever has alerted since the last cycle, so on a busy
+  day early alerts still get first pick. Batching entries to once a day is a
+  possible refinement.
+
 ## Sell rules
 
 Measured over 97,789 graded breakouts in [exit-rules-study.md](exit-rules-study.md):
@@ -57,6 +73,7 @@ Measured over 97,789 graded breakouts in [exit-rules-study.md](exit-rules-study.
 | 7 % hard stop | every position | GTC stop leg at the broker, armed when the entry fills |
 | Close below the 50-day MA (`TRADE_MA_EXIT`) | grades not in `TRADE_TRAIL_GRADES` | after-close review flags the row (`exitSignal`); market sell at the next open |
 | 20 % trailing stop from the peak high (`TRADE_TRAIL_PCT`, grades in `TRADE_TRAIL_GRADES`) | every grade by default | after-close review ratchets the broker stop up (`PATCH` order); replaces the MA rule |
+| Market switch (`TRADE_REGIME_MA`, `TRADE_REGIME_EXIT`) | every position | SPY below its 200MA at the close → sold at the next open |
 | One-year backstop (`TRADE_HOLD_DAYS`, 365) | every position | market sell if nothing else fired. Matches the study's 250-bar cap; a 90-day cap cost the trail rule 2.5 points of CAGR |
 
 The **daily review** runs once per trading day after 16:05 ET (or on the
