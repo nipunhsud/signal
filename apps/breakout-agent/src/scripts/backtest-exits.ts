@@ -12,9 +12,10 @@ import { detectBases } from "../../base-detect.js";
 import * as fs from "fs";
 
 const CACHE = process.env.STUDY_CACHE_DIR || "./study-cache";
+const OUT = process.env.STUDY_OUT_DIR || CACHE; // where exit-trades.json + paths go (bars always come from CACHE)
 const MIN_AVG_VOL = 100_000;
 const CONC = 6;
-const STOP = 0.07;
+const STOP = parseFloat(process.env.STUDY_STOP || "0.07"); // hard stop below entry; STUDY_STOP=0.05 for a tight-stop run
 const MAX_HOLD = 250; // bars; open-ended rules are capped here
 const LIST = "../../scripts/scanner-lists/combined-nasdaq-nyse-sp500.txt";
 
@@ -335,6 +336,7 @@ function table(ts: Trade[], title: string) {
 
 async function main() {
   fs.mkdirSync(CACHE, { recursive: true });
+  console.log(`hard stop ${(STOP * 100).toFixed(0)}% · output ${OUT}`);
   const limitArg = process.argv.indexOf("--limit");
   const limit = limitArg > -1 ? parseInt(process.argv[limitArg + 1]) : Infinity;
   const listArg = process.argv.indexOf("--list");
@@ -381,11 +383,12 @@ async function main() {
     const data = new Float32Array(total);
     for (let t = 0; t < trades.length; t++) data.set(trades[t].paths![name], offsets[t]);
     const slug = name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
-    fs.writeFileSync(`${CACHE}/paths-${slug}.f32`, Buffer.from(data.buffer));
-    fs.writeFileSync(`${CACHE}/paths-${slug}.u32`, Buffer.from(offsets.buffer));
+    fs.mkdirSync(OUT, { recursive: true });
+    fs.writeFileSync(`${OUT}/paths-${slug}.f32`, Buffer.from(data.buffer));
+    fs.writeFileSync(`${OUT}/paths-${slug}.u32`, Buffer.from(offsets.buffer));
   }
   for (const t of trades) delete t.paths;
-  fs.writeFileSync(`${CACHE}/exit-trades.json`, JSON.stringify(trades));
+  fs.writeFileSync(`${OUT}/exit-trades.json`, JSON.stringify(trades));
 
   table(trades, "ALL graded breakouts (S/A+/A, above 200MA, ≥100k avg vol)");
   for (const g of ["S", "A+", "A"]) table(trades.filter((t) => t.grade === g), `grade ${g}`);

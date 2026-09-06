@@ -13,7 +13,8 @@
 import * as fs from "fs";
 
 const CACHE = process.env.STUDY_CACHE_DIR || "./study-cache";
-const STOP = 0.07;
+const OUT = process.env.STUDY_OUT_DIR || CACHE; // trades + paths (a tight-stop run writes elsewhere)
+const STOP = parseFloat(process.env.STUDY_STOP || "0.07"); // must match the run that produced the paths
 const arg = (name: string, fallback: number) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? parseFloat(process.argv[i + 1]) : fallback;
@@ -40,7 +41,29 @@ const SCALE_DD = arg("scale-dd", 0);
 const STREAK_BUDGET = arg("streak-budget", 0); // % of equity: consecutive losses spend it; next trade risks what is left; a win resets it
 const HEAT = arg("heat", 0); // % of equity: total open risk-to-stop may not exceed this
 const PERIOD_LOSS = arg("period-loss", 0); // % of equity: realized losses over the last `period` days beyond this block entries
-const PERIOD = arg("period", 20); // risk per trade scales linearly to zero at this % drawdown
+const PERIOD = arg("period", 20);
+// Minervini "progressive exposure": size ladder 25/50/75/100% of base risk,
+// stepped by trade feedback (net P&L of the last `pe-window` closed trades):
+// up one rung when positive, down one rung when negative, floor 25% (never
+// zero — the pilot round is how the market is probed), reset to the first
+// rung whenever the market switch turns back on.
+const PROGRESSIVE = process.argv.includes("--progressive");
+const PE_WINDOW = arg("pe-window", 5);
+// Pilot buy + add: enter with `pilot`% of the intended size; add the rest on
+// the first day the position is up `add-at`% (never after `add-until` bars).
+// Breakout-health throttle: exposure ladder driven by how the UNIVERSE's recent
+// breakouts did — mean return of the last `bk-window` trades (under `bk-rule`,
+// RS>=80) that had already CLOSED by today. No look-ahead. Ladder: mean > +bk-hi
+// → 100%, > 0 → 75%, > −bk-lo → 50%, else `bk-floor` (0 = no entries).
+const BK_WINDOW = arg("bk-window", 0);
+const BK_RULE = (() => { const i = process.argv.indexOf("--bk-rule"); return i > -1 ? process.argv[i + 1] : "fixed21 · 7% stop"; })();
+const BK_HI = arg("bk-hi", 1); // % mean return for full size
+const BK_LO = arg("bk-lo", 1); // % mean loss tolerated at half size
+const BK_FLOOR = arg("bk-floor", 25); // % size when breakouts are failing (0 = sit out)
+const BK_EXIT = process.argv.includes("--bk-exit"); // flatten while at the floor
+const PILOT = arg("pilot", 0);
+const ADD_AT = arg("add-at", 3);
+const ADD_UNTIL = arg("add-until", 10); // risk per trade scales linearly to zero at this % drawdown
 const COST_BPS = arg("cost", 0);
 // Replacement rotation: when slots are full and a new candidate arrives, swap
 // out the weakest laggard (held >= swap-after bars, unrealized < swap-below %).
@@ -49,7 +72,7 @@ const SWAP_BELOW = arg("swap-below", 5); // transaction cost per side, basis poi
 const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
 const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
 const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
-const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, STREAK_BUDGET ? `streak budget ${STREAK_BUDGET}%` : null, HEAT ? `heat cap ${HEAT}%` : null, PERIOD_LOSS ? `period loss cap ${PERIOD_LOSS}%/${PERIOD}d` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
+const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, BK_WINDOW ? `breakout-health ${BK_WINDOW}/${BK_RULE} floor ${BK_FLOOR}%${BK_EXIT ? " exit" : ""}` : null, PROGRESSIVE ? `progressive exposure (window ${PE_WINDOW})` : null, PILOT ? `pilot ${PILOT}% add at +${ADD_AT}%` : null, STREAK_BUDGET ? `streak budget ${STREAK_BUDGET}%` : null, HEAT ? `heat cap ${HEAT}%` : null, PERIOD_LOSS ? `period loss cap ${PERIOD_LOSS}%/${PERIOD}d` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -68,13 +91,13 @@ function rng(seed: number) {
 
 interface Trade { sym: string; date: string; year: number; grade: string; rs: number | null; out: Record<string, { ret: number; bars: number; reason: string }> }
 
-const trades: Trade[] = JSON.parse(fs.readFileSync(`${CACHE}/exit-trades.json`, "utf8"));
+const trades: Trade[] = JSON.parse(fs.readFileSync(`${OUT}/exit-trades.json`, "utf8"));
 console.log(`${trades.length} trades loaded · slots ${SLOTS} · risk ${RISK_PCT}%/trade · cap ${CAP_PCT}%/position · from ${FROM_YEAR}`);
 
 const slug = (name: string) => name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
 function loadPaths(name: string): { data: Float32Array; offsets: Uint32Array } {
-  const f = fs.readFileSync(`${CACHE}/paths-${slug(name)}.f32`);
-  const o = fs.readFileSync(`${CACHE}/paths-${slug(name)}.u32`);
+  const f = fs.readFileSync(`${OUT}/paths-${slug(name)}.f32`);
+  const o = fs.readFileSync(`${OUT}/paths-${slug(name)}.u32`);
   return {
     data: new Float32Array(f.buffer, f.byteOffset, f.byteLength / 4),
     offsets: new Uint32Array(o.buffer, o.byteOffset, o.byteLength / 4),
@@ -169,6 +192,27 @@ trades.forEach((t, i) => {
   if (!byDate.has(d)) byDate.set(d, []);
   byDate.get(d)!.push(i);
 });
+// Daily breakout-health series: for each calendar index, mean return of the
+// last BK_WINDOW universe trades (RS>=80) that exited before that day.
+const bkHealth = new Float64Array(dates.length).fill(NaN);
+if (BK_WINDOW > 0) {
+  const pool = trades
+    .map((t) => ({ exit: dateIdx.get(t.date)! + (t.out[BK_RULE]?.bars ?? 0), ret: t.out[BK_RULE]?.ret ?? 0, rs: t.rs }))
+    .filter((t) => t.rs != null && t.rs >= 80)
+    .sort((a, b) => a.exit - b.exit);
+  let j = 0; const win: number[] = []; let sum = 0;
+  for (let d = 0; d < dates.length; d++) {
+    while (j < pool.length && pool[j].exit < d) { win.push(pool[j].ret); sum += pool[j].ret; if (win.length > BK_WINDOW) sum -= win.shift()!; j++; }
+    if (win.length >= BK_WINDOW) bkHealth[d] = (sum / win.length) * 100;
+  }
+}
+function bkLadder(d: number): number {
+  if (BK_WINDOW <= 0) return 1;
+  const m = bkHealth[d];
+  if (Number.isNaN(m)) return 1;
+  return m > BK_HI ? 1 : m > 0 ? 0.75 : m > -BK_LO ? 0.5 : BK_FLOOR / 100;
+}
+
 function orderDays(seed: number) {
   const r = rng(seed);
   for (const list of byDate.values()) {
@@ -180,7 +224,7 @@ function orderDays(seed: number) {
   }
 }
 
-interface Position { tradeIdx: number; notional: number; data: Float32Array; start: number; len: number; day: number }
+interface Position { tradeIdx: number; notional: number; data: Float32Array; start: number; len: number; day: number; addNotional?: number; addMark?: number; pendingAdd?: number }
 
 interface Result {
   name: string; cagr: number; maxDD: number; vol: number; sharpe: number; trades: number;
@@ -203,6 +247,10 @@ function simulate(name: string, pick: PathPicker): Result {
   let pausedUntil = -1;
   let haltedDays = 0;
   let streakLossPct = 0; // realized loss (% of equity) in the current losing streak
+  const LADDER = [0.25, 0.5, 0.75, 1];
+  let rung = PROGRESSIVE ? 0 : 3;
+  const recent: number[] = []; // pnl of the last PE_WINDOW closed trades
+  let wasOn = true;
   let budgetSpentAt = -1; // day the streak budget ran out; refills after PAUSE days
   const closedLog: Array<{ day: number; pnl: number }> = []; // realized pnl per close, for the rolling cap
 
@@ -211,12 +259,30 @@ function simulate(name: string, pick: PathPicker): Result {
     for (let k = positions.length - 1; k >= 0; k--) {
       const p = positions[k];
       p.day++;
+      // pilot add: fill the rest of the position once it is working
+      if (p.pendingAdd && p.day >= 0 && p.day < p.len - 1) {
+        const r = p.data[p.start + p.day];
+        if (r * 100 >= ADD_AT && p.day <= ADD_UNTIL) {
+          const addNotional = Math.min(p.pendingAdd, cash / (1 + COST_BPS / 10000));
+          if (addNotional > 0) { cash -= addNotional * (1 + COST_BPS / 10000); p.addNotional = addNotional; p.addMark = 1 + r; }
+          p.pendingAdd = 0;
+        } else if (p.day > ADD_UNTIL) p.pendingAdd = 0;
+      }
       if (p.day >= p.len) {
         const ret = p.data[p.start + p.len - 1];
-        const proceeds = p.notional * (1 + ret) * (1 - COST_BPS / 10000);
+        const proceeds = (p.notional * (1 + ret) + (p.addNotional ? p.addNotional * ((1 + ret) / p.addMark!) : 0)) * (1 - COST_BPS / 10000);
         cash += proceeds;
         positions.splice(k, 1);
-        const pnl = proceeds - p.notional;
+        const pnl = proceeds - p.notional - (p.addNotional ?? 0);
+        if (PROGRESSIVE) {
+          recent.push(pnl);
+          if (recent.length > PE_WINDOW) recent.shift();
+          if (recent.length >= PE_WINDOW) {
+            const net = recent.reduce((a, b) => a + b, 0);
+            rung = net > 0 ? Math.min(3, rung + 1) : Math.max(0, rung - 1);
+            recent.length = 0;
+          }
+        }
         closedLog.push({ day: d, pnl });
         if (ret < 0) {
           if (++lossStreak >= STREAK && STREAK > 0) pausedUntil = d + PAUSE;
@@ -226,7 +292,7 @@ function simulate(name: string, pick: PathPicker): Result {
     }
     // 2. equity mark (open positions at today's path value)
     let equity = cash;
-    for (const p of positions) equity += p.notional * (1 + p.data[p.start + p.day]);
+    for (const p of positions) equity += p.notional * (1 + p.data[p.start + p.day]) + (p.addNotional ? p.addNotional * ((1 + p.data[p.start + p.day]) / p.addMark!) : 0);
     peak = Math.max(peak, equity);
     const dd = (peak - equity) / peak * 100;
     if (DD_HALT > 0) {
@@ -244,10 +310,17 @@ function simulate(name: string, pick: PathPicker): Result {
     const breakersOk = !ddHalted && eqMaOk && d >= pausedUntil && periodOk;
     if (!breakersOk) haltedDays++;
     const h = healthOn(dates[d]);
-    const on = regimeOn(dates[d]) && h.enter && breakersOk;
-    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || (DD_FLATTEN && ddHalted)) && positions.length) {
+    const switchOn = regimeOn(dates[d]) && h.enter;
+    if (PROGRESSIVE && switchOn && !wasOn) { rung = 0; recent.length = 0; }
+    wasOn = switchOn;
+    const bk = bkLadder(d);
+    const on = switchOn && breakersOk && bk > 0;
+    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || (DD_FLATTEN && ddHalted) || (BK_EXIT && bk <= BK_FLOOR / 100 && bk < 1)) && positions.length) {
       // risk-off: flatten at today's mark
-      for (const p of positions) cash += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]) * (1 - COST_BPS / 10000);
+      for (const p of positions) {
+        const r = p.data[p.start + Math.max(0, p.day)];
+        cash += (p.notional * (1 + r) + (p.addNotional ? p.addNotional * ((1 + r) / p.addMark!) : 0)) * (1 - COST_BPS / 10000);
+      }
       positions.length = 0;
       equity = cash;
     }
@@ -276,7 +349,7 @@ function simulate(name: string, pick: PathPicker): Result {
       if (positions.some((p) => trades[p.tradeIdx].sym === t.sym)) continue;
       const path = pick(t, ti);
       if (path.len === 0) continue;
-      let riskPct = SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT;
+      let riskPct = (SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT) * LADDER[rung] * bk;
       if (STREAK_BUDGET > 0) {
         if (budgetSpentAt >= 0 && d >= budgetSpentAt + PAUSE) { streakLossPct = 0; budgetSpentAt = -1; }
         riskPct = Math.min(riskPct, Math.max(0, STREAK_BUDGET - streakLossPct));
@@ -289,8 +362,10 @@ function simulate(name: string, pick: PathPicker): Result {
       if (riskPct < 0.25) { haltedDays += 0; continue; }
       const notional = Math.min((equity * riskPct) / 100 / STOP, (equity * CAP_PCT) / 100, cash);
       if (notional <= 0 || notional < equity * 0.01) continue;
-      cash -= notional * (1 + COST_BPS / 10000);
-      positions.push({ tradeIdx: ti, notional, data: path.data, start: path.start, len: path.len, day: -1 });
+      const pilotFrac = PILOT > 0 ? PILOT / 100 : 1;
+      const entryNotional = notional * pilotFrac;
+      cash -= entryNotional * (1 + COST_BPS / 10000);
+      positions.push({ tradeIdx: ti, notional: entryNotional, data: path.data, start: path.start, len: path.len, day: -1, pendingAdd: PILOT > 0 ? notional - entryNotional : 0 });
       nTrades++;
     }
     // Positions entered today are marked at entry (day -1 → 0 ret), equity unchanged.
@@ -300,7 +375,7 @@ function simulate(name: string, pick: PathPicker): Result {
   }
   // liquidate whatever is open at the end
   let finalEq = cash;
-  for (const p of positions) finalEq += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]) * (1 - COST_BPS / 10000);
+  for (const p of positions) { const r = p.data[p.start + Math.max(0, p.day)]; finalEq += (p.notional * (1 + r) + (p.addNotional ? p.addNotional * ((1 + r) / p.addMark!) : 0)) * (1 - COST_BPS / 10000); }
   equityCurve.push(finalEq);
 
   const n = equityCurve.length;
@@ -343,7 +418,7 @@ function simulate(name: string, pick: PathPicker): Result {
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const pickers = Object.entries(RULES)
   .filter(([name]) => !ONLY || ONLY.some((o) => name.includes(o)))
-  .filter(([name]) => fs.existsSync(`${CACHE}/paths-${slug(name.includes("ADOPTED") ? "stop · close<MA50" : name)}.f32`))
+  .filter(([name]) => fs.existsSync(`${OUT}/paths-${slug(name.includes("MA50 on") ? "stop · close<MA50" : name)}.f32`))
   .map(([name, mk]) => [name, mk()] as const);
 let results: Result[] = [];
 if (SEEDS <= 1) {

@@ -1160,6 +1160,189 @@ stop · trail 20%                       2.6%    1.1%    5.7%       28.7%   32.2%
 fixed42 · 7% stop                      0.6%    0.2%    1.3%       30.8%   31.5%    0.11         61    -14.4%       1.8      0%
 ```
 
+## Minervini and O'Neil, tested against the same stream
+
+What they publish (sources at the end of this section):
+
+| Claim | Minervini | O'Neil / IBD | Ours (trail 20 %, 7 % stop) |
+| --- | --- | --- | --- |
+| Batting average | "right around 50 %", "never more than 50 % over 37 years" | — | 32 % (S grade 44 %) |
+| Average loss | "about four or five percent" incl. slippage; stops 8–10 % max, staggered | 7–8 % max | 6.9 % |
+| Average gain | "12 % gains and 6 % losses" as his working ratio | sell most at 20–25 % | 25.8 % |
+| Holding period | winners ~24 days, losers ~20 | 8-week rule for the fastest | 95 bars (trail) / 42 (rotation) |
+| Positions | concentrated; pilot buys, quarter/half/full | — | 10 × 14 % |
+| Exposure | "25 % invested, or even 50 %… don't step it up until you've got some traction"; 100 % cash in corrections "for months" | raise cash after 5+ distribution days; buy on follow-through days | S&P 200MA switch, flatten below |
+| His four pillars | "1. Timing 2. Turnover 3. Aggressive position sizing when trades are working 4. Cash or light positioning [when not]" | | 1 ✓ (200MA) · 2 ✓ (rotation profile) · 4 ✓ (regime exit) · 3 — tested below |
+
+Every mechanical piece of pillar 3 and the rest of his kit was run on the
+shipped setup (10 slots, 1 % risk, 200MA switch, RS ≥ 80 strongest-first),
+10 bp a side, 12 orderings, 1990–2026:
+
+| Mechanism | Trail 20 % (default) | Fixed 42 (rotation) |
+| --- | --- | --- |
+| baseline | 12.9 % · 27 % DD | 18.8 % · 55 % DD |
+| **Progressive exposure**: ladder 25/50/75/100 % of size, up a rung when the last 5 closed trades net positive, down when negative, floor 25 %, reset to 25 % when the switch turns on | 5.8 % · 20 % DD | 10.4 % · 45 % DD |
+| same, 3-trade window | 6.1 % · 19 % | 10.3 % · 51 % |
+| same, at 2 % base risk (so full rung = 29 % positions) | 10.7 % · 25 % | 16.4 % · 57 % |
+| **Pilot buy 50 %, add the rest at +3 %** | 12.6 % · 28 % | 15.3 % · 44 % |
+| pilot 25 %, add at +3 % | 11.6 % · 27 % | 13.7 % · 42 % |
+| **Tight 5 % stop** (1 % risk → 20 % positions) | 12.3 % · 38 % DD · 74 % of trades stopped | 10.7 % · 58 % |
+| Loose 10 % stop | 13.0 % · 29 % | 15.1 % · 47 % |
+| **Universe breakout-health throttle**: size by the mean return of the last 50 *closed* RS ≥ 80 breakouts across the whole market | 7.9 % · 27 % | 11.7 % · 51 % |
+| same, sit out entirely when negative | 9.3 % · 34 % | 7.6 % · 62 % |
+| Sell half at +20 % (his "sell into strength") — earlier section | 12.9 → 12.7 % | — |
+| 200MA switch (his "timing" / "cash") — earlier section | 9.0 → 14.1 % (0 bp) | — |
+
+### Why "size up when it's working" reads as true and tests as false
+
+The claim has a testable core: do recent breakout outcomes predict the next
+one? First pass, over every RS ≥ 80 breakout since 1990, ordered by entry
+date: the mean return of the previous 5–50 trades correlates **0.20–0.28**
+with the next trade's return, and the next trade averages +3 % (fixed 42) /
++7 % (trail) after a positive stretch versus −1.5 to −2.5 % after a negative
+one. That is the intuition, and it is real.
+
+Second pass, using only trades that had **already closed** before each entry
+(the only information a trader has): correlation **0.00** at every window,
+and the next-trade mean is the same whether the prior stretch was positive or
+negative (fixed 21: 0.36 % vs 0.46 %; trail: 3.1 % vs 2.5 %, then 2.7 % vs
+3.0 %).
+
+The first-pass correlation is trades entered in the same weeks sharing the
+same market move — *contemporaneous*, not predictive. By the time a trade
+has closed and told you how it went, its information is a month old, and a
+month-old read on a momentum regime is worth nothing. That is exactly why
+every feedback-based throttle in this study (drawdown halts, streak budgets,
+progressive ladders, the universe throttle) subtracts: each one reacts to
+realized results, which lag the market, and is scaled up just as the run
+ends. The one switch that adds — S&P vs its 200MA — reads the market *now*.
+
+So Minervini's pillar 3 is not mechanical. It is his judgment of the tape
+in real time, applied through pilot buys that are judged in days, not the
+weeks a closed trade takes. His stated stats (≈50 % hit rate, 4–5 % average
+loss, 12 % average gain, 24-day holds) describe a discretionary trader
+buying intraday at the pivot with a tight stop — a 5 % stop on our
+end-of-day base breakouts stops out 74 % of trades and *raises* the
+drawdown. What transfers from him and O'Neil is already in the trader:
+the market switch, the clock rotation as a profile, the 7 % stop, no
+selling into +20 %.
+
+Sources: [Minervini on X: the four pillars](https://x.com/markminervini/status/1826989022041850163) · [Minervini on X: 25 % exposure, five 5 % positions, 8 % stops → 2 % per round](https://x.com/markminervini/status/1549175636983517185) · [Minervini on X: progressive exposure](https://x.com/markminervini/status/1293567014720745472) · [Minervini on X: applying progressive exposure, pilot buys](https://x.com/markminervini/status/1884705597402059074) · [Minervini on X: batting average arithmetic](https://x.com/markminervini/status/915641533881290752) · [Stockopedia interview: ~50 % batting average, 4–5 % average loss, 8–10 % stops, 25 % → incremental exposure, 100 % cash for months](https://www.stockopedia.com/content/mark-minervini-interview-how-to-trade-like-a-champion-353963/) · [MarketWatch/Sincere interview: 155 % (1997), 334.8 % (2021), 220 % annualized over five years](https://michaelsincere.com/articles/my-marketwatch-interview-with-stock-market-wizard-mark-minervini) · [TraderLion: progressive exposure lesson](https://traderlion.com/lesson/lesson-7-progressive-exposure-the-minervini-method/) · [TraderLion: 2021 championship risk management](https://traderlion.com/investing-champions/mark-minervinis-risk-management/) · [Substack: progressive exposure framework, 5-trade batches](https://tintintrading.substack.com/p/maximizing-profits-with-progressive) · [Business Wire: 2021 USIC results](https://www.businesswire.com/news/home/20220124005241/en/2021-United-States-Investing-Championship-Winners-Minervini-Smashes-Record) · [IBD on X: sell rules 20–25 % / 7–8 %](https://x.com/IBDinvestors/status/1755350824581034256) · [IBD's 20 rules](https://www.pragcap.com/ibds-20-rules/) · [O'Neil's five rules incl. 8-week and follow-through day](https://x.com/BlogJulianKomar/status/1409635231871561729)
+
+```
+## Minervini mechanics · cost 10bp · 1990+
+### baseline
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --progressive
+stop · trail 20%                       5.8%    5.5%    6.3%       19.9%   23.3%    0.73         56    -12.4%       0.9      0%
+fixed42 · 7% stop                     10.4%    9.5%   11.5%       44.8%   52.6%    0.63         95    -12.4%       1.3      0%
+### --progressive --pe-window 3
+stop · trail 20%                       6.1%    5.6%    6.4%       19.4%   20.8%    0.76         56    -12.3%       1.0      0%
+fixed42 · 7% stop                     10.3%    9.3%   11.6%       50.6%   53.5%    0.59         95     -9.8%       0.4      0%
+### --progressive --pe-window 10
+stop · trail 20%                       5.1%    4.9%    5.4%       20.3%   22.6%    0.68         57    -11.8%       1.0      0%
+fixed42 · 7% stop                      9.7%    8.8%   10.9%       47.8%   49.5%    0.59         95    -12.8%       1.7      0%
+### --pilot 50 --add-at 3
+stop · trail 20%                      12.6%   12.0%   13.3%       27.6%   29.1%    0.88         57    -14.1%       2.0      0%
+fixed42 · 7% stop                     15.3%   14.4%   16.4%       43.6%   51.3%    0.79         96    -16.4%       1.0      0%
+### --pilot 50 --add-at 5 --add-until 15
+stop · trail 20%                      12.1%   11.6%   12.7%       27.9%   30.1%    0.84         56    -13.6%       1.0      0%
+fixed42 · 7% stop                     15.6%   14.7%   17.0%       44.2%   48.3%    0.80         96    -16.4%       1.0      0%
+### --pilot 25 --add-at 3
+stop · trail 20%                      11.6%   11.1%   12.1%       27.4%   28.7%    0.81         56    -13.7%       1.8      0%
+fixed42 · 7% stop                     13.7%   12.6%   14.8%       41.8%   48.3%    0.78         96    -16.4%       1.1      0%
+### --progressive --pilot 50 --add-at 3
+stop · trail 20%                       4.4%    4.3%    4.7%       19.1%   21.3%    0.64         57    -11.5%       0.8      0%
+fixed42 · 7% stop                      8.5%    7.5%    9.5%       32.4%   36.3%    0.63         96    -12.6%       1.4      0%
+### --risk 1.5 --cap 25 --progressive
+stop · trail 20%                       5.8%    5.5%    6.3%       19.9%   23.3%    0.73         56    -12.4%       0.9      0%
+fixed42 · 7% stop                     10.4%    9.5%   11.5%       44.8%   52.6%    0.63         95    -12.4%       1.3      0%
+### --risk 2 --cap 25 --slots 5 --progressive
+stop · trail 20%                       5.8%    5.5%    6.3%       19.9%   23.3%    0.73         56    -12.4%       0.9      0%
+fixed42 · 7% stop                     10.4%    9.5%   11.5%       44.8%   52.6%    0.63         95    -12.4%       1.3      0%
+## Minervini mechanics · cost 10bp · 2010+
+### baseline
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --progressive
+stop · trail 20%                       4.7%    4.4%    5.5%       19.9%   23.3%    0.53         60    -12.4%       0.9      0%
+fixed42 · 7% stop                      8.4%    6.6%    9.5%       44.8%   52.6%    0.45        104    -12.4%       1.3      0%
+### --progressive --pe-window 3
+stop · trail 20%                       5.0%    4.1%    6.0%       19.4%   20.8%    0.56         60    -12.3%       1.0      0%
+fixed42 · 7% stop                      7.9%    6.3%    9.1%       50.6%   53.5%    0.42        104     -9.8%       0.4      0%
+### --progressive --pe-window 10
+stop · trail 20%                       4.0%    3.2%    4.7%       20.3%   22.6%    0.49         60    -11.8%       1.0      0%
+fixed42 · 7% stop                      8.1%    7.0%    9.0%       47.8%   49.5%    0.44        103    -12.8%       1.7      0%
+### --pilot 50 --add-at 3
+stop · trail 20%                       8.3%    7.2%    9.2%       26.8%   29.1%    0.58         60    -14.1%       1.0      0%
+fixed42 · 7% stop                     10.9%    9.6%   12.2%       43.6%   51.3%    0.54        105    -16.4%       1.0      0%
+### --pilot 50 --add-at 5 --add-until 15
+stop · trail 20%                       8.5%    7.7%    9.1%       27.9%   30.1%    0.59         60    -13.6%       1.0      0%
+fixed42 · 7% stop                     10.8%    9.9%   12.0%       44.2%   48.3%    0.53        105    -16.4%       1.0      0%
+### --pilot 25 --add-at 3
+stop · trail 20%                       7.5%    6.2%    8.4%       27.0%   28.7%    0.53         60    -13.7%       1.0      0%
+fixed42 · 7% stop                      8.3%    7.3%    9.2%       41.8%   48.3%    0.48        105    -16.4%       1.0      0%
+### --progressive --pilot 50 --add-at 3
+stop · trail 20%                       3.1%    2.6%    3.5%       18.9%   21.3%    0.42         60    -11.5%       0.8      0%
+fixed42 · 7% stop                      6.4%    4.0%    7.6%       32.4%   36.3%    0.43        105    -12.6%       1.4      0%
+### --risk 1.5 --cap 25 --progressive
+stop · trail 20%                       4.7%    4.4%    5.5%       19.9%   23.3%    0.53         60    -12.4%       0.9      0%
+fixed42 · 7% stop                      8.4%    6.6%    9.5%       44.8%   52.6%    0.45        104    -12.4%       1.3      0%
+### --risk 2 --cap 25 --slots 5 --progressive
+stop · trail 20%                       4.7%    4.4%    5.5%       19.9%   23.3%    0.53         60    -12.4%       0.9      0%
+fixed42 · 7% stop                      8.4%    6.6%    9.5%       44.8%   52.6%    0.45        104    -12.4%       1.3      0%
+```
+
+```
+## hard stop 0.05 · per-trade
+fixed21 · 7% stop        win 45.0% mean 0.46% PF 1.19 bars 15 stopped 44%
+fixed42 · 7% stop        win 38.5% mean 0.86% PF 1.28 bars 26 stopped 57%
+stop · trail 20%         win 25.4% mean 2.85% PF 1.75 bars 75 stopped 74%
+stop · close<MA50        win 33.0% mean 0.96% PF 1.34 bars 31 stopped 42%
+## hard stop 0.05 · portfolio · cost 10bp · 1990+ (risk 1%: position = 1%/stop)
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     12.1%   11.4%   12.8%       83.8%   86.7%    0.54        100    -21.3%       5.2      0%
+stop · close<MA50                     11.7%    9.7%   14.0%       45.8%   53.8%    0.63         57    -19.7%       5.3      0%
+stop · trail 20%                      12.3%   11.1%   13.0%       37.5%   39.4%    0.74         40    -17.6%       3.0      0%
+fixed42 · 7% stop                     10.7%    8.6%   12.9%       57.6%   62.1%    0.60         69    -18.8%       3.4      0%
+## hard stop 0.05 · portfolio · cost 10bp · 1990+ · progressive
+stop · trail 20%                       7.3%    6.4%    8.1%       24.7%   27.1%    0.72         68    -11.9%       1.0      0%
+fixed42 · 7% stop                      8.9%    7.5%   10.0%       40.1%   45.2%    0.63        108    -13.6%       2.0      0%
+## hard stop 0.05 · portfolio · cost 10bp · 2010+ (risk 1%: position = 1%/stop)
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                      5.0%    3.6%    6.5%       83.8%   86.7%    0.30        112    -21.3%       5.1      0%
+stop · close<MA50                      4.2%    1.9%    6.8%       45.8%   53.8%    0.29         64    -19.7%       3.4      0%
+stop · trail 20%                      10.4%    9.0%   11.7%       36.8%   38.4%    0.62         43    -17.5%       2.0      0%
+fixed42 · 7% stop                      4.4%    1.6%    7.4%       57.6%   62.1%    0.30         76    -18.8%       2.0      0%
+## hard stop 0.05 · portfolio · cost 10bp · 2010+ · progressive
+stop · trail 20%                       3.7%    2.0%    4.9%       24.7%   27.1%    0.36         77    -11.9%       1.0      0%
+fixed42 · 7% stop                      4.1%    1.3%    6.2%       40.1%   45.2%    0.32        120    -13.6%       2.0      0%
+## hard stop 0.10 · per-trade
+fixed21 · 7% stop        win 53.1% mean 0.60% PF 1.21 bars 19 stopped 19%
+fixed42 · 7% stop        win 51.4% mean 1.24% PF 1.33 bars 35 stopped 31%
+stop · trail 20%         win 40.3% mean 4.70% PF 1.86 bars 117 stopped 58%
+stop · close<MA50        win 37.7% mean 1.22% PF 1.37 bars 36 stopped 12%
+## hard stop 0.10 · portfolio · cost 10bp · 1990+ (risk 1%: position = 1%/stop)
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     12.4%   11.6%   13.2%       44.6%   52.7%    0.67        125    -15.2%       1.0      0%
+stop · close<MA50                     14.6%   13.7%   15.4%       42.3%   46.1%    0.81         77    -27.2%       4.9      0%
+stop · trail 20%                      13.0%   12.3%   13.7%       28.5%   29.8%    0.91         49    -14.3%       1.1      0%
+fixed42 · 7% stop                     15.1%   14.3%   16.2%       46.5%   50.0%    0.75         84    -16.1%       1.6      0%
+## hard stop 0.10 · portfolio · cost 10bp · 1990+ · progressive
+stop · trail 20%                       4.1%    3.5%    4.5%       17.8%   20.3%    0.66         49    -10.9%       0.6      0%
+fixed42 · 7% stop                      7.7%    6.8%    8.3%       39.1%   40.6%    0.56         84    -10.1%       0.6      0%
+## hard stop 0.10 · portfolio · cost 10bp · 2010+ (risk 1%: position = 1%/stop)
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     11.1%   10.1%   12.4%       44.6%   52.7%    0.54        137    -15.2%       1.0      0%
+stop · close<MA50                      6.9%    4.7%    8.7%       42.3%   46.1%    0.43         86    -27.2%       4.9      0%
+stop · trail 20%                      10.4%    9.0%   11.6%       28.5%   29.8%    0.69         52    -14.3%       1.0      0%
+fixed42 · 7% stop                     12.7%   11.3%   14.6%       46.5%   50.0%    0.57         90    -16.1%       1.6      0%
+## hard stop 0.10 · portfolio · cost 10bp · 2010+ · progressive
+stop · trail 20%                       3.7%    2.5%    4.5%       17.8%   20.3%    0.50         52    -10.9%       0.6      0%
+fixed42 · 7% stop                      6.9%    6.0%    8.0%       39.1%   40.6%    0.43         90    -10.1%       0.6      0%
+```
+
 ## Recommendation, revised after the portfolio simulation
 
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.
