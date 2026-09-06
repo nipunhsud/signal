@@ -70,7 +70,7 @@ One lever picks the operating point, `TRADE_PROFILE`: `invested` (default:
 10 slots, 1% risk per trade, 20% trailing stop on every grade, ~9%/yr with a
 38% worst drawdown in the backtest) or `conservative` (5 slots, ~7%/yr, 31%
 drawdown, a third of the book in cash). Any explicit `TRADE_*` variable
-overrides the profile. 7% hard stop and a 90-day backstop always apply. The
+overrides the profile. 7% hard stop and a one-year backstop always apply. The
 evidence is in [docs/exit-rules-study.md](docs/exit-rules-study.md).
 Kill switch: set `RuntimeFlag` key `trading_halted` to `true`.
 

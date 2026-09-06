@@ -11,7 +11,7 @@ test("default profile is the fully-invested operating point", () => {
   assert.equal(c.riskPerTradePct, 1);
   assert.deepEqual(c.trailGrades, ["S", "A+", "A"]);
   assert.equal(c.trailPct, 20);
-  assert.equal(c.holdDays, 90);
+  assert.equal(c.holdDays, 365);
   assert.deepEqual(validateConfig(c), []);
 });
 

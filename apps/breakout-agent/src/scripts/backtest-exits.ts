@@ -171,6 +171,9 @@ const STRATEGIES: Record<string, Rule> = {
   "stop · trail 15%":             (c) => simulate(c, { trail: 0.15 }),
   "stop · trail 20%":             (c) => simulate(c, { trail: 0.20 }),
   "stop · trail 25%":             (c) => simulate(c, { trail: 0.25 }),
+  "trail 20% · 63-bar cap (90d)": (c) => simulate(c, { trail: 0.20, horizon: 63 }),
+  "trail 20% · 126-bar cap (180d)": (c) => simulate(c, { trail: 0.20, horizon: 126 }),
+  "trail 20% · 189-bar cap (270d)": (c) => simulate(c, { trail: 0.20, horizon: 189 }),
   "stop · trail 30%":             (c) => simulate(c, { trail: 0.30 }),
   "stop · trail15 + MA50":        (c) => simulate(c, { trail: 0.15, ma: 50 }),
   "all out +20% · else MA50":     (c) => simulate(c, { target: 0.20, ma: 50 }),
@@ -198,6 +201,8 @@ const PATH_STRATEGIES: Record<string, Rule> = {
   "stop · trail 15%":             (c) => simulate(c, { trail: 0.15, wantPath: true }),
   "stop · trail 20%":             (c) => simulate(c, { trail: 0.20, wantPath: true }),
   "stop · trail 25%":             (c) => simulate(c, { trail: 0.25, wantPath: true }),
+  "trail 20% · 63-bar cap (90d)": (c) => simulate(c, { trail: 0.20, horizon: 63, wantPath: true }),
+  "trail 20% · 126-bar cap (180d)": (c) => simulate(c, { trail: 0.20, horizon: 126, wantPath: true }),
   "stop · trail 30%":             (c) => simulate(c, { trail: 0.30, wantPath: true }),
   "half +20% · rest MA50":        (c) => simulate(c, { target: 0.20, partial: 0.5, ma: 50, wantPath: true }),
   "Brandt 3d-low trail after +20%": (c) => simulate(c, { lowTrail: 3, lowTrailAfter: 0.20, wantPath: true }),
@@ -205,7 +210,12 @@ const PATH_STRATEGIES: Record<string, Rule> = {
 
 // ---------- data pass ----------
 
-interface Trade { sym: string; date: string; year: number; grade: string; out: Record<string, Outcome>; paths?: Record<string, number[]> }
+interface Trade { sym: string; date: string; year: number; grade: string; ret126: number | null; rs: number | null; out: Record<string, Outcome>; paths?: Record<string, number[]> }
+
+// Universe cross-section of trailing-126-bar returns, sampled at the first bar
+// of each month, so each trade's relative strength can be ranked against every
+// symbol (not just that day's breakouts) — the scanner's rsRating, replayed.
+const universeRet126 = new Map<string, number[]>();
 
 function smaSeries(bars: Bar[], n: number): Float64Array {
   const out = new Float64Array(bars.length);
@@ -231,6 +241,15 @@ async function processSymbol(sym: string, trades: Trade[]) {
   const ma20 = smaSeries(bars, 20), ma50 = smaSeries(bars, 50), ma200 = smaSeries(bars, 200);
   const idxByDate = new Map<string, number>();
   for (let i = 0; i < bars.length; i++) idxByDate.set(bars[i].time, i);
+  let lastMonth = "";
+  for (let i = 126; i < bars.length; i++) {
+    const ym = bars[i].time.slice(0, 7);
+    if (ym === lastMonth) continue;
+    lastMonth = ym;
+    const r = bars[i].close / bars[i - 126].close - 1;
+    if (!universeRet126.has(ym)) universeRet126.set(ym, []);
+    universeRet126.get(ym)!.push(r);
+  }
   for (const base of detectBases(bars) as any[]) {
     if (!base.breakout) continue;
     const pIdx = idxByDate.get(base.pivotDate);
@@ -249,7 +268,8 @@ async function processSymbol(sym: string, trades: Trade[]) {
     for (const [name, rule] of Object.entries(STRATEGIES)) out[name] = rule(ctx);
     const paths: Record<string, number[]> = {};
     for (const [name, rule] of Object.entries(PATH_STRATEGIES)) paths[name] = rule(ctx).path!;
-    trades.push({ sym, date: bars[i].time, year: +bars[i].time.slice(0, 4), grade, out, paths });
+    const ret126 = i >= 126 ? bars[i].close / bars[i - 126].close - 1 : null;
+    trades.push({ sym, date: bars[i].time, year: +bars[i].time.slice(0, 4), grade, ret126, rs: null, out, paths });
   }
 }
 
@@ -319,6 +339,17 @@ async function main() {
   }));
   console.log(`\n${trades.length} graded breakouts from ${syms.length} symbols (errors: ${errs.length})`);
   if (errs.length) console.log("first errors:", errs.slice(0, 5).join(" | "));
+  // Relative strength: percentile of the trade's 6-month return within the
+  // universe cross-section sampled at the start of the entry month.
+  const sortedByMonth = new Map<string, number[]>();
+  for (const [ym, arr] of universeRet126) sortedByMonth.set(ym, arr.sort((a, b) => a - b));
+  for (const t of trades) {
+    const arr = sortedByMonth.get(t.date.slice(0, 7));
+    if (t.ret126 == null || !arr || arr.length < 50) continue;
+    let lo = 0, hi = arr.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < t.ret126) lo = mid + 1; else hi = mid; }
+    t.rs = Math.round((lo / arr.length) * 100);
+  }
   // Paths → one Float32 blob + Uint32 offsets per strategy; JSON keeps the rest.
   trades.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.sym < b.sym ? -1 : 1));
   for (const name of Object.keys(PATH_STRATEGIES)) {

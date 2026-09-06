@@ -24,6 +24,14 @@ const CAP_PCT = arg("cap", 20);
 const FROM_YEAR = arg("from", 1990);
 const SEEDS = arg("seeds", 1); // >1: average over random within-day orderings
 const NO_GRADE = process.argv.includes("--nograde"); // ignore grade priority when filling slots
+const REGIME = arg("regime", 0); // 50 | 200: enter only while S&P 500 closes above that SMA
+const REGIME_EXIT = process.argv.includes("--regime-exit"); // also flatten everything while below
+const HEALTH = arg("health", 0); // enter only while the replayed market-health score >= this
+const HEALTH_EXIT = arg("health-exit", 0); // flatten everything while the score < this
+const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
+const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
+const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
+const FILTERS = [REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -40,7 +48,7 @@ function rng(seed: number) {
   };
 }
 
-interface Trade { sym: string; date: string; year: number; grade: string; out: Record<string, { ret: number; bars: number; reason: string }> }
+interface Trade { sym: string; date: string; year: number; grade: string; rs: number | null; out: Record<string, { ret: number; bars: number; reason: string }> }
 
 const trades: Trade[] = JSON.parse(fs.readFileSync(`${CACHE}/exit-trades.json`, "utf8"));
 console.log(`${trades.length} trades loaded · slots ${SLOTS} · risk ${RISK_PCT}%/trade · cap ${CAP_PCT}%/position · from ${FROM_YEAR}`);
@@ -67,7 +75,9 @@ const RULES: Record<string, () => PathPicker> = {
   "stop · trail 15%": () => single("stop · trail 15%"),
   "stop · trail 25%": () => single("stop · trail 25%"),
   "stop · trail 30%": () => single("stop · trail 30%"),
-  "ADOPTED: MA50, trail 20% on S": () => {
+  "trail 20% · 63-bar cap (90d)": () => single("trail 20% · 63-bar cap (90d)"),
+  "trail 20% · 126-bar cap (180d)": () => single("trail 20% · 126-bar cap (180d)"),
+  "MA50 on A+/A, trail 20% on S": () => {
     const ma = loadPaths("stop · close<MA50");
     const tr = loadPaths("stop · trail 20%");
     return (t, i) => {
@@ -79,6 +89,45 @@ const RULES: Record<string, () => PathPicker> = {
 function single(name: string): PathPicker {
   const p = loadPaths(name);
   return (_t, i) => ({ data: p.data, start: p.offsets[i], len: p.offsets[i + 1] - p.offsets[i] });
+}
+
+// S&P 500 regime: close vs SMA(n) on each calendar date, from the cached
+// Yahoo series (fetched once into study-cache/^GSPC.json by fetch-spx).
+const spxAbove = new Map<string, boolean>();
+if (REGIME > 0) {
+  const f = `${CACHE}/^GSPC.json`;
+  if (!fs.existsSync(f)) throw new Error(`${f} missing — run: node dist/scripts/fetch-spx.js`);
+  const raw: number[][] = JSON.parse(fs.readFileSync(f, "utf8"));
+  let sum = 0;
+  for (let i = 0; i < raw.length; i++) {
+    sum += raw[i][4];
+    if (i >= REGIME) sum -= raw[i - REGIME][4];
+    const d = new Date(raw[i][0] * 1000).toISOString().slice(0, 10);
+    spxAbove.set(d, i >= REGIME - 1 && raw[i][4] > sum / REGIME);
+  }
+}
+let lastRegime = true;
+function regimeOn(date: string): boolean {
+  if (REGIME <= 0) return true;
+  const v = spxAbove.get(date);
+  if (v != null) lastRegime = v;
+  return lastRegime;
+}
+// Replayed dashboard market-health score (build-market-health.js).
+const healthByDate = new Map<string, number>();
+if (HEALTH > 0 || HEALTH_EXIT > 0) {
+  const f = `${CACHE}/market-health.json`;
+  if (!fs.existsSync(f)) throw new Error(`${f} missing — run: node dist/scripts/build-market-health.js`);
+  for (const r of JSON.parse(fs.readFileSync(f, "utf8")) as number[][]) {
+    const d = String(r[0]);
+    healthByDate.set(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, r[1]);
+  }
+}
+let lastHealth = 100;
+function healthOn(date: string): { enter: boolean; exit: boolean } {
+  const v = healthByDate.get(date);
+  if (v != null) lastHealth = v;
+  return { enter: HEALTH <= 0 || lastHealth >= HEALTH, exit: HEALTH_EXIT > 0 && lastHealth < HEALTH_EXIT };
 }
 
 // Global trading calendar = every date on which some breakout fired (dense
@@ -96,7 +145,10 @@ function orderDays(seed: number) {
   const r = rng(seed);
   for (const list of byDate.values()) {
     const key = new Map(list.map((i) => [i, r()]));
-    list.sort((a, b) => (NO_GRADE ? 0 : GRADE_RANK[trades[a].grade] - GRADE_RANK[trades[b].grade]) || key.get(a)! - key.get(b)!);
+    list.sort((a, b) =>
+      (RANK_RS ? (trades[b].rs ?? 0) - (trades[a].rs ?? 0) : 0) ||
+      (NO_GRADE ? 0 : GRADE_RANK[trades[a].grade] - GRADE_RANK[trades[b].grade]) ||
+      key.get(a)! - key.get(b)!);
   }
 }
 
@@ -105,7 +157,7 @@ interface Position { tradeIdx: number; notional: number; data: Float32Array; sta
 interface Result {
   name: string; cagr: number; maxDD: number; vol: number; sharpe: number; trades: number;
   tradesPerYear: number; exposure: number; final: number; years: number; worstYear: number; bestYear: number;
-  byDecade: Record<string, number>;
+  byDecade: Record<string, number>; best12m: number; worst12m: number; yearly: Array<[number, number]>;
 }
 
 function simulate(name: string, pick: PathPicker): Result {
@@ -131,11 +183,20 @@ function simulate(name: string, pick: PathPicker): Result {
     // 2. equity mark (open positions at today's path value)
     let equity = cash;
     for (const p of positions) equity += p.notional * (1 + p.data[p.start + p.day]);
+    const h = healthOn(dates[d]);
+    const on = regimeOn(dates[d]) && h.enter;
+    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit) && positions.length) {
+      // risk-off: flatten at today's mark
+      for (const p of positions) cash += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]);
+      positions.length = 0;
+      equity = cash;
+    }
     // 3. fill free slots from today's signals, best grade first
-    const todays = byDate.get(d) || [];
+    const todays = on ? byDate.get(d) || [] : [];
     for (const ti of todays) {
       if (positions.length >= SLOTS) break;
       const t = trades[ti];
+      if (RS_MIN > 0 && (t.rs ?? -1) < RS_MIN) continue;
       if (positions.some((p) => trades[p.tradeIdx].sym === t.sym)) continue;
       const path = pick(t, ti);
       if (path.len === 0) continue;
@@ -178,9 +239,16 @@ function simulate(name: string, pick: PathPicker): Result {
       byDecade[`${dec}s`] = Math.pow(b / a, 1 / Math.max(1, span)) - 1;
     }
   }
+  let best12m = -Infinity, worst12m = Infinity;
+  for (let i = 252; i < n; i++) {
+    const r = equityCurve[i] / equityCurve[i - 252] - 1;
+    if (r > best12m) best12m = r;
+    if (r < worst12m) worst12m = r;
+  }
   return {
     name, cagr, maxDD, vol, sharpe, trades: nTrades, tradesPerYear: nTrades / years, exposure: exposureDays / (n - 1),
     final: finalEq, years, worstYear: Math.min(...yearly.map((y) => y[1])), bestYear: Math.max(...yearly.map((y) => y[1])), byDecade,
+    best12m, worst12m, yearly,
   };
 }
 
@@ -199,7 +267,7 @@ if (SEEDS <= 1) {
     orderDays(sd);
     runs.push(pickers.map(([name, pick]) => simulate(name, pick)));
   }
-  console.log(`\n=== ${SEEDS} random within-day orderings${NO_GRADE ? " (grade priority OFF)" : " (S > A+ > A priority)"}, ${FROM_YEAR}– ===`);
+  console.log(`\n=== ${SEEDS} orderings${NO_GRADE ? " (grade priority OFF)" : ""} · ${SLOTS} slots · ${RISK_PCT}% risk · ${FROM_YEAR}–${FILTERS ? " · " + FILTERS : ""} ===`);
   console.log("rule".padEnd(32) + "CAGR mean".padStart(11) + "min".padStart(8) + "max".padStart(8) + "maxDD mean".padStart(12) + "worst".padStart(8) + "Sharpe".padStart(8) + "trades/yr".padStart(11));
   pickers.forEach(([name], i) => {
     const rs = runs.map((r) => r[i]);
@@ -218,6 +286,12 @@ for (const r of results) {
     r.name.padEnd(32) + pct(r.cagr).padStart(8) + pct(r.maxDD).padStart(8) + pct(r.vol, 0).padStart(7) + r.sharpe.toFixed(2).padStart(8) +
     r.tradesPerYear.toFixed(0).padStart(11) + pct(r.exposure, 0).padStart(8) + pct(r.worstYear).padStart(10) + pct(r.bestYear).padStart(9) + `  $${r.final.toFixed(0)}`,
   );
+}
+if (SHOW_YEARS) {
+  for (const r of results) {
+    console.log(`\n${r.name}: best rolling 12m ${pct(r.best12m)} · worst rolling 12m ${pct(r.worst12m)}`);
+    console.log(r.yearly.map(([y, v]) => `${y} ${pct(v, 0)}`).join("  "));
+  }
 }
 console.log("\nCAGR by decade:");
 const decades = Object.keys(results[0].byDecade);

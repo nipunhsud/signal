@@ -107,7 +107,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): TradingConfig {
     maxDailyLossPct: num("TRADE_MAX_DAILY_LOSS_PCT", 3),
     maxSignalAgeHours: num("TRADE_MAX_SIGNAL_AGE_HOURS", 24),
     maxPctAbovePivot: num("TRADE_MAX_PCT_ABOVE_PIVOT", 5),
-    holdDays: Math.floor(num("TRADE_HOLD_DAYS", 90)),
+    holdDays: Math.floor(num("TRADE_HOLD_DAYS", 365)),
     maExit: Math.floor(num("TRADE_MA_EXIT", preset.maExit)),
     trailPct: num("TRADE_TRAIL_PCT", preset.trailPct),
     trailGrades: (env.TRADE_TRAIL_GRADES || preset.trailGrades)

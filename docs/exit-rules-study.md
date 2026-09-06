@@ -413,11 +413,291 @@ ADOPTED: MA50, trail 20% on S          7.5%    5.5%    9.9%       50.8%   58.2% 
 ## rebuilding paths with trail 15/25/30
 ```
 
+## Selection and regime: the two mechanical pieces of the discretionary edge
+
+Two filters were added to the portfolio simulation, invested profile (10
+slots, 1% risk, trail 20%), 12 orderings, 1990–2026:
+
+- **Regime** (`--regime 200`): S&P 500 above its 200-day MA. Entries-only,
+  or with `--regime-exit` (flatten everything the day it closes below, re-enter
+  when back above).
+- **Relative strength** (`--rs N`, `--rank-rs`): each trade's 6-month return
+  ranked against the whole universe at the start of its month (the scanner's
+  `rsRating`, replayed). `--rs 80` is a floor; `--rank-rs` fills free slots
+  strongest-first instead of grade-first.
+
+| Filter | CAGR | min–max | Max DD | Sharpe | Trades/yr |
+| --- | --- | --- | --- | --- | --- |
+| none (baseline) | 9.0% | 5.6–13.6% | 39% | 0.87 | 24 |
+| S&P > 200MA, entries only | 8.0% | 6.0–12.7% | 30% | 0.75 | 18 |
+| S&P > 200MA, entries + exit | 10.9% | 9.7–11.9% | 21% | 0.94 | 33 |
+| S&P > 50MA, entries + exit | 9.9% | 9.3–10.5% | 26% | 0.89 | 70 |
+| RS ≥ 80 floor | 9.9% | 8.6–11.5% | 39% | 0.75 | 32 |
+| RS ≥ 90 floor | 10.7% | 9.3–12.1% | 47% | 0.69 | 41 |
+| rank by RS (no floor) | **14.3%** | 12.8–15.8% | 38% | 0.94 | 39 |
+| rank by RS + RS ≥ 80 | 12.7% | 11.7–13.7% | 44% | 0.79 | 44 |
+| 200MA entries + RS ≥ 80 + rank | 13.4% | 12.6–14.0% | 39% | 0.85 | 34 |
+| **200MA entries + exit + RS ≥ 80 + rank** | **14.1%** | 13.4–14.6% | **26%** | 0.92 | 44 |
+
+2010–2026, same profile: baseline 8.1% / 29% DD; with 200MA exit + RS ≥ 80 +
+rank 12.7% (11.4–14.6%) / 29% DD / Sharpe 0.79. Conservative 5-slot profile
+with the same filters: 10.5% (from 7.0%).
+
+- **Ranking by strength is the single biggest lever in the whole study.**
+  Filling slots strongest-first lifts the book from 9% to 14% a year with
+  the same drawdown and a tight seed spread. A floor alone does little; it is
+  the *preference* that matters — the same signals, taken in a different order.
+- **The regime filter earns its keep only if it also exits.** Blocking
+  entries below the 200MA loses good early re-entries (8.0%). Flattening below
+  it and re-entering above halves the drawdown (39% → 21%) at a higher return.
+- **Together: ~14% a year, 26% max drawdown, Sharpe 0.92, spread 13.4–14.6%.**
+  That is the index's return with half its worst drawdown, from a rule set.
+- **Same-metric comparison with the championship numbers**, single ordering,
+  best filter set: best calendar year +67% (1995), best rolling 12 months
+  +99%, worst year −15%, worst rolling 12 months −26%. The MA50-on-A/A+
+  variant under the same filters posts a +142% year (2003), a +199% rolling
+  12 months, and a −30% year (2025) — the shape of a contest entry, from the
+  same book.
+- Caveats sharpen here: the RS rank leans on today's listings (survivorship),
+  turnover roughly doubles so frictionless fills flatter it more, and
+  regime-exit whipsaws are counted but their slippage is not.
+
+```
+, invested profile (10 slots, 1% risk, trail 20%), 12 orderings, 1990+
+### baseline
+stop · trail 20%                       9.0%    5.6%   13.6%       38.8%   45.9%    0.87         24
+MA50 on A+/A, trail 20% on S          7.9%    5.8%    9.6%       43.4%   49.0%    0.69         44
+### --regime 50
+stop · trail 20%                      10.0%    8.8%   11.9%       38.8%   44.4%    0.94         18
+MA50 on A+/A, trail 20% on S          7.8%    4.9%    9.0%       41.0%   45.2%    0.74         32
+### --regime 200
+stop · trail 20%                       8.0%    6.0%   12.7%       29.9%   37.1%    0.75         18
+MA50 on A+/A, trail 20% on S          9.2%    7.5%   11.6%       34.7%   43.2%    0.76         33
+### --regime 200 --regime-exit
+stop · trail 20%                      10.9%    9.7%   11.9%       20.5%   23.1%    0.94         33
+MA50 on A+/A, trail 20% on S         12.6%   11.3%   14.2%       21.7%   25.0%    1.05         48
+### --regime 50 --regime-exit
+stop · trail 20%                       9.9%    9.3%   10.5%       25.8%   31.3%    0.89         70
+MA50 on A+/A, trail 20% on S          9.4%    7.9%   10.0%       25.9%   29.2%    0.84         79
+### --rs 70
+stop · trail 20%                      10.0%    7.3%   12.5%       40.0%   48.8%    0.84         28
+MA50 on A+/A, trail 20% on S          8.3%    6.5%   11.2%       46.4%   55.3%    0.61         58
+### --rs 80
+stop · trail 20%                       9.9%    8.6%   11.5%       39.0%   46.7%    0.75         32
+MA50 on A+/A, trail 20% on S         11.3%    7.5%   14.4%       41.4%   47.4%    0.72         60
+### --rs 90
+stop · trail 20%                      10.7%    9.3%   12.1%       47.0%   54.0%    0.69         41
+MA50 on A+/A, trail 20% on S          9.4%    7.7%   11.9%       60.5%   66.8%    0.55         65
+### --rank-rs
+stop · trail 20%                      14.3%   12.8%   15.8%       37.7%   43.5%    0.94         39
+MA50 on A+/A, trail 20% on S         11.2%    9.7%   12.4%       54.1%   60.1%    0.64         71
+### --rs 80 --rank-rs
+stop · trail 20%                      12.7%   11.7%   13.7%       43.5%   49.0%    0.79         44
+MA50 on A+/A, trail 20% on S         13.7%   11.9%   14.9%       63.0%   66.0%    0.71         69
+### --regime 200 --rs 80
+stop · trail 20%                      10.3%    7.2%   12.4%       33.2%   40.6%    0.81         25
+MA50 on A+/A, trail 20% on S         12.4%    9.2%   15.0%       35.5%   40.4%    0.81         49
+### --regime 200 --rs 80 --rank-rs
+stop · trail 20%                      13.4%   12.6%   14.0%       38.6%   44.3%    0.85         34
+MA50 on A+/A, trail 20% on S         16.7%   14.3%   18.6%       41.7%   49.5%    0.86         55
+### --regime 50 --rs 90 --rank-rs
+stop · trail 20%                      11.8%    9.9%   13.2%       50.0%   52.0%    0.71         37
+MA50 on A+/A, trail 20% on S         12.9%   11.7%   13.8%       63.6%   71.8%    0.68         53
+### --regime 200 --regime-exit --rs 80 --rank-rs
+stop · trail 20%                      14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44
+MA50 on A+/A, trail 20% on S         16.9%   14.9%   18.3%       37.6%   42.3%    0.91         66
+## same, 2010+
+### baseline
+stop · trail 20%                       8.1%    4.2%   11.9%       29.1%   39.9%    0.75         23
+MA50 on A+/A, trail 20% on S          6.7%    4.3%    9.7%       40.6%   48.3%    0.59         41
+### --regime 200
+stop · trail 20%                       7.7%    3.9%   16.1%       25.9%   32.4%    0.67         20
+MA50 on A+/A, trail 20% on S          8.4%    5.4%   15.4%       31.8%   39.0%    0.64         35
+### --rs 80
+stop · trail 20%                       7.0%    3.0%   11.2%       31.4%   40.8%    0.55         30
+MA50 on A+/A, trail 20% on S          6.8%    3.3%   10.1%       40.4%   47.4%    0.48         60
+### --regime 200 --rs 80 --rank-rs
+stop · trail 20%                      12.7%   11.4%   14.6%       29.2%   31.0%    0.79         35
+MA50 on A+/A, trail 20% on S          9.6%    5.3%   12.3%       41.1%   49.5%    0.53         64
+## conservative profile (5 slots) with best filters, 1990+
+### baseline
+stop · trail 20%                       7.0%    3.6%   12.5%       30.9%   36.0%    0.76         12
+MA50 on A+/A, trail 20% on S          5.4%    3.9%    7.2%       37.4%   41.9%    0.55         23
+### --regime 200 --rs 80 --rank-rs
+stop · trail 20%                      10.5%    8.5%   12.1%       37.3%   43.3%    0.74         22
+MA50 on A+/A, trail 20% on S         13.2%   12.0%   15.6%       38.7%   47.9%    0.76         35
+```
+
+Per-year returns, single ordering (see the log for the full list):
+
+```
+=== 10-slot book, 1% risk/trade (7% stop → 14.3% of equity per position, cap 20%), 1990–2026 ===
+rule                                CAGR   maxDD    vol  Sharpe  trades/yr  in mkt  worst yr  best yr  growth of $1
+stop · trail 20%                    8.9%   42.7%    11%    0.85         23    100%    -24.2%    56.2%  $18
+MA50 on A+/A, trail 20% on S       9.6%   46.6%    12%    0.81         42    100%    -35.2%    40.3%  $22
+
+stop · trail 20%: best rolling 12m 55.8% · worst rolling 12m -40.6%
+1991 20%  1992 22%  1993 12%  1994 -6%  1995 35%  1996 4%  1997 22%  1998 4%  1999 -9%  2000 -4%  2001 2%  2002 1%  2003 19%  2004 31%  2005 16%  2006 21%  2007 -5%  2008 -24%  2009 -7%  2010 21%  2011 3%  2012 7%  2013 56%  2014 3%  2015 3%  2016 27%  2017 16%  2018 7%  2019 16%  2020 -3%  2021 21%  2022 -13%  2023 -3%  2024 14%  2025 12%  2026 -3%
+
+MA50 on A+/A, trail 20% on S: best rolling 12m 68.1% · worst rolling 12m -39.9%
+1991 26%  1992 14%  1993 12%  1994 -8%  1995 17%  1996 24%  1997 40%  1998 -2%  1999 15%  2000 38%  2001 -2%  2002 -10%  2003 14%  2004 12%  2005 9%  2006 8%  2007 0%  2008 -26%  2009 -14%  2010 18%  2011 5%  2012 12%  2013 32%  2014 5%  2015 -0%  2016 12%  2017 22%  2018 5%  2019 35%  2020 10%  2021 21%  2022 -35%  2023 -3%  2024 32%  2025 15%  2026 8%
+
+CAGR by decade:
+rule                               1990s   2000s   2010s   2020s
+stop · trail 20%                    9.6%    3.7%   15.0%    2.9%
+MA50 on A+/A, trail 20% on S      13.0%    1.6%   14.1%    4.6%
+=== 10-slot book, 1% risk/trade (7% stop → 14.3% of equity per position, cap 20%), 1990–2026 ===
+rule                                CAGR   maxDD    vol  Sharpe  trades/yr  in mkt  worst yr  best yr  growth of $1
+stop · trail 20%                   13.8%   42.1%    16%    0.87         34     94%    -15.2%    66.7%  $79
+MA50 on A+/A, trail 20% on S      17.0%   43.8%    20%    0.88         56     91%    -30.3%   142.4%  $199
+
+stop · trail 20%: best rolling 12m 99.1% · worst rolling 12m -26.4%
+1991 52%  1992 11%  1993 14%  1994 -11%  1995 67%  1996 40%  1997 27%  1998 4%  1999 38%  2000 34%  2001 -4%  2002 -13%  2003 41%  2004 47%  2005 -12%  2006 -1%  2007 -12%  2008 -9%  2009 9%  2010 1%  2011 -15%  2012 4%  2013 44%  2014 -10%  2015 4%  2016 7%  2017 57%  2018 26%  2019 21%  2020 27%  2021 42%  2022 -7%  2023 -4%  2024 30%  2025 6%  2026 -2%
+
+MA50 on A+/A, trail 20% on S: best rolling 12m 199.3% · worst rolling 12m -35.9%
+1991 32%  1992 11%  1993 37%  1994 -10%  1995 79%  1996 34%  1997 17%  1998 24%  1999 31%  2000 57%  2001 0%  2002 -7%  2003 142%  2004 73%  2005 -11%  2006 9%  2007 13%  2008 -7%  2009 -3%  2010 5%  2011 -16%  2012 -0%  2013 84%  2014 9%  2015 -3%  2016 8%  2017 31%  2018 -10%  2019 28%  2020 16%  2021 30%  2022 -2%  2023 3%  2024 16%  2025 -30%  2026 23%
+
+CAGR by decade:
+rule                               1990s   2000s   2010s   2020s
+stop · trail 20%                   21.9%    6.0%   12.1%   11.7%
+MA50 on A+/A, trail 20% on S      23.6%   19.9%   10.7%    6.2%
+```
+
+## The time backstop: 90 days is too short for the trail
+
+`TRADE_HOLD_DAYS` was set to 90 as a safety net. With the trail rule that is
+not a safety net, it is the exit: the trail's average hold is 95 bars and a
+fifth of its trades were still open at the study's 250-bar cap.
+
+| Trail 20% with a cap | Per-trade PF | Mean | Bars | Book, best filters | Book, no filters |
+| --- | --- | --- | --- | --- | --- |
+| no cap (250-bar study limit) | 1.80 | 3.73% | 95 | 14.1% | 9.0% |
+| 270-day cap (189 bars) | 1.69 | 3.14% | 82 | — | — |
+| 180-day cap (126 bars) | 1.54 | 2.33% | 65 | 12.6% | 8.2% |
+| 90-day cap (63 bars) | 1.37 | 1.42% | 41 | 11.6% | 6.8% |
+
+The trader's default is now **365 days** (≈ the study's 250-bar cap).
+
+```
+## per-trade
+strategy                              win    mean  median    PF  bars   %/mo   stop  exits
+stop · trail 20%                    32.4%   3.73%  -7.00%  1.80    95  0.83%  66.8%  stop 67%, cap 19%, trail 14%
+trail 20% · 63-bar cap (90d)        42.7%   1.42%  -6.02%  1.37    41  0.74%  51.6%  stop 52%, time 46%, trail 3%
+trail 20% · 126-bar cap (180d)      36.9%   2.33%  -7.00%  1.54    65  0.76%  61.1%  stop 61%, time 32%, trail 7%
+trail 20% · 189-bar cap (270d)      34.0%   3.14%  -7.00%  1.69    82  0.81%  64.9%  stop 65%, time 24%, trail 11%
+## portfolio, invested profile, best filters, 12 orderings
+stop · trail 20%                      14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44
+trail 20% · 63-bar cap (90d)          11.6%   10.3%   12.4%       31.7%   40.1%    0.70         67
+trail 20% · 126-bar cap (180d)        12.6%   11.5%   13.5%       26.7%   31.5%    0.79         53
+## portfolio, invested, no filters
+stop · trail 20%                       9.0%    5.6%   13.6%       38.8%   45.9%    0.87         24
+trail 20% · 63-bar cap (90d)           6.8%    4.7%    8.7%       45.8%   53.4%    0.61         55
+trail 20% · 126-bar cap (180d)         8.2%    6.2%   10.5%       40.7%   47.3%    0.75         35
+```
+
+## The dashboard's market-health score as a switch
+
+The dashboard scores the tape 0–100 (trend 50, distribution days 25,
+breadth 25; risk-on ≥ 70, caution 45–69, risk-off < 45). That score was
+rebuilt over history from ^GSPC/^IXIC and the cached universe
+(`build-market-health.js`; 13813 days 1971-11-19 → 2026-09-04 — risk-on 22 % of days, caution 43 %,
+risk-off 35 %; the replay reads a few points above the live gauge, which uses
+SPY/QQQ and the scanned universe) and tested as an entry floor and an exit
+trigger, invested profile with RS ≥ 80 + rank-by-RS:
+
+| Health rule | CAGR 1990+ | Max DD | Sharpe | CAGR 2010+ |
+| --- | --- | --- | --- | --- |
+| none | 12.7% | 44% | 0.79 | 12.2% |
+| enter ≥ 45 (not risk-off) | 14.0% | 41% | 0.87 | — |
+| enter ≥ 45, flatten < 45 | **16.0%** | 30% | **0.98** | — |
+| enter ≥ 55, flatten < 45 | 11.0% | 33% | 0.75 | 6.3% |
+| enter ≥ 70 (risk-on only) | 9.0% | 23% | 0.71 | — |
+| enter ≥ 70, flatten < 45 | 5.2% | 30% | 0.47 | 2.5% |
+| S&P > 200MA, entries + exit (for reference) | 14.1% | 26% | 0.92 | 12.9% |
+| S&P > 200MA exit + health ≥ 55 | 15.0% | 32% | 0.96 | — |
+
+- **"Caution" is not a sell.** A 56/100 tape is where much of the return is
+  made; requiring risk-on (≥ 70) cuts the book to 9 % and requiring ≥ 55 to
+  11 %. Breakouts that work often start while the gauge is still rebuilding.
+- **Risk-off (< 45) is the line.** No new entries below it, and flattening
+  below it, is the best full-history result in the study (16 %, Sharpe 0.98).
+- **But the S&P 200-day rule is the more robust switch.** Every health-based
+  rule degrades sharply after 2010 (55/45 → 6.3 %), while the 200MA rule holds
+  (12.9 %). Distribution-day counting and breadth were far more informative
+  in the 1990s tape than in the ETF era.
+
+```
+## HEALTH thresholds, invested profile, RS>=80 + rank by RS, 12 orderings, 1990+
+### --rs 80 --rank-rs
+stop · trail 20%                      12.7%   11.7%   13.7%       43.5%   49.0%    0.79         44
+trail 20% · 63-bar cap (90d)           8.5%    6.9%   11.3%       50.5%   57.5%    0.51         75
+trail 20% · 126-bar cap (180d)         8.5%    7.7%    9.6%       43.8%   48.9%    0.53         56
+### --health 45 --rs 80 --rank-rs
+stop · trail 20%                      14.0%   13.4%   14.6%       41.2%   42.0%    0.87         33
+trail 20% · 63-bar cap (90d)          13.4%   12.7%   14.4%       41.4%   44.4%    0.75         57
+trail 20% · 126-bar cap (180d)        14.0%   13.1%   15.0%       43.0%   44.2%    0.82         41
+### --health 55 --rs 80 --rank-rs
+stop · trail 20%                      11.2%   10.5%   12.2%       38.4%   38.6%    0.76         29
+trail 20% · 63-bar cap (90d)          10.3%    9.2%   11.8%       42.5%   45.4%    0.63         50
+trail 20% · 126-bar cap (180d)         9.0%    8.3%    9.9%       39.7%   41.1%    0.60         37
+### --health 70 --rs 80 --rank-rs
+stop · trail 20%                       9.0%    8.7%    9.5%       23.0%   25.7%    0.71         17
+trail 20% · 63-bar cap (90d)           6.0%    5.5%    6.7%       28.2%   29.0%    0.51         26
+trail 20% · 126-bar cap (180d)         7.3%    7.0%    7.7%       24.6%   25.0%    0.59         21
+### --health 45 --health-exit 45 --rs 80 --rank-rs
+stop · trail 20%                      16.0%   15.6%   16.7%       30.4%   33.0%    0.98         69
+trail 20% · 63-bar cap (90d)          15.2%   14.4%   15.9%       30.3%   32.6%    0.91         78
+trail 20% · 126-bar cap (180d)        15.3%   14.9%   15.9%       30.6%   33.4%    0.94         70
+### --health 55 --health-exit 45 --rs 80 --rank-rs
+stop · trail 20%                      11.0%   10.5%   11.6%       33.0%   35.1%    0.75         55
+trail 20% · 63-bar cap (90d)          10.6%   10.0%   11.1%       35.2%   41.3%    0.70         63
+trail 20% · 126-bar cap (180d)        11.5%   10.9%   12.0%       32.8%   35.1%    0.77         56
+### --health 70 --health-exit 45 --rs 80 --rank-rs
+stop · trail 20%                       5.2%    4.6%    5.5%       30.4%   33.2%    0.47         25
+trail 20% · 63-bar cap (90d)           4.8%    4.4%    5.0%       29.1%   30.2%    0.45         27
+trail 20% · 126-bar cap (180d)         5.0%    4.5%    5.2%       30.5%   33.3%    0.46         25
+### --health 70 --health-exit 55 --rs 80 --rank-rs
+stop · trail 20%                       3.6%    3.0%    3.9%       26.6%   27.5%    0.37         28
+trail 20% · 63-bar cap (90d)           3.0%    2.6%    3.2%       27.1%   28.2%    0.32         30
+trail 20% · 126-bar cap (180d)         3.4%    2.9%    3.7%       26.6%   27.5%    0.35         29
+### --regime 200 --regime-exit --rs 80 --rank-rs
+stop · trail 20%                      14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44
+trail 20% · 63-bar cap (90d)          11.6%   10.3%   12.4%       31.7%   40.1%    0.70         67
+trail 20% · 126-bar cap (180d)        12.6%   11.5%   13.5%       26.7%   31.5%    0.79         53
+### --regime 200 --regime-exit --health 55 --rs 80 --rank-rs
+stop · trail 20%                      15.0%   14.2%   15.5%       31.6%   35.3%    0.96         33
+trail 20% · 63-bar cap (90d)          12.1%   10.6%   12.7%       36.5%   45.3%    0.74         51
+trail 20% · 126-bar cap (180d)        13.4%   12.9%   13.8%       30.5%   33.2%    0.83         40
+## same, 2010+
+### --rs 80 --rank-rs
+stop · trail 20%                      12.2%   10.1%   14.2%       32.1%   35.6%    0.76         43
+trail 20% · 63-bar cap (90d)           6.4%    3.9%    8.9%       41.6%   52.0%    0.40         79
+trail 20% · 126-bar cap (180d)         7.4%    5.0%   11.1%       35.9%   38.7%    0.46         57
+### --health 55 --health-exit 45 --rs 80 --rank-rs
+stop · trail 20%                       6.3%    4.7%    7.2%       32.5%   35.1%    0.43         66
+trail 20% · 63-bar cap (90d)           5.8%    4.6%    6.7%       35.2%   41.3%    0.40         74
+trail 20% · 126-bar cap (180d)         6.1%    4.5%    7.0%       32.5%   35.1%    0.43         66
+### --health 70 --health-exit 45 --rs 80 --rank-rs
+stop · trail 20%                       2.5%    2.2%    3.1%       30.4%   33.2%    0.25         30
+trail 20% · 63-bar cap (90d)           3.2%    2.7%    3.7%       29.1%   30.2%    0.30         31
+trail 20% · 126-bar cap (180d)         2.5%    2.2%    3.1%       30.5%   33.3%    0.25         30
+### --regime 200 --regime-exit --rs 80 --rank-rs
+stop · trail 20%                      12.9%   11.2%   13.7%       25.9%   26.7%    0.79         46
+trail 20% · 63-bar cap (90d)           5.8%    3.2%    7.6%       31.7%   40.1%    0.38         74
+trail 20% · 126-bar cap (180d)         9.2%    7.6%   10.7%       26.7%   31.5%    0.57         57
+```
+
 ## Recommendation, revised after the portfolio simulation
 
-- Keep the 7% hard stop and the 90-day backstop.
+- Keep the 7% hard stop. The time backstop is one year, not 90 days.
 - **Trail 20% from the peak high on every grade.** This is now the trader's
   default (`TRADE_TRAIL_GRADES=S,A+,A`).
+- **Next for the trader**: fill slots by `rsRating` (strongest first) and add
+  a market-regime switch on SPY vs its 200-day MA that blocks entries and
+  flattens the book below it. Together they took the simulated book from 9%
+  to 14% a year and the worst drawdown from 39% to 26%. The dashboard's
+  health score is a weaker switch: only its risk-off line (< 45) is
+  actionable, and "caution" must stay tradable.
 - **Size for the drawdown you can hold**, via the `TRADE_PROFILE` lever:
   `invested` (default: 10 slots / 1% risk, ~9%/yr, 38% DD) or `conservative`
   (5 slots / 1% risk, 71% invested, ~7%/yr, 31% DD). Raising risk per trade

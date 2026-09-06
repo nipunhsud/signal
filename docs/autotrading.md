@@ -57,7 +57,7 @@ Measured over 97,789 graded breakouts in [exit-rules-study.md](exit-rules-study.
 | 7 % hard stop | every position | GTC stop leg at the broker, armed when the entry fills |
 | Close below the 50-day MA (`TRADE_MA_EXIT`) | grades not in `TRADE_TRAIL_GRADES` | after-close review flags the row (`exitSignal`); market sell at the next open |
 | 20 % trailing stop from the peak high (`TRADE_TRAIL_PCT`, grades in `TRADE_TRAIL_GRADES`) | every grade by default | after-close review ratchets the broker stop up (`PATCH` order); replaces the MA rule |
-| 90-day backstop (`TRADE_HOLD_DAYS`) | every position | market sell if nothing else fired |
+| One-year backstop (`TRADE_HOLD_DAYS`, 365) | every position | market sell if nothing else fired. Matches the study's 250-bar cap; a 90-day cap cost the trail rule 2.5 points of CAGR |
 
 The **daily review** runs once per trading day after 16:05 ET (or on the
 first cycle of the next day if the process was down), keyed by the
