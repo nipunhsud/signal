@@ -810,6 +810,11 @@ app.get('/api/signals', async (req, res) => {
           bs."earningsYear",
           fg."firstGreenAt",
           COALESCE(fg."entryResistance", bs.resistance) AS "entryResistance",
+          -- Highest scan price seen while this frozen entry was in force. If it
+          -- never reached the entry, the level was never cleared (a gap bar's
+          -- own high became the Donchian resistance — MRNA 2026-08-19) and the
+          -- row is tracking, not a trade: it must not read as "stopped out".
+          MAX(bs."currentPrice") OVER (PARTITION BY bs.asset, bs."entryPrice") AS "streakHigh",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
         FROM "BreakoutSignal" bs
         LEFT JOIN first_green fg ON fg.asset = bs.asset
@@ -826,6 +831,7 @@ app.get('/api/signals', async (req, res) => {
         support,
         "entryPrice",
         "stopLoss",
+        "streakHigh",
         "shouldAlert",
         "alertSentAt",
         "agentDecision",
@@ -925,9 +931,14 @@ app.get('/api/signals', async (req, res) => {
       const isExtension = isType3;
       const weakVolume = isType1b;
 
+      // Did price ever reach the frozen entry while it was in force? A row whose
+      // entry level was never cleared has no trade to be stopped out of.
+      const streakHigh = s.streakHigh != null ? parseFloat(s.streakHigh) : null;
+      const entryCleared = s.entryPrice == null || streakHigh == null || streakHigh >= entryResistance * 0.99;
+      const noEntry = !entryCleared && s.currentPrice < entryResistance;
       // Stopped out: price has closed at/below the frozen stop. The trade is
       // dead — keep it visible but flag it and drop it out of alerts/high-conf.
-      const stoppedOut = persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
+      const stoppedOut = entryCleared && persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
 
       // Grade-first bucketing: a graded breakout more than 5% past its base
       // pivot is an EXTENSION of that base's move, not an entry — it leaves
@@ -975,6 +986,7 @@ app.get('/api/signals', async (req, res) => {
         support: s.support,
         shouldAlert: s.shouldAlert,
         stoppedOut,
+        noEntry,
         alertSentAt: s.alertSentAt || null,
         agentDecision: s.agentDecision || '',
         createdAt: s.createdAt,

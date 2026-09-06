@@ -706,14 +706,26 @@ export class BreakoutAgent {
       // Fresh flip: entry = the X-ray base pivot when today is a graded
       // breakout (the level the whole base actually resolved through), else
       // the 20-bar Donchian resistance as before.
-      const entryPrice = isActiveStreak
-        ? (latestForAsset!.entryPrice as number)
-        : isGradedBreakout && breakoutAnalysis.basePivot > 0
+      // An entry freezes only when today's close actually cleared the level.
+      // The rolling Donchian high can be a spike no one traded through (a gap
+      // bar's own high: MRNA 2026-08-19 set $176.66 while price sat at $146),
+      // and freezing it produced phantom "stopped out" rows. Graded breakouts
+      // clear their pivot by definition; other flips wait for a close above.
+      const flipLevel =
+        isGradedBreakout && breakoutAnalysis.basePivot > 0
           ? breakoutAnalysis.basePivot
           : breakoutAnalysis.resistance;
-      const stopLoss = isActiveStreak
+      const levelCleared = isGradedBreakout || data.close >= flipLevel * 0.995;
+      const entryPrice: number | null = isActiveStreak
+        ? (latestForAsset!.entryPrice as number)
+        : levelCleared
+          ? flipLevel
+          : null;
+      const stopLoss: number | null = isActiveStreak
         ? (latestForAsset!.stopLoss as number)
-        : entryPrice * 0.93;
+        : entryPrice != null
+          ? entryPrice * 0.93
+          : null;
 
       // Alerts (graded system, Sep 2026 — replaces the Type1/Type1b/grace
       // gates): actionable = today CLOSED above the X-ray base pivot AND the
