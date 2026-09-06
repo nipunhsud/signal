@@ -767,6 +767,232 @@ scale-dd 30 8.6%    7.2%    9.6%       20.9%   21.4%    0.66         59    -11.4
 streak 5 pause 20d 5.4%    3.6%    7.1%       27.0%   34.3%    0.42         38    -13.3%       1.3     36%
 ```
 
+## Rotation: leave when momentum fades, move to the next breakout
+
+The discretionary version of this style does not wait through sideways
+tape: it sells when the move stalls and puts the slot into the next
+breakout. Tested two ways on the shipped setup (10 slots, S&P 200MA switch,
+RS ≥ 80, strongest-first), 12 orderings, now **with a transaction-cost
+model** (`--cost` basis points per side; 10 bp ≈ liquid large/mid caps with
+a market order, 25 bp ≈ small caps or sloppy fills):
+
+1. **Stall exits** — sell at the next open after N bars without a new closing
+   high (N = 10/15/20; one armed only after +10 %; two combined with a trail).
+2. **Clock rotation** — fixed 10/21/42-bar holds, as pure turnover references.
+
+| Rule | CAGR 0 bp | CAGR 10 bp | CAGR 25 bp | Max DD | Sharpe (10 bp) | Trades/yr | 2010+ (10 bp) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| trail 20 % (shipped) | 14.1% | 12.9% | 11.0% | 27% | 0.85 | 44 | 11.6% |
+| close < MA50 | 17.6% | 15.7% | 12.9% | 39% | 0.85 | 66 | 9.4% |
+| fixed 21 bars | 18.1% | 14.9% | 10.2% | 45% | 0.82 | 114 | 10.1% |
+| fixed 42 bars | 21.0% | 18.8% | 15.6% | 55% | 0.80 | 77 | 14.5% |
+| fixed 10 bars | 14.9% | 10.0% | 3.0% | 68% | 0.61 | 173 | 4.6% |
+| stall 15 | 17.0% | 14.8% | 11.5% | 40% | 0.81 | 79 | 10.0% |
+| stall 20 | 17.6% | 15.8% | 13.0% | 42% | 0.86 | 66 | 8.0% |
+| stall 15, armed after +10 % | 15.4% | — | — | 33% | 0.89 (0 bp) | 67 | — |
+| stall 15 + trail 20 % | 13.6% | — | — | 36% | 0.78 (0 bp) | 82 | — |
+
+- **Rotation raises raw return.** With strength-ranked refills, recycling
+  the slot every one to two months beats holding through the trail:
+  fixed-42 earns 21 % before costs against 14 %. Your instinct is right
+  that the *next* strong name is worth more than a stalled one.
+- **The stall signal itself carries no information.** "No new high in 15–20
+  days" performs like a plain 15–20-day clock. The gain comes from
+  redeploying into the current top-RS breakout, not from detecting the fade.
+- **Costs and drawdown eat most of it.** Turnover is two to four times the
+  trail's. At 10 bp a side fixed-21 loses 3 points and fixed-10 collapses;
+  the fast rules' worst drawdowns run 45–68 % against the trail's 27 %, and
+  their worst years are −15 to −33 %. Fixed-42 keeps the CAGR lead (18.8 %
+  at 10 bp, 14.5 % after 2010) but at a 55 % drawdown.
+- **After 2010, at realistic cost, the trail is the best risk-adjusted rule**
+  (11.6 %, Sharpe 0.72, 27 % DD); only fixed-42 beats it on return.
+
+**Recommendation.** Keep the trail as the default. `TRADE_PROFILE=rotation`
+is the growth-first book: 7 % stop, no trail, sell after 60 calendar days
+(≈ 42 bars), strongest-first refills — ~19 % a year at 10 bp with a 55 %
+worst drawdown. That drawdown is the price of the extra 6 points, and it is
+what turns a contest-style year into a contest-style loss.
+
+```
+## per-trade (all graded)
+strategy                              win    mean  median    PF  bars   %/mo   stop  exits
+fixed21 · 7% stop                   49.9%   0.54%   0.00%  1.20    17  0.65%  31.6%  time 68%, stop 32%
+stop · close<MA20                   37.8%   0.36%  -1.31%  1.16    16  0.47%  12.1%  ma20 88%, stop 12%, cap 0%
+stop · close<MA50                   36.0%   1.10%  -2.41%  1.35    34  0.68%  25.3%  ma50 75%, stop 25%, cap 0%
+stop · trail 10%                    39.1%   1.57%  -2.97%  1.47    55  0.60%  60.1%  stop 60%, trail 36%, cap 4%
+stop · trail 20%                    32.4%   3.73%  -7.00%  1.80    95  0.83%  66.8%  stop 67%, cap 19%, trail 14%
+trail 20% · 63-bar cap (90d)        42.7%   1.42%  -6.02%  1.37    41  0.74%  51.6%  stop 52%, time 46%, trail 3%
+trail 20% · 126-bar cap (180d)      36.9%   2.33%  -7.00%  1.54    65  0.76%  61.1%  stop 61%, time 32%, trail 7%
+trail 20% · 189-bar cap (270d)      34.0%   3.14%  -7.00%  1.69    82  0.81%  64.9%  stop 65%, time 24%, trail 11%
+stall 10 · 7% stop                  43.3%   0.55%  -0.84%  1.21    20  0.58%  25.4%  stall10 75%, stop 25%, cap 0%
+stall 15 · 7% stop                  42.1%   0.84%  -1.39%  1.27    29  0.62%  34.4%  stall15 66%, stop 34%, cap 0%
+stall 20 · 7% stop                  41.0%   1.24%  -2.13%  1.36    37  0.71%  40.9%  stall20 59%, stop 41%, cap 0%
+stall 15 after +10%                 41.9%   1.72%  -7.00%  1.42    55  0.66%  56.1%  stop 56%, stall15 42%, cap 2%
+stall 15 + trail 20%                42.1%   0.77%  -1.36%  1.25    28  0.57%  34.5%  stall15 64%, stop 34%, trail 2%, cap 0%
+stall 10 + trail 15%                43.2%   0.44%  -0.84%  1.18    20  0.48%  26.0%  stall10 71%, stop 26%, trail 3%, cap 0%
+## portfolio: invested, regime200-exit + RS80 + rank, 12 orderings, 1990+
+=== 12 orderings · 10 slots · 1% risk · 1990– · S&P>200MA (exit too) · RS>=80 · rank by RS ===
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     18.1%   17.2%   19.4%       37.6%   47.3%    0.97        114    -11.1%       0.6      0%
+stop · close<MA50                     17.6%   15.8%   19.2%       37.6%   42.3%    0.93         66    -19.9%       2.7      0%
+stop · trail 20%                      14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44    -11.6%       1.0      0%
+stop · close<MA20                     12.9%   11.8%   13.8%       36.7%   46.8%    0.73        108     -9.9%       0.4      0%
+stop · trail 10%                      11.6%   10.7%   12.8%       33.0%   35.7%    0.79         79    -13.4%       1.2      0%
+stall 10 · 7% stop                    14.9%   13.9%   16.0%       50.2%   53.5%    0.81        102    -15.0%       2.4      0%
+stall 15 · 7% stop                    17.0%   15.1%   18.3%       38.3%   45.0%    0.91         79    -24.6%       2.7      0%
+stall 20 · 7% stop                    17.6%   16.8%   18.6%       40.5%   45.8%    0.94         66    -15.9%       2.8      0%
+stall 15 after +10%                   15.4%   14.1%   16.6%       33.1%   36.9%    0.89         67    -15.1%       2.1      0%
+stall 15 + trail 20%                  13.6%   12.1%   14.7%       35.9%   40.9%    0.78         82    -27.0%       3.0      0%
+stall 10 + trail 15%                  11.3%   10.2%   12.3%       51.0%   56.7%    0.68        107    -16.4%       2.3      0%
+## portfolio: same, 2010+
+=== 12 orderings · 10 slots · 1% risk · 2010– · S&P>200MA (exit too) · RS>=80 · rank by RS ===
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     13.5%   11.3%   15.1%       37.6%   47.3%    0.70        126    -10.9%       0.6      0%
+stop · close<MA50                     11.4%    9.3%   14.2%       37.6%   42.3%    0.62         73    -19.9%       2.7      0%
+stop · trail 20%                      12.9%   11.2%   13.7%       25.9%   26.7%    0.79         46    -11.6%       1.0      0%
+stop · close<MA20                      7.7%    5.9%    9.2%       36.8%   46.8%    0.46        120     -9.9%       0.4      0%
+stop · trail 10%                       7.6%    6.4%    9.4%       33.0%   35.7%    0.53         88    -13.4%       1.2      0%
+stall 10 · 7% stop                     8.4%    6.4%   10.8%       50.2%   53.5%    0.48        109    -15.0%       2.4      0%
+stall 15 · 7% stop                    12.2%    9.2%   14.2%       38.3%   45.0%    0.66         83    -24.6%       2.7      0%
+stall 20 · 7% stop                     9.9%    8.4%   10.7%       40.5%   45.8%    0.55         71    -15.9%       2.8      0%
+stall 15 after +10%                    9.6%    7.0%   11.2%       33.1%   36.9%    0.57         72    -15.1%       2.1      0%
+stall 15 + trail 20%                  11.8%    9.9%   13.4%       35.9%   40.9%    0.66         87    -27.0%       3.0      0%
+stall 10 + trail 15%                   7.5%    5.9%    9.0%       51.0%   56.7%    0.46        115    -16.4%       2.3      0%
+## portfolio: rank-rs only (no floor), regime exit, 1990+
+=== 12 orderings · 10 slots · 1% risk · 1990– · S&P>200MA (exit too) · rank by RS ===
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     13.8%   12.5%   14.9%       37.5%   49.8%    0.81        117    -14.9%       1.3      0%
+stop · close<MA50                     15.3%   14.0%   16.6%       33.7%   38.5%    0.87         68    -18.2%       3.3      0%
+stop · trail 20%                      14.8%   14.0%   15.4%       26.5%   27.6%    1.00         44    -17.7%       2.0      0%
+stop · close<MA20                     12.3%   11.5%   13.3%       33.6%   41.2%    0.72        113    -14.6%       2.3      0%
+stop · trail 10%                       9.5%    8.6%   10.5%       35.0%   37.5%    0.72         74    -17.2%       1.0      0%
+stall 10 · 7% stop                    13.7%   12.4%   14.2%       51.3%   54.4%    0.77        103    -18.1%       1.8      0%
+stall 15 · 7% stop                    15.5%   14.0%   16.3%       39.8%   45.0%    0.86         80    -21.6%       2.9      0%
+stall 20 · 7% stop                    15.1%   13.8%   16.3%       37.3%   41.7%    0.86         67    -18.3%       5.0      0%
+stall 15 after +10%                   14.1%   13.2%   14.9%       33.4%   37.1%    0.85         65    -18.6%       2.9      0%
+stall 15 + trail 20%                  14.7%   13.2%   15.9%       34.4%   40.6%    0.85         83    -24.7%       3.9      0%
+stall 10 + trail 15%                  10.0%    9.2%   10.7%       43.5%   51.5%    0.63        110    -17.7%       2.3      0%
+## portfolio: 5 slots, regime200-exit + RS80 + rank, 1990+
+=== 12 orderings · 5 slots · 1% risk · 1990– · S&P>200MA (exit too) · RS>=80 · rank by RS ===
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     12.2%   11.1%   13.3%       41.0%   51.0%    0.81         74    -17.6%       1.3      0%
+stop · close<MA50                     13.2%   12.0%   14.6%       30.4%   39.2%    0.81         45    -15.8%       4.4      0%
+stop · trail 20%                      10.1%    9.2%   11.1%       24.2%   26.1%    0.77         31    -14.1%       1.9      0%
+stop · close<MA20                      7.9%    7.0%    8.9%       38.4%   41.1%    0.54         72    -16.1%       3.0      0%
+stop · trail 10%                       9.2%    8.2%   10.4%       25.8%   30.4%    0.74         53    -11.8%       1.0      0%
+stall 10 · 7% stop                    11.3%   10.5%   12.2%       47.8%   55.9%    0.73         65    -15.4%       2.2      0%
+stall 15 · 7% stop                    12.7%   11.7%   13.9%       33.9%   40.9%    0.80         51    -19.1%       2.5      0%
+stall 20 · 7% stop                    14.9%   14.0%   15.7%       35.7%   42.2%    0.90         44    -13.8%       3.3      0%
+stall 15 after +10%                   10.8%    9.1%   12.0%       32.0%   44.2%    0.73         44    -15.7%       2.9      0%
+stall 15 + trail 20%                   9.8%    8.3%   12.1%       34.1%   38.8%    0.67         53    -22.9%       2.7      0%
+stall 10 + trail 15%                   7.4%    6.6%    8.5%       52.8%   65.8%    0.55         69    -18.6%       2.7      0%
+```
+
+```
+## cost 0bp/side · 1990+
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     18.1%   17.2%   19.4%       37.6%   47.3%    0.97        114    -11.1%       0.6      0%
+stop · close<MA50                     17.6%   15.8%   19.2%       37.6%   42.3%    0.93         66    -19.9%       2.7      0%
+stop · trail 20%                      14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44    -11.6%       1.0      0%
+fixed10 · 7% stop                     14.9%   13.8%   15.7%       61.3%   70.7%    0.85        174    -29.3%       2.4      0%
+fixed42 · 7% stop                     21.0%   19.9%   22.2%       54.4%   55.7%    0.88         78    -12.6%       1.4      0%
+stall 15 · 7% stop                    17.0%   15.1%   18.3%       38.3%   45.0%    0.91         79    -24.6%       2.7      0%
+stall 20 · 7% stop                    17.6%   16.8%   18.6%       40.5%   45.8%    0.94         66    -15.9%       2.8      0%
+## cost 10bp/side · 1990+
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     14.9%   14.0%   16.1%       44.6%   54.4%    0.82        114    -13.4%       1.1      0%
+stop · close<MA50                     15.7%   13.9%   17.3%       39.2%   43.9%    0.85         66    -21.6%       3.6      0%
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed10 · 7% stop                     10.0%    9.0%   10.8%       68.4%   76.2%    0.61        173    -33.0%       3.7      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+stall 15 · 7% stop                    14.8%   12.9%   16.1%       40.4%   46.6%    0.81         79    -26.5%       2.8      0%
+stall 20 · 7% stop                    15.8%   15.0%   16.7%       41.7%   47.1%    0.86         66    -18.0%       2.9      0%
+## cost 25bp/side · 1990+
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     10.2%    9.3%   11.4%       54.2%   62.9%    0.60        114    -17.9%       2.8      0%
+stop · close<MA50                     12.9%   11.1%   14.5%       41.6%   46.2%    0.72         66    -23.9%       5.8      0%
+stop · trail 20%                      11.0%   10.3%   11.4%       29.6%   31.0%    0.74         44    -14.7%       2.4      0%
+fixed10 · 7% stop                      3.0%    2.0%    3.7%       76.9%   82.7%    0.25        173    -38.2%       6.8      0%
+fixed42 · 7% stop                     15.6%   14.5%   16.6%       60.1%   64.8%    0.69         77    -16.0%       2.2      0%
+stall 15 · 7% stop                    11.5%    9.7%   12.8%       44.4%   51.1%    0.66         79    -29.1%       3.2      0%
+stall 20 · 7% stop                    13.0%   12.2%   13.9%       43.4%   49.2%    0.73         66    -21.3%       3.8      0%
+## cost 10bp/side · 2010+
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                     10.1%    8.0%   11.6%       44.6%   54.4%    0.56        126    -13.4%       1.1      0%
+stop · close<MA50                      9.4%    7.3%   12.2%       39.2%   43.9%    0.53         73    -21.6%       3.6      0%
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed10 · 7% stop                      4.6%    3.4%    6.4%       68.4%   76.2%    0.32        193    -33.0%       3.3      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+stall 15 · 7% stop                    10.0%    7.1%   12.0%       40.4%   46.6%    0.57         83    -26.5%       2.8      0%
+stall 20 · 7% stop                     8.0%    6.4%    8.8%       41.7%   47.1%    0.47         71    -18.0%       2.8      0%
+## cost 10bp/side · 1990+ · 5 slots
+rule                              CAGR mean     min     max  maxDD mean   worst  Sharpe  trades/yr  worst yr  yrs<-10%  halted
+fixed21 · 7% stop                      9.9%    8.8%   10.9%       46.6%   56.1%    0.67         74    -19.7%       1.9      0%
+stop · close<MA50                     11.8%   10.6%   13.2%       32.5%   43.2%    0.74         45    -17.2%       5.4      0%
+stop · trail 20%                       9.1%    8.2%   10.1%       25.3%   27.7%    0.70         31    -15.2%       2.1      0%
+fixed10 · 7% stop                      7.7%    6.6%    8.8%       63.7%   71.7%    0.56        114    -26.6%       4.4      0%
+fixed42 · 7% stop                     12.0%   10.8%   13.2%       43.9%   48.2%    0.76         50    -13.8%       1.5      0%
+stall 15 · 7% stop                    11.1%   10.1%   12.2%       35.8%   44.0%    0.71         51    -20.7%       3.0      0%
+stall 20 · 7% stop                    13.5%   12.6%   14.3%       36.9%   43.3%    0.82         44    -15.3%       4.0      0%
+```
+
+### Replacement rotation: swap a laggard only when a stronger signal is waiting
+
+The closest mechanical version of "as it loses momentum, move to the next
+breakout": when every slot is full and a new candidate passes the filters,
+sell the weakest position that has been held at least N bars and sits below
++X %, and put the slot into the newcomer (at most two swaps a day, 10 bp a
+side). On the shipped trail rule, 1990+: none 12.9 % · swap after 10 bars
+below 0 % 13.0 % · after 20 below 0 % 13.1 % · after 20 below +5 % 13.1 % ·
+after 30 below +10 % 12.4 %. Drawdown and Sharpe unchanged. After 2010:
+11.6 % → 12.0–12.1 %. On the fixed-42 clock it is neutral to negative.
+
+**Swapping laggards adds nothing.** A position that is flat after a month
+recovers about as often as it fails, and the trail already frees the ones
+that break. The turnover that pays is the clock, not the fade signal — and
+the clock pays in drawdown.
+
+```
+## replacement rotation on trail 20% (and fixed42 ref), cost 10bp, 1990+
+### none
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --swap-after 10 --swap-below 0
+stop · trail 20%                      13.0%   12.0%   13.5%       27.2%   28.4%    0.85         46    -11.4%       1.3      0%
+fixed42 · 7% stop                     18.3%   16.6%   20.2%       54.0%   59.9%    0.84         81    -14.4%       1.8      0%
+### --swap-after 10 --swap-below 5
+stop · trail 20%                      12.9%   12.4%   13.3%       28.6%   34.0%    0.84         47    -13.6%       1.7      0%
+fixed42 · 7% stop                     16.6%   13.6%   19.6%       59.4%   69.3%    0.77         87    -16.5%       2.2      0%
+### --swap-after 20 --swap-below 0
+stop · trail 20%                      13.1%   12.1%   13.8%       27.3%   28.3%    0.86         45    -12.3%       1.3      0%
+fixed42 · 7% stop                     19.2%   17.7%   20.7%       54.9%   56.4%    0.82         78    -14.2%       1.7      0%
+### --swap-after 20 --swap-below 5
+stop · trail 20%                      13.1%   12.5%   13.6%       28.1%   31.4%    0.85         45    -11.7%       1.2      0%
+fixed42 · 7% stop                     18.5%   16.4%   19.6%       55.8%   58.6%    0.79         80    -14.4%       1.8      0%
+### --swap-after 30 --swap-below 10
+stop · trail 20%                      12.4%   11.6%   13.1%       28.0%   31.2%    0.82         46    -14.4%       1.7      0%
+fixed42 · 7% stop                     18.9%   17.0%   20.1%       55.4%   61.9%    0.81         79    -14.8%       1.7      0%
+## replacement rotation on trail 20% (and fixed42 ref), cost 10bp, 2010+
+### none
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --swap-after 10 --swap-below 0
+stop · trail 20%                      11.7%    9.7%   12.8%       27.2%   28.4%    0.72         49    -11.4%       1.3      0%
+fixed42 · 7% stop                     12.6%    7.6%   15.0%       54.0%   59.9%    0.55         89    -14.4%       1.8      0%
+### --swap-after 10 --swap-below 5
+stop · trail 20%                      11.7%   10.6%   12.6%       28.6%   34.0%    0.72         53    -13.6%       1.7      0%
+fixed42 · 7% stop                     11.2%    6.2%   16.4%       59.4%   69.3%    0.50         95    -16.5%       2.2      0%
+### --swap-after 20 --swap-below 0
+stop · trail 20%                      12.0%    9.8%   13.2%       27.3%   28.3%    0.74         48    -12.3%       1.3      0%
+fixed42 · 7% stop                     14.9%   13.8%   16.5%       54.9%   56.4%    0.59         85    -14.2%       1.7      0%
+### --swap-after 20 --swap-below 5
+stop · trail 20%                      12.1%   10.7%   13.3%       28.1%   31.4%    0.74         49    -11.7%       1.2      0%
+fixed42 · 7% stop                     13.6%   12.1%   14.8%       55.8%   58.6%    0.55         88    -14.4%       1.8      0%
+### --swap-after 30 --swap-below 10
+stop · trail 20%                      10.8%    9.1%   12.1%       28.0%   31.2%    0.68         51    -14.4%       1.7      0%
+fixed42 · 7% stop                     13.8%   11.8%   15.5%       55.4%   61.9%    0.56         86    -14.8%       1.7      0%
+```
+
 ## Recommendation, revised after the portfolio simulation
 
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.

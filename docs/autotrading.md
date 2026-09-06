@@ -42,8 +42,9 @@ qty = min( equity × TRADE_RISK_PCT / (price − stop),   # 1 % of equity at ris
 
 | Profile | Slots | Risk / trade | Exit | Backtest 1990–2026 |
 | --- | --- | --- | --- | --- |
-| `invested` (default) | 10 | 1 % | 20 % trail, every grade | ~9 %/yr · 38 % max DD · Sharpe 0.85 · ~2 trades/month |
-| `conservative` | 5 | 1 % | 20 % trail, every grade | ~7 %/yr · 31 % max DD · ~1/3 in cash |
+| `invested` (default) | 10 | 1 % | 20 % trail, every grade | ~13 %/yr at 10 bp/side · 27 % max DD · Sharpe 0.85 · ~4 trades/month |
+| `conservative` | 5 | 1 % | 20 % trail, every grade | ~9 %/yr · 25 % max DD · ~1/3 in cash |
+| `rotation` | 10 | 1 % | no trail; sell after 60 days | ~19 %/yr at 10 bp/side · 55 % max DD · ~80 trades/yr |
 
 Any explicit `TRADE_*` variable overrides the profile's value, so
 `TRADE_PROFILE=invested TRADE_MAX_OPEN_POSITIONS=8` is a valid middle.

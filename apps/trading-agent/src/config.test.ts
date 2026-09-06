@@ -21,6 +21,16 @@ test("conservative profile holds cash with five slots", () => {
   assert.deepEqual(c.trailGrades, ["S", "A+", "A"]);
 });
 
+test("rotation profile is a 60-day clock with no trail or MA exit", () => {
+  const c = getConfig({ ...base, TRADE_PROFILE: "rotation" });
+  assert.equal(c.holdDays, 60);
+  assert.equal(c.trailPct, 0);
+  assert.equal(c.maExit, 0);
+  assert.deepEqual(c.trailGrades, []);
+  assert.equal(c.maxOpenPositions, 10);
+  assert.deepEqual(validateConfig(c), []);
+});
+
 test("explicit variables override the profile", () => {
   const c = getConfig({
     ...base,

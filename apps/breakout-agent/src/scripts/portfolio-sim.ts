@@ -36,10 +36,15 @@ const EQ_MA = arg("eq-ma", 0); // trade only while equity is above its own N-day
 const STREAK = arg("streak", 0); // after N consecutive losing closes, pause new entries…
 const PAUSE = arg("pause", 20); // …for this many trading days
 const SCALE_DD = arg("scale-dd", 0); // risk per trade scales linearly to zero at this % drawdown
+const COST_BPS = arg("cost", 0);
+// Replacement rotation: when slots are full and a new candidate arrives, swap
+// out the weakest laggard (held >= swap-after bars, unrealized < swap-below %).
+const SWAP_AFTER = arg("swap-after", 0);
+const SWAP_BELOW = arg("swap-below", 5); // transaction cost per side, basis points of notional (slippage + commission)
 const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
 const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
 const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
-const FILTERS = [REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
+const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -84,6 +89,16 @@ const RULES: Record<string, () => PathPicker> = {
   "stop · trail 25%": () => single("stop · trail 25%"),
   "stop · trail 30%": () => single("stop · trail 30%"),
   "trail 20% · 63-bar cap (90d)": () => single("trail 20% · 63-bar cap (90d)"),
+  "stop · close<MA20": () => single("stop · close<MA20"),
+  "fixed10 · 7% stop": () => single("fixed10 · 7% stop"),
+  "fixed42 · 7% stop": () => single("fixed42 · 7% stop"),
+  "stop · trail 10%": () => single("stop · trail 10%"),
+  "stall 10 · 7% stop": () => single("stall 10 · 7% stop"),
+  "stall 15 · 7% stop": () => single("stall 15 · 7% stop"),
+  "stall 20 · 7% stop": () => single("stall 20 · 7% stop"),
+  "stall 15 after +10%": () => single("stall 15 after +10%"),
+  "stall 15 + trail 20%": () => single("stall 15 + trail 20%"),
+  "stall 10 + trail 15%": () => single("stall 10 + trail 15%"),
   "trail 20% · 126-bar cap (180d)": () => single("trail 20% · 126-bar cap (180d)"),
   "MA50 on A+/A, trail 20% on S": () => {
     const ma = loadPaths("stop · close<MA50");
@@ -190,7 +205,7 @@ function simulate(name: string, pick: PathPicker): Result {
       p.day++;
       if (p.day >= p.len) {
         const ret = p.data[p.start + p.len - 1];
-        cash += p.notional * (1 + ret);
+        cash += p.notional * (1 + ret) * (1 - COST_BPS / 10000);
         positions.splice(k, 1);
         if (ret < 0) { if (++lossStreak >= STREAK && STREAK > 0) pausedUntil = d + PAUSE; } else lossStreak = 0;
       }
@@ -212,23 +227,39 @@ function simulate(name: string, pick: PathPicker): Result {
     const on = regimeOn(dates[d]) && h.enter && breakersOk;
     if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || (DD_FLATTEN && ddHalted)) && positions.length) {
       // risk-off: flatten at today's mark
-      for (const p of positions) cash += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]);
+      for (const p of positions) cash += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]) * (1 - COST_BPS / 10000);
       positions.length = 0;
       equity = cash;
     }
     // 3. fill free slots from today's signals, best grade first
     const todays = on ? byDate.get(d) || [] : [];
+    let swaps = 0;
     for (const ti of todays) {
-      if (positions.length >= SLOTS) break;
       const t = trades[ti];
       if (RS_MIN > 0 && (t.rs ?? -1) < RS_MIN) continue;
+      if (positions.length >= SLOTS) {
+        if (SWAP_AFTER <= 0 || swaps >= 2) break;
+        // find the weakest eligible laggard
+        let worst = -1, worstRet = Infinity;
+        for (let k = 0; k < positions.length; k++) {
+          const p = positions[k];
+          if (p.day < SWAP_AFTER) continue;
+          const r = p.data[p.start + Math.max(0, p.day)];
+          if (r * 100 < SWAP_BELOW && r < worstRet) { worst = k; worstRet = r; }
+        }
+        if (worst < 0) break;
+        const p = positions[worst];
+        cash += p.notional * (1 + worstRet) * (1 - COST_BPS / 10000);
+        positions.splice(worst, 1);
+        swaps++;
+      }
       if (positions.some((p) => trades[p.tradeIdx].sym === t.sym)) continue;
       const path = pick(t, ti);
       if (path.len === 0) continue;
       const riskPct = SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT;
       const notional = Math.min((equity * riskPct) / 100 / STOP, (equity * CAP_PCT) / 100, cash);
       if (notional <= 0 || notional < equity * 0.01) continue;
-      cash -= notional;
+      cash -= notional * (1 + COST_BPS / 10000);
       positions.push({ tradeIdx: ti, notional, data: path.data, start: path.start, len: path.len, day: -1 });
       nTrades++;
     }
@@ -239,7 +270,7 @@ function simulate(name: string, pick: PathPicker): Result {
   }
   // liquidate whatever is open at the end
   let finalEq = cash;
-  for (const p of positions) finalEq += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]);
+  for (const p of positions) finalEq += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]) * (1 - COST_BPS / 10000);
   equityCurve.push(finalEq);
 
   const n = equityCurve.length;

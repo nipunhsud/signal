@@ -88,6 +88,8 @@ function simulate(c: Ctx, p: {
   // instead of an intrabar touch.
   lowTrail?: number; lowTrailAfter?: number; lowTrailOnClose?: boolean;
   wantPath?: boolean; // record the position's mark-to-market after each bar (for the portfolio sim)
+  stall?: number; // momentum stall: exit at next open after N bars without a new closing high
+  stallAfter?: number; // only arm the stall once the trade is up this fraction (0 = from entry)
 }): Outcome {
   const { bars, i, entry } = c;
   const maArr = p.ma === 20 ? c.ma20 : c.ma50;
@@ -99,6 +101,7 @@ function simulate(c: Ctx, p: {
   let maArmedFrom = i + 1 + (p.maAfterBars ?? 0);
   let hitTargetFast = false;
   let lowTrailArmed = p.lowTrail != null && !(p.lowTrailAfter && p.lowTrailAfter > 0);
+  let highClose = entry, highCloseBar = i;
   const last = Math.min(bars.length - 1, i + (p.horizon ?? MAX_HOLD));
 
   const path: number[] | undefined = p.wantPath ? [] : undefined;
@@ -152,6 +155,8 @@ function simulate(c: Ctx, p: {
 
     // 3. close-based signals → next open
     if (p.ma && k >= maArmedFrom && maArr[k] > 0 && b.close < maArr[k]) pendingExitAtOpen = `ma${p.ma}`;
+    if (b.close > highClose) { highClose = b.close; highCloseBar = k; }
+    if (p.stall && k - highCloseBar >= p.stall && (!p.stallAfter || highClose >= entry * (1 + p.stallAfter))) pendingExitAtOpen = `stall${p.stall}`;
     if (path) path.push(realized + remaining * ((b.close - entry) / entry));
   }
   const k = last;
@@ -185,6 +190,12 @@ const STRATEGIES: Record<string, Rule> = {
   "third +20% · rest trail15+MA50": (c) => simulate(c, { target: 0.20, partial: 1 / 3, trail: 0.15, ma: 50 }),
   "O'Neil: +20% tgt / 8wk / MA50": (c) => simulate(c, { target: 0.20, ma: 50, oneil: true }),
   "O'Neil + trail 15%":           (c) => simulate(c, { target: 0.20, ma: 50, oneil: true, trail: 0.15 }),
+  "stall 10 · 7% stop":           (c) => simulate(c, { stall: 10 }),
+  "stall 15 · 7% stop":           (c) => simulate(c, { stall: 15 }),
+  "stall 20 · 7% stop":           (c) => simulate(c, { stall: 20 }),
+  "stall 15 after +10%":          (c) => simulate(c, { stall: 15, stallAfter: 0.10 }),
+  "stall 15 + trail 20%":         (c) => simulate(c, { stall: 15, trail: 0.20 }),
+  "stall 10 + trail 15%":         (c) => simulate(c, { stall: 10, trail: 0.15 }),
   "Brandt 3d-low trail from entry": (c) => simulate(c, { lowTrail: 3 }),
   "Brandt 3d-low trail after +10%": (c) => simulate(c, { lowTrail: 3, lowTrailAfter: 0.10 }),
   "Brandt 3d-low trail after +20%": (c) => simulate(c, { lowTrail: 3, lowTrailAfter: 0.20 }),
@@ -196,11 +207,21 @@ const STRATEGIES: Record<string, Rule> = {
 // Rules whose daily paths feed portfolio-sim.ts. "adopted" is what the trader
 // runs: MA50 for A+/A, 20% trail for S — assembled in the sim from these two.
 const PATH_STRATEGIES: Record<string, Rule> = {
+  "fixed10 · 7% stop":            (c) => simulate(c, { horizon: 10, wantPath: true }),
   "fixed21 · 7% stop":            (c) => simulate(c, { horizon: 21, wantPath: true }),
+  "fixed42 · 7% stop":            (c) => simulate(c, { horizon: 42, wantPath: true }),
   "stop · close<MA50":            (c) => simulate(c, { ma: 50, wantPath: true }),
   "stop · trail 15%":             (c) => simulate(c, { trail: 0.15, wantPath: true }),
   "stop · trail 20%":             (c) => simulate(c, { trail: 0.20, wantPath: true }),
   "stop · trail 25%":             (c) => simulate(c, { trail: 0.25, wantPath: true }),
+  "stop · close<MA20":            (c) => simulate(c, { ma: 20, wantPath: true }),
+  "stop · trail 10%":             (c) => simulate(c, { trail: 0.10, wantPath: true }),
+  "stall 10 · 7% stop":           (c) => simulate(c, { stall: 10, wantPath: true }),
+  "stall 15 · 7% stop":           (c) => simulate(c, { stall: 15, wantPath: true }),
+  "stall 20 · 7% stop":           (c) => simulate(c, { stall: 20, wantPath: true }),
+  "stall 15 after +10%":          (c) => simulate(c, { stall: 15, stallAfter: 0.10, wantPath: true }),
+  "stall 15 + trail 20%":         (c) => simulate(c, { stall: 15, trail: 0.20, wantPath: true }),
+  "stall 10 + trail 15%":         (c) => simulate(c, { stall: 10, trail: 0.15, wantPath: true }),
   "trail 20% · 63-bar cap (90d)": (c) => simulate(c, { trail: 0.20, horizon: 63, wantPath: true }),
   "trail 20% · 126-bar cap (180d)": (c) => simulate(c, { trail: 0.20, horizon: 126, wantPath: true }),
   "stop · trail 30%":             (c) => simulate(c, { trail: 0.30, wantPath: true }),

@@ -6,9 +6,10 @@ export type TradingMode = "paper" | "live";
 // Operating points from the sizing grid in docs/exit-rules-study.md. One env
 // lever, TRADE_PROFILE, picks the preset; any explicit TRADE_* variable still
 // overrides the preset's value.
-//   invested      10 slots · 1% risk · trail 20% on every grade → ~9%/yr, 38% max DD, Sharpe 0.85
-//   conservative   5 slots · 1% risk · trail 20% on every grade → ~7%/yr, 31% max DD, ~1/3 in cash
-export type TradingProfile = "invested" | "conservative";
+//   invested      10 slots · 1% risk · trail 20% on every grade → ~13%/yr at 10 bp, 27% max DD (with the RS rank + 200MA switch)
+//   conservative   5 slots · 1% risk · trail 20% on every grade → ~9%/yr, 25% max DD, ~1/3 in cash
+//   rotation      10 slots · 1% risk · no trail, sell after 60 days → ~19%/yr at 10 bp, 55% max DD
+export type TradingProfile = "invested" | "conservative" | "rotation";
 export const PROFILES: Record<
   TradingProfile,
   {
@@ -17,6 +18,7 @@ export const PROFILES: Record<
     trailGrades: string;
     trailPct: number;
     maExit: number;
+    holdDays: number;
   }
 > = {
   invested: {
@@ -25,6 +27,7 @@ export const PROFILES: Record<
     trailGrades: "S,A+,A",
     trailPct: 20,
     maExit: 50,
+    holdDays: 365,
   },
   conservative: {
     maxOpenPositions: 5,
@@ -32,6 +35,18 @@ export const PROFILES: Record<
     trailGrades: "S,A+,A",
     trailPct: 20,
     maExit: 50,
+    holdDays: 365,
+  },
+  // Growth-first clock rotation: 7% stop, no trail, sell after ~42 bars and
+  // hand the slot to the strongest new breakout. ~19%/yr at 10 bp/side in the
+  // study, 55% worst drawdown.
+  rotation: {
+    maxOpenPositions: 10,
+    riskPerTradePct: 1,
+    trailGrades: "",
+    trailPct: 0,
+    maExit: 0,
+    holdDays: 60,
   },
 };
 
@@ -111,7 +126,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): TradingConfig {
     maxDailyLossPct: num("TRADE_MAX_DAILY_LOSS_PCT", 3),
     maxSignalAgeHours: num("TRADE_MAX_SIGNAL_AGE_HOURS", 24),
     maxPctAbovePivot: num("TRADE_MAX_PCT_ABOVE_PIVOT", 5),
-    holdDays: Math.floor(num("TRADE_HOLD_DAYS", 365)),
+    holdDays: Math.floor(num("TRADE_HOLD_DAYS", preset.holdDays)),
     maExit: Math.floor(num("TRADE_MA_EXIT", preset.maExit)),
     trailPct: num("TRADE_TRAIL_PCT", preset.trailPct),
     trailGrades: (env.TRADE_TRAIL_GRADES || preset.trailGrades)
