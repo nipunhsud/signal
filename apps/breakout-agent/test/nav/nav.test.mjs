@@ -48,6 +48,8 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   check((await url()) === '/dashboard/winners?s=NVDA', 'drawer open → ?s=NVDA');
   await page.evaluate(() => dashboard.openAsset('AAPL'));
   check((await url()) === '/dashboard/winners?s=AAPL', 'switching ticker replaces ?s');
+  const dtxt = await page.locator('#drawer').innerText();
+  check(['SIGNAL', 'RS', 'TREND', 'EARNINGS', 'LEVELS', 'DETAIL', 'UPDATED'].every((l) => dtxt.includes(l)) && (await page.locator('#drawer [data-grade="A+"]').count()) >= 1, 'drawer mirrors every table column and shows the grade chip');
   await page.goBack(); await settle(page, 200);
   check((await drawer()) === null && (await url()) === '/dashboard/winners', 'browser back closes the drawer');
   await page.evaluate(() => dashboard.openAsset('NVDA'));
