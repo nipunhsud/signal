@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 import { postXThread, postXThreadDetailed } from './dist/x-post.js';
 import { renderScorecardPng, renderMarketHealthPng, metaFor, metaHtml } from './og-card.js';
 import { detectBases } from './base-detect.js';
-import { handleMcpRequest } from './mcp.js';
+import { handleMcpRequest, loadLearn } from './mcp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -223,6 +223,22 @@ function serveDashboard(req, res) {
 // Upgrade page — where expired trials / churned users land.
 app.get('/upgrade', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upgrade.html'));
+});
+
+// /llms-full.txt — llms.txt followed by the full text of every Learn page, so
+// a language model (or its crawler) gets the whole corpus in one fetch. Built
+// from the same loader the MCP search_learn tool uses; cached per process.
+let llmsFullCache = null;
+app.get('/llms-full.txt', (req, res) => {
+  if (!llmsFullCache) {
+    const summary = fs.readFileSync(path.join(__dirname, 'public', 'llms.txt'), 'utf8').trim();
+    const pages = loadLearn()
+      .map((a) => `# ${a.title}\n\nSource: ${a.url}\n\n${a.text}`)
+      .join('\n\n---\n\n');
+    llmsFullCache = `${summary}\n\n---\n\n${pages}\n`;
+  }
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.type('text/plain; charset=utf-8').send(llmsFullCache);
 });
 
 // Market Pulse — PUBLIC engagement/acquisition surface (no paywall, crawlable):

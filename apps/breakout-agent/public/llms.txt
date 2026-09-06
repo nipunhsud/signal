@@ -23,7 +23,28 @@
 
 The published backtest is deliberately narrow: 22 signals over a 30-day window (May 22 – Jun 20, 2026), each held 20 trading days or stopped at -8%, averaged equal-weight (+6.9% average return, 64% win rate). This is live production data with all signals disclosed, but it is one market regime — a choppier July window ran well below it, which DataQuant reports rather than hides. Results update monthly, wins and losses both; the Market Health gauge exists precisely because breakout systems are regime-dependent.
 
+## Research: exit rules, sizing and regime (September 2026)
+
+Full note: https://dataquant.ai/learn/exit-rules-study — 26 sell rules tested over 97,789 graded (S / A+ / A) blue-sky breakouts across 5,484 NASDAQ and NYSE symbols from the 1970s to September 2026, a 7% hard stop on every rule, then replayed day by day through a slot-limited portfolio (5 or 10 slots, 1% of equity at risk per trade, 12 random within-day orderings). Frictionless fills on today's listings, so returns are relative, not forecasts.
+
+- **Best exit per trade and for the book: trail the stop 20% under the peak high.** 3.73% mean, profit factor 1.80, 95-bar average hold; in the 5-slot book 7.0% CAGR with a 31% max drawdown, the best Sharpe of any rule, a third of the trades.
+- **Best fast-turnover exit: close below the 50-day moving average.** 1.10% mean, profit factor 1.35, cuts the hard-stop rate from 45% to 25%. Turnover buys nothing in a slot-limited book (5.4% CAGR, 38% drawdown), and combining MA50 with a trail is worse than either alone.
+- **Selling into +20% (whole or half) adds no edge.** Half at +20% then MA50: 0.99% vs 1.10% for plain MA50. Last or near last in every portfolio configuration. Only ~1 in 7 trades reaches +20% under MA50 management.
+- **The 20-day average is too tight (PF 1.16); O'Neil's +20%/8-week/MA50 composite adds nothing over MA50 alone (0.99%).**
+- **Peter Brandt's 3-day-low trailing stop is harmful from entry (PF 1.03) and a middle path armed after +20% (PF 1.50); stacked on MA50 it clips winners.**
+- **Grade dominates the exit.** S-grade beats A-grade by 2-4x in profit factor on every rule (S with the 20% trail: 7.42% mean, PF 2.94).
+- **Sizing: 10 slots at 1% risk ≈ 9% CAGR unlevered, best Sharpe; five slots at 2% risk earns the same with twice the concentration.** Fully invested drawdown is 37-39% regardless of risk per trade; only holding cash lowers it (5 slots at 1% = 71% invested, 31% drawdown).
+- **Biggest lever in the study: fill free slots strongest relative strength first.** 9.0% → 14.3% CAGR with the same drawdown. An RS floor alone does little; the ordering is what matters.
+- **Market regime: the S&P 500 200-day average helps only if it also exits.** Entries-only: 8.0%. Entries and flatten below: 10.9% with the worst drawdown cut from 39% to 21%. Combined with RS ordering: ~14% CAGR, 26% max drawdown, Sharpe 0.92 (12.7% / 29% from 2010 on).
+- **Market-health score as a switch: caution (45-69) is not a sell; risk-off (<45) is the line, but health-based rules degrade after 2010 while the 200-day rule holds.**
+- **Equity-curve circuit breakers destroy the strategy** (a 15% drawdown halt: 4.4% CAGR, idle 77% of days). Only scaling risk down with drawdown does no harm.
+- **Rotation (fixed 42-day holds, strongest-first refills) raises raw return to ~19% at 10 bp costs but with a 55% drawdown; stall signals carry no information beyond a plain clock.**
+- **A 90-day time cap is an exit, not a backstop** (costs the trail 2.5 points of CAGR); a one-year backstop is used instead.
+- **Base depth: under 10% deep halves the 20-day stop-touch rate but mean return and +20% frequency rise with depth**, so shallow is a tight-tier label, not a gate.
+
 ## Guides (plain-English, grounded in DataQuant's live data)
+
+- [Exit Rules Study: What Should Close a Breakout Trade?](https://dataquant.ai/learn/exit-rules-study): Research note — 26 sell rules over 97,789 graded breakouts since the 1970s, replayed through a slot-limited book, then sized and filtered by regime and relative strength. Full tables, methodology and FAQ.
 
 - [What Is a Volatility Contraction Pattern (VCP)?](https://dataquant.ai/learn/volatility-contraction-pattern): The quiet base before a stock's biggest move — DataQuant's exact machine definition of the VCP, and an honest example of a pattern that passed every gate but wasn't tradeable.
 - [Relative Strength (RS), Explained](https://dataquant.ai/learn/relative-strength-explained): The 1-99 leadership rank — how DataQuant computes it per market, why leaders lead, and why RS is a filter, not a trigger.
@@ -31,6 +52,10 @@ The published backtest is deliberately narrow: 22 signals over a 30-day window (
 - [Reading a Base X-ray](https://dataquant.ai/learn/reading-a-base-xray): Every metric on DataQuant's base cards — pivot, depth, coil, volume dry-up, accumulation, failed pokes, blue sky — with real worked examples.
 - [The Honest Backtest](https://dataquant.ai/learn/honest-backtest): How DataQuant measures itself — methodology, the good month and the bad month, and why the numbers are never annualized.
 - [The Market Health Gauge](https://dataquant.ai/learn/market-health-gauge): The "M" in market direction — trend, distribution days, and breadth rolled into one 0-100 regime score.
+
+## Full text for language models
+
+The complete text of every guide and research note, in one plain-text file: https://dataquant.ai/llms-full.txt
 
 ## MCP server (for AI agents)
 
