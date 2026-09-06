@@ -17,7 +17,7 @@ const asText = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, n
 
 // Learn articles: strip the static HTML down to readable text once, cache it.
 let learnCache = null;
-function loadLearn() {
+export function loadLearn() {
   if (learnCache) return learnCache;
   const articles = [];
   try {

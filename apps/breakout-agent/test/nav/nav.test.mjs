@@ -162,6 +162,19 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.close();
 }
 
+// Public discovery surfaces: the newest Learn article is linked from the index,
+// the sitemap and llms.txt, and carries structured data for crawlers.
+{
+  console.log('--- discovery');
+  const get = async (p) => { const r = await fetch(base + p); return { status: r.status, text: await r.text() }; };
+  const art = await get('/learn/exit-rules-study.html');
+  check(art.status === 200 && art.text.includes('application/ld+json') && art.text.includes('rel="canonical"'), 'exit-rules-study page serves with JSON-LD and canonical');
+  check((await get('/learn/index.html')).text.includes('/learn/exit-rules-study'), 'learn index links the study');
+  check((await get('/sitemap.xml')).text.includes('/learn/exit-rules-study'), 'sitemap lists the study');
+  const llms = (await get('/llms.txt')).text;
+  check(llms.includes('/learn/exit-rules-study') && llms.includes('/llms-full.txt'), 'llms.txt links the study and llms-full.txt');
+}
+
 await browser.close();
 srv.close();
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Twenty-six sell rules tested over 97,789 graded breakouts across 5,484 NASDAQ and NYSE stocks since the 1970s, then replayed through a slot-limited portfolio. A 7% stop with a 20% trailing stop beats selling into +20%; ranking entries by relative strength matters more than any exit rule.">
+  <title>Exit Rules Study: What Should Close a Breakout Trade — DataQuant Learn</title>
+  <link rel="canonical" href="https://dataquant.ai/learn/exit-rules-study">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="DataQuant">
+  <meta property="og:title" content="Exit Rules Study: What Should Close a Breakout Trade — DataQuant Learn">
+  <meta property="og:description" content="26 sell rules over 97,789 graded breakouts since the 1970s, replayed through a five-slot book. The 20% trail beats selling into +20%; entry order matters more than the exit.">
+  <meta property="og:url" content="https://dataquant.ai/learn/exit-rules-study">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
+  <meta property="article:published_time" content="2026-09-05">
+  <meta property="article:modified_time" content="2026-09-06">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Exit Rules Study: What Should Close a Breakout Trade — DataQuant Learn">
+  <meta name="twitter:description" content="26 sell rules over 97,789 graded breakouts since the 1970s, replayed through a five-slot book. The 20% trail beats selling into +20%; entry order matters more than the exit.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Exit Rules Study: What Should Close a Breakout Trade, and How Big Should the Book Be?",
+      "alternativeHeadline": "26 sell rules over 97,789 graded breakouts, replayed through a slot-limited portfolio",
+      "description": "Twenty-six sell rules tested over 97,789 graded breakouts across 5,484 NASDAQ and NYSE stocks since the 1970s, then replayed through a slot-limited portfolio, sized, and filtered by market regime and relative strength. A 7% stop with a 20% trailing stop beats selling into +20%; ranking entries by relative strength matters more than any exit rule.",
+      "datePublished": "2026-09-05",
+      "dateModified": "2026-09-06",
+      "keywords": ["breakout trading", "exit rules", "trailing stop", "sell rules", "50-day moving average", "position sizing", "market regime filter", "relative strength", "backtest", "William O'Neil", "Peter Brandt", "CAN SLIM"],
+      "author": { "@type": "Organization", "name": "DataQuant", "url": "https://dataquant.ai/" },
+      "publisher": { "@type": "Organization", "name": "DataQuant", "url": "https://dataquant.ai/" },
+      "mainEntityOfPage": "https://dataquant.ai/learn/exit-rules-study",
+      "about": {
+        "@type": "Dataset",
+        "name": "DataQuant graded breakout history, 1970s to September 2026",
+        "description": "97,789 blue-sky breakouts above the 200-day moving average across 5,484 NASDAQ and NYSE symbols, graded S, A+ or A by DataQuant's production base detector. Yahoo daily bars, split-adjusted; warrants, rights and units excluded.",
+        "temporalCoverage": "1970/2026-09",
+        "variableMeasured": ["win rate", "mean return", "median return", "profit factor", "holding period", "stop-out rate", "CAGR", "maximum drawdown", "Sharpe ratio"]
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is the best single sell rule for a breakout trade?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Per trade, a 20% trailing stop under the peak high earned the most: 3.73% mean return and a 1.80 profit factor over 97,789 breakouts, with a 7% hard stop on every trade. A close below the 50-day moving average is the best fast-turnover rule: 1.10% mean, profit factor 1.35, and it cuts the hard-stop rate from 45% to 25% by exiting losers at -2 to -3%. In the portfolio simulation the 20% trail also grew the book fastest with the lowest drawdown." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does selling into a +20% gain improve breakout returns?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Selling half at +20% then managing the rest with the 50-day average returned 0.99% per trade; selling everything at +20% returned 0.88%; the plain 50-day rule returned 1.10%. Only about one trade in seven ever reaches +20% under 50-day management, and the partial sale caps exactly the trades that carry the average. In the portfolio simulation the +20% partial finished last or near last in every configuration." }
+        },
+        {
+          "@type": "Question",
+          "name": "Trailing stop or 50-day moving average: which exit is better?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The 20% trail makes more per trade (3.73% vs 1.10%) and more per month held (0.83% vs 0.68%), but holds 95 bars on average and two-thirds of its trades still end at the 7% stop. The 50-day rule turns slots over faster, but in a slot-limited book that turnover buys nothing, because the refilled slot gets an average signal. Combining them is worse than either alone: a 15% trail plus the 50-day rule returned 0.89%." }
+        },
+        {
+          "@type": "Question",
+          "name": "How many positions and how much risk per trade should a breakout book run?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Ten slots at 1% of equity at risk per trade (a 14% position with a 7% stop) earned about 9% a year unlevered with the best Sharpe in the sizing grid. Five slots at 2% risk earned the same 9% with twice the concentration. Once the book is fully invested, raising risk per trade changes only the drawdown, which sits at 37 to 39% for every fully invested row. Holding cash is the only way under that: five slots at 1% risk is 71% invested with a 31% worst drawdown." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does a market regime filter help a breakout strategy?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Only if it also exits. Blocking new entries while the S&P 500 is below its 200-day average lowered returns from 9.0% to 8.0% a year. Blocking entries and flattening the book below the 200-day average raised returns to 10.9% and cut the worst drawdown from 39% to 21%. Combined with filling slots strongest-relative-strength first, the book returned about 14% a year with a 26% worst drawdown." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do equity-curve circuit breakers protect a breakout strategy?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. The strategy's profit arrives in bursts after stretches of small stop-outs, and a drawdown halt or equity-average filter switches the book off in exactly those stretches. Halting entries at a 15% drawdown kept the book idle 77% of the time and earned 4.4% a year against 14.1% without it. The only breaker that did not hurt was scaling risk toward zero as drawdown deepens, which never halts and so never misses the recovery." }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the biggest lever in the whole study?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The order in which signals are taken. Filling free slots with the strongest relative-strength names first lifted the book from 9% to 14.3% a year with the same drawdown and a tight spread across orderings. The exit rule moves results by tenths of a percent per trade; the base grade moves them by whole percents; entry order moves the book's growth rate by half." }
+        }
+      ]
+    }
+  ]
+}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; --teal:#2DD4BF; --rust:#FB923C; }
+    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; }
+    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
+    article h3 { font-size:1.05rem; font-weight:600; margin:1.5rem 0 0.5rem; color:var(--fg); }
+    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
+    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
+    article ol { list-style:decimal; padding-left:1.25rem; margin-bottom:1rem; }
+    article li { margin-bottom:0.4rem; }
+    article strong { color:var(--fg); }
+    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
+    article code { font-family: ui-monospace, Menlo, monospace; font-size:0.9em; background:var(--panel-2); padding:1px 5px; border-radius:4px; color:#E2E8F0; }
+    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
+    .note { background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--muted); border-radius:10px; padding:0.9rem 1.1rem; }
+    .note p:last-child { margin-bottom:0; }
+    .prov { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:0.6rem; margin-top:1.5rem; }
+    @media (min-width:640px) { .prov { grid-template-columns:repeat(3, minmax(0,1fr)); } }
+    .prov > div { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.7rem 0.9rem; }
+    .prov .k { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+    .prov .v { font-family: ui-monospace, Menlo, monospace; font-size:0.95rem; color:var(--fg); margin-top:2px; font-variant-numeric:tabular-nums; }
+    .verdict { display:grid; gap:1rem; margin-top:1.5rem; }
+    @media (min-width:720px) { .verdict { grid-template-columns:1fr 1fr; } }
+    .rulebook { border-left:3px solid var(--teal); padding:0.2rem 0 0.2rem 1rem; }
+    .reject { border-left:3px solid var(--rust); padding:0.2rem 0 0.2rem 1rem; }
+    .rulebook h3, .reject h3 { margin-top:0; }
+    .rulebook ol { margin-top:0.4rem; }
+    .rulebook li, .reject p { font-size:0.97rem; }
+    .tablewrap { overflow-x:auto; margin:0.75rem 0 1.25rem; border:1px solid var(--border); border-radius:10px; }
+    table { border-collapse:collapse; width:100%; font-size:0.86rem; font-variant-numeric:tabular-nums; }
+    th, td { text-align:right; padding:0.5rem 0.7rem; border-bottom:1px solid var(--border); white-space:nowrap; }
+    th { font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); font-weight:600; background:var(--panel); }
+    th:first-child, td:first-child { text-align:left; }
+    td { font-family: ui-monospace, Menlo, monospace; color:#CBD5E1; }
+    td:first-child { font-family:'Inter',system-ui,sans-serif; color:var(--fg); }
+    tr:last-child td { border-bottom:none; }
+    tr.rec td { background:rgba(45,212,191,0.08); }
+    tr.rej td { background:rgba(251,146,60,0.08); }
+    .tag { font-size:0.62rem; letter-spacing:0.06em; text-transform:uppercase; margin-left:0.5rem; font-family: ui-monospace, Menlo, monospace; }
+    tr.rec .tag { color:var(--teal); }
+    tr.rej .tag { color:var(--rust); }
+    .cols { font-size:0.82rem; color:var(--muted); margin-top:-0.5rem; }
+    .charts { display:grid; gap:1.5rem; margin-top:1rem; }
+    @media (min-width:720px) { .charts { grid-template-columns:1fr 1fr; } }
+    .chart-title { font-size:0.7rem; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); margin-bottom:0.4rem; font-family: ui-monospace, Menlo, monospace; }
+    svg { width:100%; height:auto; display:block; overflow:visible; }
+    svg text { font-family: ui-monospace, Menlo, monospace; font-size:12px; fill:#CBD5E1; font-variant-numeric:tabular-nums; }
+    svg .lbl { fill:var(--fg); font-family:'Inter',system-ui,sans-serif; font-size:12.5px; }
+    svg .grid { stroke:#1F2937; stroke-width:1; }
+    svg .base { stroke:#64748B; stroke-width:1; }
+    svg .bar { fill:#475569; }
+    svg .bar.rec { fill:var(--teal); }
+    svg .bar.rej { fill:var(--rust); }
+    .legend { display:flex; gap:1.1rem; flex-wrap:wrap; font-size:0.82rem; color:var(--muted); margin-top:0.6rem; }
+    .legend span::before { content:""; display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:#475569; }
+    .legend .rec::before { background:var(--teal); }
+    .legend .rej::before { background:var(--rust); }
+    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
+    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
+    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
+    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-slate-800/60">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
+      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
+      <div class="flex items-center gap-5 text-slate-400">
+        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
+        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
+        <a href="/dashboard" style="text-decoration:none" class="hover:text-white">Dashboard</a>
+        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+      </div>
+    </div>
+  </nav>
+  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
+
+    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Research note · September 2026</div>
+    <article>
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">Exit Rules Study: What Should Close a Breakout Trade, and How Big Should the Book Be?</h1>
+      <p class="text-lg text-slate-400 mt-4">Twenty-six sell rules over every S, A+ and A graded breakout in NASDAQ and NYSE history, replayed through a slot-limited book, then sized, then filtered by market regime and relative strength. The exit matters less than the order you take signals in.</p>
+      <div class="callout mt-6">Education, not advice. This is a historical study with frictionless fills on today's listings, so read every return as relative to the others, not as a forecast. Patterns fail often.</div>
+
+      <div class="prov">
+        <div><div class="k">Breakouts</div><div class="v">97,789</div></div>
+        <div><div class="k">Symbols</div><div class="v">5,484</div></div>
+        <div><div class="k">Period</div><div class="v">1970s – Sep 2026</div></div>
+        <div><div class="k">Grades</div><div class="v">S 4,072 · A+ 25,358 · A 68,359</div></div>
+        <div><div class="k">Stop on every rule</div><div class="v">7% below entry</div></div>
+        <div><div class="k">Portfolio sim</div><div class="v">5 slots · 1% risk · 12 orderings</div></div>
+      </div>
+
+      <div class="verdict">
+        <div class="rulebook">
+          <h3>What the evidence supports</h3>
+          <ol>
+            <li><strong>7% hard stop</strong> on every position, set the moment the entry fills.</li>
+            <li><strong>Trail the stop 20% under the peak high</strong> on every grade. Checked once a day after the close; the stop only ever moves up.</li>
+            <li><strong>Ten slots, 1% of equity at risk per trade.</strong> A conservative book drops to five slots and keeps a third of the book in cash.</li>
+            <li><strong>Fill slots with the strongest relative strength first</strong>, and use the S&amp;P 500's 200-day average as a switch: no entries below it, and flatten the book while it stays there.</li>
+            <li><strong>One-year backstop.</strong> Anything still open is sold. A 90-day cap turned out to be the exit, not a safety net.</li>
+          </ol>
+        </div>
+        <div class="reject">
+          <h3>What it does not support</h3>
+          <p>Selling into +20%, whole or half. Only about one trade in seven ever gets there under 50-day management, and the partial caps exactly the trades that carry the average. It costs roughly 0.1% per trade and adds no edge. Keeping it as a manual habit is affordable; building a system around it is pointless.</p>
+        </div>
+      </div>
+
+      <h2>How the rules compare</h2>
+      <p>Two views of the same eight rules across all 97,789 breakouts. <strong>Profit factor</strong> is gross wins over gross losses. <strong>Return per month</strong> is mean return divided by average holding period, the number that matters when a five-slot book has to be refilled.</p>
+      <div class="charts">
+        <div>
+          <div class="chart-title">Profit factor</div>
+          <svg id="pf" viewBox="0 0 480 300" role="img" aria-label="Profit factor by exit rule"></svg>
+        </div>
+        <div>
+          <div class="chart-title">Mean return per month held</div>
+          <svg id="pm" viewBox="0 0 480 300" role="img" aria-label="Mean return per month held by exit rule"></svg>
+        </div>
+      </div>
+      <div class="legend"><span class="rec">Supported by the evidence</span><span class="rej">Rejected: sells into +20%</span><span>Measured, not adopted</span></div>
+      <p class="text-sm text-slate-400 mt-3">The 20% trail earns the most per trade but holds 95 bars on average, and two-thirds of its trades still end at the hard stop, since the trail only rises above entry after a +25% move. On S-grade names it is worth that wait.</p>
+
+      <h2>Findings</h2>
+      <ul>
+        <li><strong>Close below the 50-day average is the best single fast sell rule.</strong> Same mean as a fixed 42-bar hold (1.10% vs 1.04%) with the hard-stop rate cut from 45% to 25%: it exits losers at −2 to −3% before they reach −7%. On S-grade breakouts: 1.77% mean, profit factor 1.91, 8% stops.</li>
+        <li><strong>Selling into +20% does not help.</strong> Half off at +20% then MA50: 0.99% mean. All out at +20%: 0.88%. Plain MA50: 1.10%. The rest of the return lives in the tail the partial removes.</li>
+        <li><strong>Trailing stops make the most per trade and tie up the slot.</strong> A 20% trail: 3.73% mean, profit factor 1.80, 95 bars. Per month it is 0.83% against 0.68% for MA50. Adding a 15% trail to MA50 is worse than MA50 alone (0.89%).</li>
+        <li><strong>The 20-day average is too tight.</strong> Highest turnover, lowest profit factor (1.16). It sells ordinary pullbacks.</li>
+        <li><strong>O'Neil's composite adds nothing over its MA50 component.</strong> 0.99% vs 1.10%. Only 12% of trades reach +20% inside 15 bars, and when they do the MA50 exit was already doing the work.</li>
+        <li><strong>Grade dominates the exit.</strong> S beats A on every rule by two to four times in profit-factor terms. The exit rule moves results by tenths of a percent; the grade moves them by whole percents. See <a href="/learn/reading-a-base-xray">how bases are graded</a>.</li>
+        <li><strong>2010 to 2026 is weaker across the board</strong>, with mean returns roughly half of pre-2010, but the ranking of rules is unchanged.</li>
+      </ul>
+
+      <h2>All rules, all breakouts</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule (7% stop on all)</th><th>Win</th><th>Mean</th><th>Median</th><th>PF</th><th>Bars</th><th>%/mo</th><th>Ends at stop</th></tr></thead>
+          <tbody>
+            <tr><td>Fixed 10 bars</td><td>50.6%</td><td>0.20%</td><td>0.09%</td><td>1.10</td><td>9</td><td>0.46%</td><td>18%</td></tr>
+            <tr><td>Fixed 21 bars</td><td>49.9%</td><td>0.54%</td><td>0.00%</td><td>1.20</td><td>17</td><td>0.65%</td><td>32%</td></tr>
+            <tr><td>Fixed 42 bars</td><td>45.6%</td><td>1.04%</td><td>−1.70%</td><td>1.30</td><td>30</td><td>0.72%</td><td>45%</td></tr>
+            <tr><td>Fixed 63 bars</td><td>42.3%</td><td>1.54%</td><td>−7.00%</td><td>1.40</td><td>41</td><td>0.79%</td><td>52%</td></tr>
+            <tr><td>Fixed 126 bars</td><td>35.3%</td><td>2.69%</td><td>−7.00%</td><td>1.59</td><td>67</td><td>0.84%</td><td>62%</td></tr>
+            <tr><td>Close below MA20</td><td>37.8%</td><td>0.36%</td><td>−1.31%</td><td>1.16</td><td>16</td><td>0.47%</td><td>12%</td></tr>
+            <tr class="rec"><td>Close below MA50<span class="tag">supported</span></td><td>36.0%</td><td>1.10%</td><td>−2.41%</td><td>1.35</td><td>34</td><td>0.68%</td><td>25%</td></tr>
+            <tr><td>Trail 10% from peak</td><td>39.1%</td><td>1.57%</td><td>−2.97%</td><td>1.47</td><td>55</td><td>0.60%</td><td>60%</td></tr>
+            <tr><td>Trail 15% from peak</td><td>35.3%</td><td>2.80%</td><td>−7.00%</td><td>1.67</td><td>81</td><td>0.72%</td><td>64%</td></tr>
+            <tr class="rec"><td>Trail 20% from peak<span class="tag">supported</span></td><td>32.4%</td><td>3.73%</td><td>−7.00%</td><td>1.80</td><td>95</td><td>0.83%</td><td>67%</td></tr>
+            <tr><td>Trail 15% + MA50</td><td>36.5%</td><td>0.89%</td><td>−2.29%</td><td>1.29</td><td>33</td><td>0.57%</td><td>26%</td></tr>
+            <tr class="rej"><td>All out at +20%, else MA50</td><td>36.8%</td><td>0.88%</td><td>−2.33%</td><td>1.29</td><td>28</td><td>0.66%</td><td>25%</td></tr>
+            <tr class="rej"><td>All out at +25%, else MA50</td><td>36.4%</td><td>0.94%</td><td>−2.37%</td><td>1.30</td><td>30</td><td>0.66%</td><td>25%</td></tr>
+            <tr class="rej"><td>Half at +20%, rest MA50</td><td>36.8%</td><td>0.99%</td><td>−2.33%</td><td>1.32</td><td>34</td><td>0.61%</td><td>25%</td></tr>
+            <tr class="rej"><td>Half at +20%, breakeven stop, MA50</td><td>36.8%</td><td>0.97%</td><td>−2.33%</td><td>1.32</td><td>34</td><td>0.60%</td><td>25%</td></tr>
+            <tr class="rej"><td>Half at +20%, rest trail 15%</td><td>35.5%</td><td>2.44%</td><td>−7.00%</td><td>1.58</td><td>81</td><td>0.63%</td><td>64%</td></tr>
+            <tr class="rej"><td>Third at +20%, rest trail 15% + MA50</td><td>36.5%</td><td>0.87%</td><td>−2.29%</td><td>1.29</td><td>33</td><td>0.56%</td><td>26%</td></tr>
+            <tr><td>O'Neil: +20% target, 8-week rule, MA50</td><td>36.2%</td><td>0.99%</td><td>−2.41%</td><td>1.32</td><td>29</td><td>0.71%</td><td>25%</td></tr>
+            <tr><td>O'Neil + trail 15%</td><td>36.5%</td><td>0.84%</td><td>−2.29%</td><td>1.28</td><td>29</td><td>0.62%</td><td>26%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cols">Win = share of trades closing above entry. PF = gross wins ÷ gross losses. Bars = mean holding period in trading days. %/mo = mean return ÷ bars × 21. Ends at stop = share of trades ending at the 7% hard stop. A −7.00% median means more than half of trades ended there.</p>
+
+      <h2>S grade only: 4,072 breakouts</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Win</th><th>Mean</th><th>Median</th><th>PF</th><th>Bars</th><th>%/mo</th><th>Ends at stop</th></tr></thead>
+          <tbody>
+            <tr><td>Fixed 21 bars</td><td>60.6%</td><td>0.93%</td><td>1.09%</td><td>1.60</td><td>20</td><td>0.99%</td><td>14%</td></tr>
+            <tr><td>Fixed 63 bars</td><td>56.5%</td><td>2.31%</td><td>1.68%</td><td>1.91</td><td>52</td><td>0.94%</td><td>32%</td></tr>
+            <tr><td>Close below MA50</td><td>45.9%</td><td>1.77%</td><td>−0.49%</td><td>1.91</td><td>44</td><td>0.85%</td><td>8%</td></tr>
+            <tr><td>Trail 15% from peak</td><td>45.6%</td><td>5.68%</td><td>−2.55%</td><td>2.63</td><td>133</td><td>0.90%</td><td>53%</td></tr>
+            <tr class="rec"><td>Trail 20% from peak<span class="tag">supported</span></td><td>44.4%</td><td>7.42%</td><td>−6.67%</td><td>2.94</td><td>145</td><td>1.07%</td><td>54%</td></tr>
+            <tr class="rej"><td>Half at +20%, rest MA50</td><td>46.0%</td><td>1.72%</td><td>−0.48%</td><td>1.89</td><td>44</td><td>0.83%</td><td>8%</td></tr>
+            <tr><td>O'Neil composite</td><td>45.9%</td><td>1.69%</td><td>−0.49%</td><td>1.87</td><td>40</td><td>0.89%</td><td>8%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Peter Brandt's 3-day trailing stop</h2>
+      <p>Stop under the lowest low of the prior three sessions, ratcheted daily and never lowered. Brandt uses it to protect parabolic runs, so it is measured armed from entry, armed after +10% and +20%, close-based, and layered on top of the 50-day rule.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Win</th><th>Mean</th><th>PF</th><th>Bars</th><th>%/mo</th><th>Ends at stop</th></tr></thead>
+          <tbody>
+            <tr><td>3-day low, from entry</td><td>38.6%</td><td>0.05%</td><td>1.03</td><td>6</td><td>0.16%</td><td>60%</td></tr>
+            <tr><td>3-day low, armed after +10%</td><td>48.2%</td><td>1.18%</td><td>1.32</td><td>40</td><td>0.62%</td><td>51%</td></tr>
+            <tr><td>3-day low, armed after +20%</td><td>36.4%</td><td>2.29%</td><td>1.50</td><td>66</td><td>0.73%</td><td>63%</td></tr>
+            <tr><td>3-day low, close-based, from entry</td><td>40.6%</td><td>0.18%</td><td>1.09</td><td>12</td><td>0.33%</td><td>10%</td></tr>
+            <tr><td>MA50, then 3-day low after +20%</td><td>36.7%</td><td>0.83%</td><td>1.27</td><td>29</td><td>0.61%</td><td>25%</td></tr>
+            <tr><td>MA50, then 3-day low after +10%</td><td>40.9%</td><td>0.59%</td><td>1.21</td><td>23</td><td>0.55%</td><td>24%</td></tr>
+            <tr class="rec"><td>Close below MA50<span class="tag">reference</span></td><td>36.0%</td><td>1.10%</td><td>1.35</td><td>34</td><td>0.68%</td><td>25%</td></tr>
+            <tr class="rec"><td>Trail 20% from peak<span class="tag">reference</span></td><td>32.4%</td><td>3.73%</td><td>1.80</td><td>95</td><td>0.83%</td><td>67%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>From entry it is harmful.</strong> A fresh breakout's 3-day low is the base it just left. Ordinary post-breakout pullbacks take it out within a week.</li>
+        <li><strong>Armed after +20% it is a middle path.</strong> Profit factor 1.50, between MA50 and the 20% trail, with shorter holds than the trail. On S grade it earns 5.6% mean at PF 2.48, and armed after +10% on S it has the best median of any rule, +6.9%.</li>
+        <li><strong>Stacked on MA50 it hurts.</strong> 0.83% against 1.10%: it clips winners the MA rule would have carried.</li>
+      </ul>
+
+      <h2>Portfolio simulation: which rule grows the book</h2>
+      <p>Per-trade averages ignore the slot constraint. This replays the signal stream day by day with a five-slot book and 1% of equity at risk per trade, which with a 7% stop is a 14.3% position, capped at 20%, no leverage. Free slots are filled from that day's breakouts, best grade first. Every position is marked to market daily from its own price path.</p>
+      <p>Slots are full almost every day, so which of a day's signals get taken is a tie-break, and a single ordering is noisy. These figures average twelve random within-day orderings and show the spread.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule, 1990 to 2026</th><th>CAGR</th><th>Spread</th><th>Max drawdown</th><th>Sharpe</th><th>Trades / yr</th></tr></thead>
+          <tbody>
+            <tr class="rec"><td>Trail 20% from peak<span class="tag">best for the book</span></td><td>7.0%</td><td>3.6 to 12.5%</td><td>31%</td><td>0.76</td><td>12</td></tr>
+            <tr><td>Brandt 3-day low after +20%</td><td>6.2%</td><td>4.2 to 9.1%</td><td>32%</td><td>0.77</td><td>17</td></tr>
+            <tr><td>Close below MA50</td><td>5.4%</td><td>4.0 to 7.5%</td><td>38%</td><td>0.52</td><td>35</td></tr>
+            <tr><td>MA50 for A+/A, trail 20% for S</td><td>5.4%</td><td>3.9 to 7.2%</td><td>37%</td><td>0.55</td><td>23</td></tr>
+            <tr><td>Fixed 21 bars</td><td>5.4%</td><td>3.8 to 6.8%</td><td>39%</td><td>0.55</td><td>67</td></tr>
+            <tr class="rej"><td>Half at +20%, rest MA50</td><td>5.2%</td><td>3.8 to 7.0%</td><td>34%</td><td>0.58</td><td>35</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule, 2010 to 2026</th><th>CAGR</th><th>Spread</th><th>Max drawdown</th><th>Sharpe</th><th>Trades / yr</th></tr></thead>
+          <tbody>
+            <tr class="rec"><td>Trail 20% from peak</td><td>7.0%</td><td>2.8 to 10.1%</td><td>24%</td><td>0.74</td><td>12</td></tr>
+            <tr><td>Brandt 3-day low after +20%</td><td>4.8%</td><td>2.2 to 6.7%</td><td>25%</td><td>0.59</td><td>17</td></tr>
+            <tr><td>Fixed 21 bars</td><td>4.7%</td><td>2.5 to 7.1%</td><td>33%</td><td>0.48</td><td>67</td></tr>
+            <tr><td>Close below MA50</td><td>4.3%</td><td>2.6 to 7.2%</td><td>35%</td><td>0.42</td><td>36</td></tr>
+            <tr><td>MA50 for A+/A, trail 20% for S</td><td>4.0%</td><td>1.6 to 6.3%</td><td>35%</td><td>0.44</td><td>23</td></tr>
+            <tr class="rej"><td>Half at +20%, rest MA50</td><td>4.0%</td><td>2.1 to 6.4%</td><td>31%</td><td>0.45</td><td>36</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>The 20% trail is the best rule for the book, not just the best per trade.</strong> Highest growth, lowest drawdown, best Sharpe, a third of the trades. It holds in 2010 onward and with grade priority switched off.</li>
+        <li><strong>MA50's advantage was slot turnover, and turnover buys nothing here.</strong> The refilled slot gets an average signal, and average signals barely beat zero after the first month. Fixed 21 and MA50 land in the same place.</li>
+        <li><strong>Brandt after +20% is second</strong> with grade priority on, but drops to 5.1% with it off. It leans on catching S-grade runners.</li>
+        <li><strong>The +20% partial is last or near last</strong> in every configuration.</li>
+        <li><strong>The composite tracks MA50</strong> because S is 4% of the stream. Trailing every grade is the setting the evidence supports.</li>
+        <li><strong>Read the CAGRs as relative, not forecasts.</strong> The universe is today's listings, so survivorship flatters it. Fills are frictionless. The raw signal stream is broader than what the scanner emails.</li>
+      </ul>
+      <div class="note">
+        <p><strong>Revised recommendation.</strong> Keep the 7% stop and a one-year backstop. Trail 20% from the peak high on every grade. Keep MA50 as the alternative for a faster-turnover book, never combined with the trail. No +20% partial.</p>
+      </div>
+
+      <h2>Sizing: how much the book can make</h2>
+      <p>The same simulation swept slots, risk per trade, position cap and trail width, twelve orderings each, unlevered. A position is the smaller of risk ÷ 7%, the cap, and the cash left.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Slots</th><th>Risk / trade</th><th>Position</th><th>Invested</th><th>CAGR</th><th>Spread</th><th>Max DD</th><th>Sharpe</th><th>Trades / yr</th></tr></thead>
+          <tbody>
+            <tr><td>3</td><td>1%</td><td>14%</td><td>up to 43%</td><td>4.6%</td><td>2.5 to 7.4%</td><td>20%</td><td>0.67</td><td>7</td></tr>
+            <tr class="rec"><td>5<span class="tag">conservative</span></td><td>1%</td><td>14%</td><td>up to 71%</td><td>7.0%</td><td>3.6 to 12.5%</td><td>31%</td><td>0.76</td><td>12</td></tr>
+            <tr><td>5</td><td>1.5%</td><td>21%</td><td>100%</td><td>9.0%</td><td>4.4 to 16.2%</td><td>38%</td><td>0.76</td><td>12</td></tr>
+            <tr><td>5</td><td>2%</td><td>29%</td><td>100%</td><td>9.3%</td><td>6.2 to 15.7%</td><td>38%</td><td>0.74</td><td>12</td></tr>
+            <tr><td>5</td><td>3%</td><td>40% cap</td><td>100%</td><td>9.6%</td><td>5.5 to 16.4%</td><td>38%</td><td>0.70</td><td>10</td></tr>
+            <tr><td>8</td><td>1%</td><td>14%</td><td>100%</td><td>8.6%</td><td>4.8 to 13.6%</td><td>38%</td><td>0.83</td><td>20</td></tr>
+            <tr class="rec"><td>10<span class="tag">fully invested</span></td><td>1%</td><td>14%</td><td>100%</td><td>9.0%</td><td>5.6 to 13.6%</td><td>39%</td><td>0.87</td><td>24</td></tr>
+            <tr><td>3</td><td>3%</td><td>40% cap</td><td>100%</td><td>9.7%</td><td>5.0 to 16.3%</td><td>39%</td><td>0.68</td><td>7</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>The book caps out near 9 to 9.5% a year once it is fully invested.</strong> Five slots at 1.5% risk already demand 107% of equity. Raising risk beyond that changes nothing but the drawdown. Without margin, 2% risk on five slots gives 9.3%, not the 14% a doubling would suggest.</li>
+        <li><strong>Diversification is the free lever.</strong> Ten slots at 1% risk earns the same 9.0% as five slots at 2%, with the best Sharpe in the grid and the best worst-case ordering, at half the concentration.</li>
+        <li><strong>Drawdown is set by exposure, not by risk per trade.</strong> Every fully invested row sits at 37 to 39%. The only way under that is to hold cash: five slots at 1% is 71% invested and 31% drawdown, three slots is 20%.</li>
+        <li><strong>Trail width:</strong> 15% and 20% are close over the full history, 20% is best from 2010 onward, 25% and 30% give up Sharpe for nothing. 20% stays.</li>
+      </ul>
+      <div class="note">
+        <p><strong>Two operating points.</strong> Conservative: five slots, 1% risk, trail 20%, about 7% a year with a 31% worst drawdown, a third of the book in cash on average. Fully invested: eight to ten slots, 1% risk, trail 20%, about 9% a year with a 38% worst drawdown. Nothing in the grid beats the second on return without giving up Sharpe. Read both as relative to the index's roughly 10% with a 55% drawdown over the same period.</p>
+      </div>
+
+      <h2>Selection and regime</h2>
+      <p>Two mechanical pieces of what a discretionary trader does, added to the fully invested profile and run over twelve orderings. <strong>Regime:</strong> the S&amp;P 500 above its 200-day average, either blocking entries only or also flattening the book below it. <strong>Relative strength:</strong> each trade's six-month return ranked against the whole universe at the start of its month, the scanner's <a href="/learn/relative-strength-explained">RS rating</a> replayed, used as a floor or as the order in which free slots are filled.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Filter, 1990 to 2026</th><th>CAGR</th><th>Spread</th><th>Max DD</th><th>Sharpe</th><th>Trades / yr</th></tr></thead>
+          <tbody>
+            <tr><td>None</td><td>9.0%</td><td>5.6 to 13.6%</td><td>39%</td><td>0.87</td><td>24</td></tr>
+            <tr><td>S&amp;P above 200MA, entries only</td><td>8.0%</td><td>6.0 to 12.7%</td><td>30%</td><td>0.75</td><td>18</td></tr>
+            <tr><td>S&amp;P above 200MA, entries and exit</td><td>10.9%</td><td>9.7 to 11.9%</td><td>21%</td><td>0.94</td><td>33</td></tr>
+            <tr><td>RS at least 80</td><td>9.9%</td><td>8.6 to 11.5%</td><td>39%</td><td>0.75</td><td>32</td></tr>
+            <tr><td>Fill slots strongest first</td><td>14.3%</td><td>12.8 to 15.8%</td><td>38%</td><td>0.94</td><td>39</td></tr>
+            <tr class="rec"><td>200MA entries and exit, RS at least 80, strongest first<span class="tag">best</span></td><td>14.1%</td><td>13.4 to 14.6%</td><td>26%</td><td>0.92</td><td>44</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Ranking by strength is the biggest lever in the whole study.</strong> The same signals taken strongest-first lift the book from 9% to 14% a year with the same drawdown and a tight spread. A floor alone does little. The preference is what matters.</li>
+        <li><strong>The regime filter earns its keep only if it also exits.</strong> Blocking entries below the 200-day average loses the early re-entries. Flattening below it and re-entering above halves the worst drawdown at a higher return.</li>
+        <li><strong>Together: about 14% a year, 26% worst drawdown, Sharpe 0.92.</strong> The index's return with half its worst drawdown, from a rule set. From 2010 onward the same filters give 12.7% with a 29% drawdown.</li>
+        <li><strong>On a trading championship's own metric</strong>, single ordering with the best filters: best calendar year +67%, best rolling twelve months +99%, worst year −15%. The MA50 variant under the same filters posts a +142% year and a −30% year. That is the shape of a contest entry, from the same book.</li>
+        <li><strong>Caveats sharpen here.</strong> The strength rank leans on today's listings, turnover roughly doubles so frictionless fills flatter it more, and regime whipsaws are counted but their slippage is not.</li>
+      </ul>
+
+      <h2>The time backstop and the market-health score</h2>
+      <p>Two follow-ups. A 90-day backstop looked like a safety net, but with the trail rule it is the exit: the trail's average hold is 95 bars and a fifth of its trades were still open at the study's 250-bar limit.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Trail 20% with a cap</th><th>Per-trade PF</th><th>Mean</th><th>Bars</th><th>Book, best filters</th><th>Book, no filters</th></tr></thead>
+          <tbody>
+            <tr class="rec"><td>No cap<span class="tag">one-year backstop</span></td><td>1.80</td><td>3.73%</td><td>95</td><td>14.1%</td><td>9.0%</td></tr>
+            <tr><td>180-day cap</td><td>1.54</td><td>2.33%</td><td>65</td><td>12.6%</td><td>8.2%</td></tr>
+            <tr class="rej"><td>90-day cap</td><td>1.37</td><td>1.42%</td><td>41</td><td>11.6%</td><td>6.8%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The dashboard's <a href="/learn/market-health-gauge">Market Health score</a>, trend plus distribution days plus breadth, was rebuilt back to 1971 and tested as an entry floor and an exit trigger on the invested profile with the strength filters. Risk-on is 70 and above, caution 45 to 69, risk-off below 45.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Health rule</th><th>CAGR 1990+</th><th>Max DD</th><th>Sharpe</th><th>CAGR 2010+</th></tr></thead>
+          <tbody>
+            <tr><td>None</td><td>12.7%</td><td>44%</td><td>0.79</td><td>12.2%</td></tr>
+            <tr><td>Enter at 45 or above</td><td>14.0%</td><td>41%</td><td>0.87</td><td></td></tr>
+            <tr><td>Enter at 45 or above, flatten below 45</td><td>16.0%</td><td>30%</td><td>0.98</td><td></td></tr>
+            <tr class="rej"><td>Enter at 55 or above, flatten below 45</td><td>11.0%</td><td>33%</td><td>0.75</td><td>6.3%</td></tr>
+            <tr class="rej"><td>Risk-on only, 70 or above</td><td>9.0%</td><td>23%</td><td>0.71</td><td></td></tr>
+            <tr class="rec"><td>S&amp;P above 200MA, entries and exit<span class="tag">robust</span></td><td>14.1%</td><td>26%</td><td>0.92</td><td>12.9%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Caution is not a sell.</strong> A 56 out of 100 tape is where much of the return is made. Requiring risk-on cuts the book to 9%, requiring 55 cuts it to 11%. Breakouts that work often start while the gauge is still rebuilding.</li>
+        <li><strong>Risk-off is the line.</strong> No entries below 45 and flattening below it is the best full-history result in the study, but every health-based rule degrades sharply after 2010, while the S&amp;P 200-day rule holds. <a href="/learn/distribution-days-explained">Distribution days</a> and breadth said more in the 1990s tape than they do in the ETF era.</li>
+        <li><strong>So the switch worth building on is the 200-day rule</strong>, with the health score's risk-off line as an optional extra brake.</li>
+      </ul>
+
+      <h2>Circuit breakers: stopping when it isn't working</h2>
+      <p>Four families of equity-based breakers on the best setup, twelve orderings. Halted is the share of days the breaker kept the book switched off.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Breaker</th><th>CAGR</th><th>Max DD</th><th>Sharpe</th><th>Worst year</th><th>Years below −10%</th><th>Halted</th></tr></thead>
+          <tbody>
+            <tr class="rec"><td>None</td><td>14.1%</td><td>26%</td><td>0.92</td><td>−11.6%</td><td>1.0</td><td>0%</td></tr>
+            <tr class="rej"><td>Halt entries at 15% drawdown, resume at 7.5%</td><td>4.4%</td><td>17%</td><td>0.68</td><td>−3.6%</td><td>0.3</td><td>77%</td></tr>
+            <tr class="rej"><td>Halt at 20%, resume at 10%</td><td>6.8%</td><td>20%</td><td>0.73</td><td>−9.7%</td><td>0.3</td><td>53%</td></tr>
+            <tr class="rej"><td>Trade only while equity is above its 100-day average</td><td>2.1%</td><td>12%</td><td>0.43</td><td>−5.4%</td><td>0.0</td><td>89%</td></tr>
+            <tr class="rej"><td>Trade only while equity is above its 200-day average</td><td>4.8%</td><td>18%</td><td>0.72</td><td>−2.6%</td><td>0.2</td><td>76%</td></tr>
+            <tr class="rej"><td>Pause 20 days after 5 straight losers</td><td>10.6%</td><td>27%</td><td>0.77</td><td>−13.3%</td><td>1.3</td><td>30%</td></tr>
+            <tr><td>Risk scales to zero at 30% drawdown</td><td>12.3%</td><td>21%</td><td>0.94</td><td>−11.4%</td><td>0.9</td><td>0%</td></tr>
+            <tr><td>Risk scales to zero at 40% drawdown</td><td>13.1%</td><td>23%</td><td>0.93</td><td>−11.9%</td><td>1.0</td><td>0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Equity-curve breakers destroy this strategy.</strong> Its profit arrives in bursts after stretches of small stop-outs. A drawdown halt or an equity-average filter switches the book off in exactly those stretches and misses the burst that pays for them. The 15% halt keeps the book idle 77% of the time and earns 4.4% a year.</li>
+        <li><strong>Loss-streak pauses cost a third of the return and remove no bad years.</strong> Streaks of stops are the normal texture of a 35% win-rate rule, not a sign something broke.</li>
+        <li><strong>The only breaker that does not hurt is sizing down with drawdown.</strong> Scaling risk to zero at 40% drawdown gives up one point of return for three points of drawdown. It never halts, so it never misses the recovery. A lever, not a default.</li>
+        <li><strong>The deep losing years are already handled by the market switch.</strong> With it, the worst year is −11.6% and one year in 36 lands below −10%. Without it, −25% and nearly four. Breakers cannot replace the switch, because they react to the book's own losses, which lag the market by weeks. The 200-day rule reacts to the market itself.</li>
+      </ul>
+
+      <h2>Rotation: leave when momentum fades, take the next breakout</h2>
+      <p>The discretionary version of this style does not wait through sideways tape. Tested three ways on the best setup, now with a transaction-cost model of 10 basis points a side, roughly a market order in a liquid name: stall exits after N days without a new closing high, clock rotation on fixed holds, and swapping a stalled laggard only when a stronger signal is waiting.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Rule, 1990 to 2026</th><th>CAGR, no cost</th><th>CAGR, 10 bp</th><th>CAGR, 25 bp</th><th>Max DD</th><th>Trades / yr</th><th>2010 onward, 10 bp</th></tr></thead>
+          <tbody>
+            <tr class="rec"><td>Trail 20%, the default</td><td>14.1%</td><td>12.9%</td><td>11.0%</td><td>27%</td><td>44</td><td>11.6%</td></tr>
+            <tr><td>Close below MA50</td><td>17.6%</td><td>15.7%</td><td>12.9%</td><td>39%</td><td>66</td><td>9.4%</td></tr>
+            <tr><td>Stall: no new high in 20 days</td><td>17.6%</td><td>15.8%</td><td>13.0%</td><td>42%</td><td>66</td><td>8.0%</td></tr>
+            <tr><td>Fixed 21 days</td><td>18.1%</td><td>14.9%</td><td>10.2%</td><td>45%</td><td>114</td><td>10.1%</td></tr>
+            <tr class="rec"><td>Fixed 42 days<span class="tag">growth-first</span></td><td>21.0%</td><td>18.8%</td><td>15.6%</td><td>55%</td><td>77</td><td>14.5%</td></tr>
+            <tr class="rej"><td>Fixed 10 days</td><td>14.9%</td><td>10.0%</td><td>3.0%</td><td>68%</td><td>173</td><td>4.6%</td></tr>
+            <tr><td>Trail 20% plus laggard swap after 20 days</td><td></td><td>13.1%</td><td></td><td>27%</td><td>45</td><td>12.0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Rotation raises raw return.</strong> With strength-ranked refills, recycling the slot every one to two months beats holding through the trail. The next strong name is worth more than a stalled one.</li>
+        <li><strong>The stall signal carries no information.</strong> No new high in 15 to 20 days performs like a plain 15 to 20 day clock. The gain comes from redeploying into the current strongest breakout, not from detecting the fade. Swapping a laggard only when a stronger signal appears adds 0.2 points.</li>
+        <li><strong>Costs and drawdown eat most of it.</strong> Turnover is two to four times the trail's. At 10 basis points a side the 21-day clock loses 3 points and the 10-day clock collapses. The fast rules' worst drawdowns run 45 to 68% against the trail's 27%.</li>
+        <li><strong>After 2010, at realistic cost, the trail is the best risk-adjusted rule.</strong> Only the 42-day clock beats it on return, and it pays with a 55% drawdown.</li>
+      </ul>
+      <div class="note">
+        <p><strong>The growth-first alternative.</strong> 7% stop, no trail, sell after 60 calendar days, strongest-first refills: about 19% a year at 10 basis points with a 55% worst drawdown. That drawdown is the price of the extra 6 points, and it is what turns a contest-style year into a contest-style loss.</p>
+      </div>
+
+      <h2>Is a base under 10% deep the real top tier?</h2>
+      <p>Prompted by a stock that graded A off a 15.5%-deep, 21-bar base. Blue-sky bases above the 200-day average, at least 25 bars long, bucketed by depth:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Base depth</th><th>n</th><th>20d win</th><th>20d stop</th><th>63d win</th><th>63d stop</th><th>63d mean</th><th>Reached +20% in 63d</th></tr></thead>
+          <tbody>
+            <tr><td>0 – 5%</td><td>2,435</td><td>58.0%</td><td>10.4%</td><td>63.2%</td><td>27.8%</td><td>1.66%</td><td>4.3%</td></tr>
+            <tr><td>5 – 10%</td><td>12,893</td><td>57.9%</td><td>20.0%</td><td>61.6%</td><td>41.0%</td><td>2.44%</td><td>10.2%</td></tr>
+            <tr><td>10 – 15%</td><td>14,102</td><td>56.3%</td><td>28.2%</td><td>58.8%</td><td>50.3%</td><td>2.63%</td><td>17.8%</td></tr>
+            <tr><td>15 – 20%</td><td>10,115</td><td>54.0%</td><td>34.2%</td><td>57.1%</td><td>56.3%</td><td>2.76%</td><td>22.3%</td></tr>
+            <tr><td>20 – 25%</td><td>6,981</td><td>52.7%</td><td>38.0%</td><td>57.0%</td><td>57.6%</td><td>3.15%</td><td>26.5%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <p><strong>Shallower is safer, not bigger.</strong> Under 10% deep roughly halves the 20-day stop-touch rate against the 10 to 15% band and nudges the win rate up, but mean return and the chance of a +20% move rise with depth. The same shape holds at 80+ bars and in 2010 onward. For a trader carrying a 7% hard stop, the stop rate is the cost that compounds, so a ≤10% cut is a legitimate <em>tight</em> tier as a label or a sizing input. As a gate it would discard the band that holds the most S-grade breakouts and the larger winners.</p>
+      </div>
+
+      <h2>Where the numbers come from</h2>
+      <p>This is a full-history study, not the live signal table. DataQuant's graded alerts only began carrying a grade in September 2026, which is far too few trades to rank exit rules. Instead the production base detector was replayed over every symbol's complete price history, and each close that resolved a blue-sky pivot above the 200-day average with at least 100k average volume became one trade, graded by the production cut. Live signals will be measured against these numbers as they accumulate, and reported the way <a href="/learn/honest-backtest">the honest backtest</a> reports: wins and losses both.</p>
+      <p>Entry is the breakout day's close. The 7% stop fills on the low, at the open if price gaps through. Close-based signals fill at the next open. Open-ended rules are capped at 250 bars. No slippage or commissions except where a cost model is stated. Blue-sky is a pivot within 2% of the 52-week high. Yahoo daily bars, split-adjusted; warrants, rights and units excluded. The universe is today's listings, so survivorship flatters every absolute return; the rankings between rules are the finding.</p>
+
+    <section class="faq mt-12">
+      <h2>Frequently asked questions</h2>
+      <div class="mt-2">
+        <details><summary>What is the best single sell rule for a breakout trade?</summary><p class="text-slate-400">Per trade, a 20% trailing stop under the peak high earned the most: 3.73% mean return and a 1.80 profit factor over 97,789 breakouts, with a 7% hard stop on every trade. A close below the 50-day moving average is the best fast-turnover rule: 1.10% mean, profit factor 1.35, and it cuts the hard-stop rate from 45% to 25%. In the portfolio simulation the 20% trail also grew the book fastest with the lowest drawdown.</p></details>
+        <details><summary>Does selling into a +20% gain improve breakout returns?</summary><p class="text-slate-400">No. Half at +20% then the 50-day rule returned 0.99% per trade; all out at +20% returned 0.88%; the plain 50-day rule returned 1.10%. Only about one trade in seven reaches +20% under 50-day management, and the partial sale caps exactly the trades that carry the average. In the portfolio simulation the +20% partial finished last or near last in every configuration.</p></details>
+        <details><summary>Trailing stop or 50-day moving average: which exit is better?</summary><p class="text-slate-400">The 20% trail makes more per trade (3.73% vs 1.10%) and more per month held (0.83% vs 0.68%), but holds 95 bars on average and two-thirds of its trades still end at the 7% stop. The 50-day rule turns slots over faster, but in a slot-limited book that turnover buys nothing. Combining them is worse than either alone.</p></details>
+        <details><summary>How many positions and how much risk per trade?</summary><p class="text-slate-400">Ten slots at 1% of equity at risk per trade earned about 9% a year unlevered with the best Sharpe in the sizing grid. Once fully invested, raising risk per trade changes only the drawdown, which sits at 37 to 39% for every fully invested row. Holding cash is the only way under that.</p></details>
+        <details><summary>Does a market regime filter help?</summary><p class="text-slate-400">Only if it also exits. Blocking entries below the S&amp;P 500's 200-day average lowered returns from 9.0% to 8.0%. Blocking entries and flattening the book below it raised returns to 10.9% and cut the worst drawdown from 39% to 21%. With strongest-first slot filling, about 14% a year with a 26% worst drawdown.</p></details>
+        <details><summary>Do equity-curve circuit breakers protect the strategy?</summary><p class="text-slate-400">No. Profit arrives in bursts after stretches of small stop-outs, and drawdown halts switch the book off in exactly those stretches. Halting at a 15% drawdown kept the book idle 77% of the time and earned 4.4% a year against 14.1% without it. Only scaling risk down with drawdown did no harm.</p></details>
+        <details><summary>What is the biggest lever in the whole study?</summary><p class="text-slate-400">The order signals are taken in. Filling free slots strongest-relative-strength first lifted the book from 9% to 14.3% a year with the same drawdown. The exit rule moves results by tenths of a percent per trade; the base grade by whole percents; entry order moves the book's growth rate by half.</p></details>
+      </div>
+    </section>
+
+    <section class="mt-12">
+      <h2>Keep reading</h2>
+      <div class="grid sm:grid-cols-2 gap-3 mt-2">
+        <a href="/learn/honest-backtest" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Honest Backtest</div><div class="text-xs text-slate-400 mt-1">How the live signals are measured, and why a study is not a track record.</div></a>
+        <a href="/learn/reading-a-base-xray" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Reading a Base X-ray</div><div class="text-xs text-slate-400 mt-1">The base metrics behind the S, A+ and A grades this study ranks by.</div></a>
+        <a href="/learn/relative-strength-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Relative Strength, Explained</div><div class="text-xs text-slate-400 mt-1">The rank that turned out to be the study's biggest lever.</div></a>
+        <a href="/learn/market-health-gauge" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">The Market Health Gauge</div><div class="text-xs text-slate-400 mt-1">The regime score tested here as an entry floor and exit trigger.</div></a>
+      </div>
+    </section>
+
+    <div class="cta mt-12">
+      <h2 style="margin-top:0" class="text-xl font-bold">See today's graded breakouts</h2>
+      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">Every live signal carries the grade, base length and status this study ranks by, plus the RS rating and a market-health read.</p>
+      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
+    </div>
+
+    </article>
+
+  </main>
+  <footer class="border-t border-slate-800/60 mt-8">
+    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
+      DataQuant provides systematic technical signals for research and educational purposes only.
+      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
+      Patterns fail often; historical figures are past data, not predictions.
+      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+    </div>
+  </footer>
+  <script>
+  (function () {
+    var rules = [
+      { name: "Trail 20% from peak", pf: 1.80, pm: 0.83, cls: "rec" },
+      { name: "Trail 15% from peak", pf: 1.67, pm: 0.72, cls: "" },
+      { name: "Fixed 63 bars", pf: 1.40, pm: 0.79, cls: "" },
+      { name: "Close below MA50", pf: 1.35, pm: 0.68, cls: "rec" },
+      { name: "Half at +20%, rest MA50", pf: 1.32, pm: 0.61, cls: "rej" },
+      { name: "O'Neil composite", pf: 1.32, pm: 0.71, cls: "" },
+      { name: "All out at +20%, else MA50", pf: 1.29, pm: 0.66, cls: "rej" },
+      { name: "Fixed 21 bars", pf: 1.20, pm: 0.65, cls: "" },
+      { name: "Close below MA20", pf: 1.16, pm: 0.47, cls: "" }
+    ];
+    function draw(id, key, max, ticks, fmt, baseline) {
+      var svg = document.getElementById(id);
+      if (!svg) return;
+      var W = 480, left = 200, right = 60, top = 8, rowH = 30, plotW = W - left - right;
+      var H = top + rules.length * rowH + 28;
+      svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+      var ns = "http://www.w3.org/2000/svg";
+      function el(tag, attrs, text) {
+        var e = document.createElementNS(ns, tag);
+        for (var k in attrs) e.setAttribute(k, attrs[k]);
+        if (text != null) e.textContent = text;
+        svg.appendChild(e);
+        return e;
+      }
+      var x = function (v) { return left + (v / max) * plotW; };
+      ticks.forEach(function (t) {
+        el("line", { x1: x(t), x2: x(t), y1: top, y2: top + rules.length * rowH, "class": "grid" });
+        el("text", { x: x(t), y: H - 8, "text-anchor": "middle" }, fmt(t));
+      });
+      if (baseline != null) {
+        el("line", { x1: x(baseline), x2: x(baseline), y1: top - 4, y2: top + rules.length * rowH, "class": "base", "stroke-dasharray": "3 3" });
+      }
+      rules.forEach(function (r, i) {
+        var y = top + i * rowH;
+        var v = r[key];
+        var x0 = baseline != null ? x(baseline) : left;
+        var w = Math.max(0, x(v) - x0);
+        var bar = el("rect", { x: x0, y: y + 7, width: w, height: rowH - 14, rx: 2, "class": "bar " + r.cls });
+        var title = document.createElementNS(ns, "title");
+        title.textContent = r.name + ": " + fmt(v);
+        bar.appendChild(title);
+        el("text", { x: left - 10, y: y + rowH / 2 + 4, "text-anchor": "end", "class": "lbl" }, r.name);
+        el("text", { x: x(v) + 6, y: y + rowH / 2 + 4, "class": "val" }, fmt(v));
+      });
+      el("line", { x1: left, x2: left, y1: top, y2: top + rules.length * rowH, "class": "base" });
+    }
+    draw("pf", "pf", 2.0, [1.0, 1.5, 2.0], function (v) { return v.toFixed(2); }, 1.0);
+    draw("pm", "pm", 1.0, [0, 0.5, 1.0], function (v) { return v.toFixed(2) + "%"; }, null);
+  })();
+  </script>
+</body>
+</html>
