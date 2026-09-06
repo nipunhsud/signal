@@ -7,6 +7,7 @@ Multi-agent trading signal platform. Start with breakout detection, scale to man
 ```
 packages/core/       → Shared agent infrastructure (TradeAgent, parser, types)
 apps/breakout-agent/ → First agent (breakout detection with Gemini validation)
+apps/trading-agent/  → Executes emailed graded breakouts as Alpaca orders (paper first; docs/autotrading.md)
 prisma/             → Shared database schema (extensible for future agents)
 scripts/            → Pine Scripts reference (breakout-scanner.pine)
 ```
@@ -47,6 +48,31 @@ npm run dev
 ```
 
 Scans assets every hour (or per `CRON_SCHEDULE`), stores signals in DB, sends email alerts.
+
+## Autotrading (paper first)
+
+`apps/trading-agent` turns the emailed graded breakouts into Alpaca orders.
+It is off by default and paper-only until you opt into live. Full runbook,
+safety rails and review queries: [docs/autotrading.md](docs/autotrading.md).
+
+```bash
+# root .env — paper keys from app.alpaca.markets (Paper Trading → API keys)
+TRADING_ENABLED=true
+TRADING_MODE=paper
+ALPACA_API_KEY=...
+ALPACA_API_SECRET=...
+
+docker-compose up -d migrations && docker-compose up -d --build trader
+docker-compose logs -f trader
+```
+
+One lever picks the operating point, `TRADE_PROFILE`: `invested` (default:
+10 slots, 1% risk per trade, 20% trailing stop on every grade, ~9%/yr with a
+38% worst drawdown in the backtest) or `conservative` (5 slots, ~7%/yr, 31%
+drawdown, a third of the book in cash). Any explicit `TRADE_*` variable
+overrides the profile. 7% hard stop and a 90-day backstop always apply. The
+evidence is in [docs/exit-rules-study.md](docs/exit-rules-study.md).
+Kill switch: set `RuntimeFlag` key `trading_halted` to `true`.
 
 ## Adding a New Agent
 

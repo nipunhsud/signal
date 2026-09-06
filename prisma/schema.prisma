@@ -247,27 +247,49 @@ model AgentRun {
   @@index([agentName, completedAt])
 }
 
+// One row per order the trading agent submitted (or deliberately skipped) for
+// a graded breakout. Paper and live share the table — `mode` separates them.
+// Lifecycle: submitted → filled → closing → closed, or skipped / canceled /
+// error. See docs/autotrading.md.
 model Trade {
   id               String    @id @default(cuid())
   breakoutSignalId String
   asset            String
-  conid            String
-  orderId          String?
+  broker           String    @default("alpaca")  // "alpaca" | "ibkr"
+  mode             String    @default("paper")   // "paper" | "live"
+  accountId        String
+  conid            String?                       // legacy IBKR contract id
+  clientOrderId    String    @unique             // idempotency key sent to the broker
+  orderId          String?                       // broker entry order id
+  stopOrderId      String?                       // broker stop-loss leg id
+  exitOrderId      String?                       // broker order that flattened the position
   side             String    // "BUY"
   quantity         Int
-  entryPrice       Float
+  entryPrice       Float     // reference price when the order was sized
   stopLossPrice    Float
   positionValue    Float
-  maxPositionSize  Float
-  status           String    // "submitted" | "error"
-  errorMessage     String?
-  accountId        String
+  maxPositionSize  Float     // $ cap applied at sizing time
+  riskAmount       Float?    // $ between entry and stop × qty
+  baseGrade        String?
+  status           String    // submitted | filled | closing | closed | skipped | canceled | error
+  errorMessage     String?   // error text, or the skip reason
   cashBefore       Float
-  createdAt        DateTime  @default(now())
+  equityBefore     Float?
+  filledPrice      Float?
+  filledQty        Int?
   filledAt         DateTime?
+  exitPrice        Float?
+  exitAt           DateTime?
+  exitReason       String?   // stop | trail | ma50 | time | manual | halt
+  exitSignal       String?   // sell rule that fired at a close (ma50 | time); position is flattened at the next open
+  exitSignalAt     DateTime?
+  realizedPnl      Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
 
   @@index([asset, createdAt])
   @@index([status, createdAt])
+  @@index([mode, status])
   @@index([breakoutSignalId])
 }
 

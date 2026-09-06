@@ -89,6 +89,28 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  apps/trading-agent:
+    dependencies:
+      '@prisma/client':
+        specifier: ^5.0.0
+        version: 5.22.0(prisma@5.22.0)
+      dotenv:
+        specifier: ^16.0.0
+        version: 16.6.1
+      node-cron:
+        specifier: ^3.0.0
+        version: 3.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      '@types/node-cron':
+        specifier: ^3.0.0
+        version: 3.0.11
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
 packages:
 
   '@anthropic-ai/sdk@0.40.1':

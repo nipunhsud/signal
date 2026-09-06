@@ -15,6 +15,8 @@ RUN npm install -g pnpm@9.15.9
 # Copy monorepo files
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/breakout-agent/ apps/breakout-agent/
+# trading-agent's manifest only: the lockfile lists every workspace importer
+COPY apps/trading-agent/package.json apps/trading-agent/package.json
 COPY prisma/ prisma/
 COPY scripts/ scripts/
 

@@ -72,6 +72,42 @@ services:
     command: node server.js
 
   # Breakout Agent - Tier 1
+  # Trading agent — turns emailed graded breakouts into broker orders.
+  # Off unless TRADING_ENABLED=true; paper unless TRADING_MODE=live AND
+  # TRADING_LIVE_CONFIRM=I_UNDERSTAND. See docs/autotrading.md.
+  trader:
+    build:
+      context: .
+      dockerfile: apps/trading-agent/Dockerfile
+      target: trader
+    container_name: signal-forge-trader
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-nipunsud}:${DB_PASSWORD:-postgres}@postgres:5432/signal_forge
+      - NODE_ENV=production
+      - TRADING_ENABLED=${TRADING_ENABLED:-false}
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - TRADING_LIVE_CONFIRM=${TRADING_LIVE_CONFIRM:-}
+      - ALPACA_API_KEY=${ALPACA_API_KEY:-}
+      - ALPACA_API_SECRET=${ALPACA_API_SECRET:-}
+      - TRADE_PROFILE=${TRADE_PROFILE:-}
+      - TRADE_RISK_PCT=${TRADE_RISK_PCT:-}
+      - TRADE_MAX_POSITION_PCT=${TRADE_MAX_POSITION_PCT:-}
+      - TRADE_MAX_OPEN_POSITIONS=${TRADE_MAX_OPEN_POSITIONS:-}
+      - TRADE_MAX_DAILY_LOSS_PCT=${TRADE_MAX_DAILY_LOSS_PCT:-}
+      - TRADE_MAX_SIGNAL_AGE_HOURS=${TRADE_MAX_SIGNAL_AGE_HOURS:-}
+      - TRADE_MAX_PCT_ABOVE_PIVOT=${TRADE_MAX_PCT_ABOVE_PIVOT:-}
+      - TRADE_HOLD_DAYS=${TRADE_HOLD_DAYS:-}
+      - TRADE_MA_EXIT=${TRADE_MA_EXIT:-}
+      - TRADE_TRAIL_PCT=${TRADE_TRAIL_PCT:-}
+      - TRADE_TRAIL_GRADES=${TRADE_TRAIL_GRADES:-}
+      - TRADE_ALLOWED_GRADES=${TRADE_ALLOWED_GRADES:-}
+      - TRADE_ALLOW_ETFS=${TRADE_ALLOW_ETFS:-}
+      - TRADE_CRON_SCHEDULE=${TRADE_CRON_SCHEDULE:-}
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   agent-tier-1:
     build:
       context: .
