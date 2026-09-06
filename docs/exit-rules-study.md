@@ -993,6 +993,173 @@ stop · trail 20%                      10.8%    9.1%   12.1%       28.0%   31.2%
 fixed42 · 7% stop                     13.8%   11.8%   15.5%       55.4%   61.9%    0.56         86    -14.8%       1.7      0%
 ```
 
+## Capping the rotation book's downside
+
+The rotation profile prints the contest-style years and a 55 % drawdown.
+Four ways to cap the downside were tested on it (and on the default trail
+book for reference), 10 bp a side, 12 orderings:
+
+- **Streak budget** — consecutive losses spend a 2.5 % (or 4 %) budget; the
+  next trade may only risk what is left; a winner resets it, and so does a
+  10/20/40-day pause (without the pause the rule deadlocks: no trades, no
+  winner, no reset).
+- **Heat cap** — total open risk-to-stop ≤ 2.5 % or 5 % of equity.
+- **Rolling loss cap** — realized losses over the last 10/20 days ≥ 2.5 % or
+  5 % block new entries.
+- **Smaller risk per trade** — 0.75 % and 0.5 %.
+
+| Rotation book (fixed 42, 10 slots) | CAGR | Max DD | Worst year | Years < −10 % | 2010+ CAGR |
+| --- | --- | --- | --- | --- | --- |
+| none | 18.8% | 55% | −14% | 1.7 | 14.5% |
+| streak budget 2.5 %, 10-day refill | 11.2% | 53% | −27% | 3.0 | 3.2% |
+| streak budget 2.5 %, 20-day refill | 9.5% | 44% | −18% | 3.6 | 0.7% |
+| streak budget 4 %, 20-day refill | 9.9% | 37% | −18% | 4.5 | 1.3% |
+| heat cap 5 % | 11.9% | 45% | −14% | 1.4 | 6.1% |
+| heat cap 2.5 % | 7.3% | 30% | −8% | 0.0 | 4.1% |
+| rolling loss cap 2.5 % / 20 d | 10.5% | 50% | −17% | 2.3 | 4.3% |
+| risk 0.75 % | 16.1% | 51% | −15% | 1.0 | — |
+| risk 0.5 % | 11.7% | 43% | −11% | 1.0 | — |
+| *default book, trail 20 %, no cap* | 12.9% | 27% | −13% | 1.5 | 11.6% |
+
+- **The consecutive-loss budget caps the upside, not the downside.** It cuts
+  the rotation book from 18.8 % to 9.5–11 %, leaves the drawdown at 44–53 %,
+  and makes the worst year *worse* (−27 %). After 2010 it drives the book to
+  0–3 %. The reason is the shape of the losses: they arrive in clusters when
+  the market turns and several momentum positions stop out together; the
+  budget then keeps the book out for exactly the rebound that pays. Same
+  lesson as the equity-curve breakers, at a smaller scale.
+- **Only exposure reduces the drawdown, and it costs return one for one.**
+  Heat cap 2.5 % reaches a 30 % drawdown by shrinking the book to two
+  positions — 7.3 % a year, which is the conservative profile with worse
+  numbers. Halving risk per trade takes 7 points of return for 12 of
+  drawdown.
+- **The rotation book's drawdown is structural.** Ten fully-invested,
+  strength-ranked momentum names are one bet on the same factor; when it
+  turns, no per-trade rule helps, because the trades are not independent.
+- **The capped version of rotation already exists: it is the default book.**
+  Trail 20 % at 12.9 % / 27 % DD beats every capped rotation variant on every
+  downside measure while keeping two-thirds of the uncapped return.
+
+Nothing here is added to the trader.
+
+```
+## downside caps · rotation (fixed42) and default (trail 20%) · cost 10bp · 1990+
+### none
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --streak-budget 2.5
+stop · trail 20%                      -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+### --streak-budget 4
+stop · trail 20%                      -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+### --heat 2.5
+stop · trail 20%                       7.2%    6.1%    7.7%       18.1%   23.1%    0.81         21    -12.1%       0.7      0%
+fixed42 · 7% stop                      7.3%    6.7%    7.9%       29.5%   35.6%    0.73         31     -8.3%       0.0      0%
+### --heat 5
+stop · trail 20%                      10.2%    9.1%   11.2%       25.4%   27.6%    0.78         40    -11.9%       1.1      0%
+fixed42 · 7% stop                     11.9%   10.7%   14.2%       45.4%   50.7%    0.76         60    -13.7%       1.4      0%
+### --period-loss 2.5 --period 20
+stop · trail 20%                      12.6%   11.4%   13.8%       34.5%   45.3%    0.86         38    -17.8%       2.3     14%
+fixed42 · 7% stop                     10.5%    8.3%   13.8%       50.3%   67.7%    0.69         58    -16.8%       2.3     32%
+### --period-loss 5 --period 20
+stop · trail 20%                      12.3%   11.8%   13.0%       28.1%   29.7%    0.81         43    -11.8%       1.4      3%
+fixed42 · 7% stop                     16.5%   13.9%   19.6%       52.7%   63.1%    0.91         71    -18.1%       3.8     12%
+### --period-loss 2.5 --period 10
+stop · trail 20%                      12.6%   11.4%   14.0%       27.6%   30.2%    0.84         42    -13.2%       1.4      5%
+fixed42 · 7% stop                     13.9%   11.9%   15.5%       38.1%   48.9%    0.82         67    -18.8%       3.3     15%
+### --streak-budget 2.5 --scale-dd 40
+stop · trail 20%                      -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.2%   -0.2%   -0.2%        6.4%    6.8%   -0.40          0      0.0%       0.0      0%
+### --risk 0.5
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --risk 0.75 --heat 5
+stop · trail 20%                      10.2%    9.1%   11.2%       25.4%   27.6%    0.78         40    -11.9%       1.1      0%
+fixed42 · 7% stop                     11.9%   10.7%   14.2%       45.4%   50.7%    0.76         60    -13.7%       1.4      0%
+## downside caps · rotation (fixed42) and default (trail 20%) · cost 10bp · 2010+
+### none
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --streak-budget 2.5
+stop · trail 20%                      -0.5%   -0.5%   -0.5%        9.5%    9.5%   -0.29          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.6%   -0.6%   -0.6%       13.8%   13.8%   -0.19          1      0.0%       0.0      0%
+### --streak-budget 4
+stop · trail 20%                      -0.5%   -0.5%   -0.5%        9.5%    9.5%   -0.29          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.6%   -0.6%   -0.6%       13.8%   13.8%   -0.19          1      0.0%       0.0      0%
+### --heat 2.5
+stop · trail 20%                       6.8%    6.1%    7.5%       13.5%   15.3%    0.74         22     -6.2%       0.0      0%
+fixed42 · 7% stop                      4.1%    2.7%    4.7%       29.5%   35.6%    0.42         33     -8.3%       0.0      0%
+### --heat 5
+stop · trail 20%                       8.6%    6.7%   10.3%       25.4%   27.6%    0.62         42    -11.9%       1.1      0%
+fixed42 · 7% stop                      6.1%    3.8%    9.2%       45.4%   50.7%    0.41         65    -13.7%       1.4      0%
+### --period-loss 2.5 --period 20
+stop · trail 20%                       7.9%    6.1%   10.9%       34.5%   45.3%    0.54         40    -17.8%       2.3     18%
+fixed42 · 7% stop                      4.3%   -0.8%    9.9%       50.3%   67.7%    0.32         61    -16.8%       2.0     38%
+### --period-loss 5 --period 20
+stop · trail 20%                       9.7%    8.6%   11.1%       27.7%   29.7%    0.62         46    -11.8%       1.4      3%
+fixed42 · 7% stop                      7.6%    3.3%   12.1%       52.7%   63.1%    0.46         76    -18.1%       3.8     16%
+### --period-loss 2.5 --period 10
+stop · trail 20%                       8.7%    7.3%   10.2%       27.6%   30.2%    0.58         44    -13.2%       1.4      7%
+fixed42 · 7% stop                      5.5%    2.6%    7.4%       38.1%   48.9%    0.38         72    -18.8%       3.3     19%
+### --streak-budget 2.5 --scale-dd 40
+stop · trail 20%                      -0.5%   -0.5%   -0.5%        9.5%    9.5%   -0.29          0      0.0%       0.0      0%
+fixed42 · 7% stop                     -0.6%   -0.7%   -0.6%       12.8%   12.9%   -0.23          2      0.0%       0.0      0%
+### --risk 0.5
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --risk 0.75 --heat 5
+stop · trail 20%                       8.6%    6.7%   10.3%       25.4%   27.6%    0.62         42    -11.9%       1.1      0%
+fixed42 · 7% stop                      6.1%    3.8%    9.2%       45.4%   50.7%    0.41         65    -13.7%       1.4      0%
+```
+
+```
+## streak budget with time refill · cost 10bp · 1990+
+### --risk 1
+stop · trail 20%                      12.9%   12.1%   13.3%       27.2%   28.3%    0.85         44    -12.8%       1.5      0%
+fixed42 · 7% stop                     18.8%   17.7%   19.9%       55.2%   59.1%    0.80         77    -13.9%       1.7      0%
+### --risk 1 --streak-budget 2.5 --pause 10
+stop · trail 20%                      11.9%   10.7%   12.6%       31.5%   33.3%    0.78         38    -15.1%       1.3      0%
+fixed42 · 7% stop                     11.2%   10.3%   12.7%       52.6%   63.0%    0.64         64    -26.8%       3.0      0%
+### --risk 1 --streak-budget 2.5 --pause 20
+stop · trail 20%                      12.4%   11.0%   13.5%       36.8%   37.3%    0.88         33    -15.3%       1.8      0%
+fixed42 · 7% stop                      9.5%    8.1%   11.3%       44.1%   49.4%    0.65         57    -17.8%       3.6      0%
+### --risk 1 --streak-budget 2.5 --pause 40
+stop · trail 20%                       9.9%    9.5%   10.3%       31.4%   31.9%    0.77         29    -15.9%       2.3      0%
+fixed42 · 7% stop                      3.9%    3.6%    4.3%       61.9%   64.7%    0.33         44    -19.9%       5.0      0%
+### --risk 1 --streak-budget 4 --pause 20
+stop · trail 20%                      13.9%   12.6%   15.2%       30.4%   32.2%    0.97         33    -16.4%       1.9      0%
+fixed42 · 7% stop                      9.9%    9.1%   10.6%       36.6%   47.0%    0.67         57    -18.2%       4.5      0%
+### --risk 0.5 --streak-budget 2.5 --pause 20
+stop · trail 20%                       8.6%    7.2%    9.2%       29.5%   30.5%    0.87         48    -12.4%       1.4      0%
+fixed42 · 7% stop                      5.2%    3.8%    6.6%       33.0%   40.7%    0.51         79    -12.0%       1.6      0%
+### --risk 1 --streak-budget 2.5 --pause 20 --scale-dd 40
+stop · trail 20%                       7.6%    6.0%    9.5%       29.1%   32.4%    0.69         42    -12.7%       2.3      0%
+fixed42 · 7% stop                      6.6%    5.0%    8.0%       30.8%   31.4%    0.57         62    -14.6%       2.9      0%
+## streak budget with time refill · cost 10bp · 2010+
+### --risk 1
+stop · trail 20%                      11.6%    9.9%   12.4%       27.2%   28.3%    0.72         46    -12.8%       1.5      0%
+fixed42 · 7% stop                     14.5%   13.0%   15.6%       55.2%   59.1%    0.58         84    -13.9%       1.7      0%
+### --risk 1 --streak-budget 2.5 --pause 10
+stop · trail 20%                       9.1%    7.0%   10.1%       31.5%   33.3%    0.57         42    -15.1%       1.3      0%
+fixed42 · 7% stop                      3.2%    1.1%    5.0%       52.6%   63.0%    0.25         69    -26.8%       3.0      0%
+### --risk 1 --streak-budget 2.5 --pause 20
+stop · trail 20%                      10.0%    7.9%   12.4%       29.0%   30.6%    0.68         36    -15.3%       1.8      0%
+fixed42 · 7% stop                      0.7%   -0.6%    3.1%       44.1%   49.4%    0.13         62    -15.1%       2.8      0%
+### --risk 1 --streak-budget 2.5 --pause 40
+stop · trail 20%                       5.4%    5.0%    5.8%       33.0%   33.4%    0.44         32    -14.8%       1.3      0%
+fixed42 · 7% stop                     -2.9%   -3.4%   -2.2%       61.9%   64.7%   -0.11         47    -19.9%       5.0      0%
+### --risk 1 --streak-budget 4 --pause 20
+stop · trail 20%                      10.2%    7.9%   12.3%       29.7%   32.2%    0.69         36    -16.4%       1.9      0%
+fixed42 · 7% stop                      1.3%   -0.6%    2.8%       36.6%   47.0%    0.16         62    -15.0%       3.5      0%
+### --risk 0.5 --streak-budget 2.5 --pause 20
+stop · trail 20%                       3.9%    2.8%    4.9%       29.5%   30.5%    0.41         52    -12.4%       1.4      0%
+fixed42 · 7% stop                      2.7%    1.6%    3.9%       33.0%   40.7%    0.28         85    -12.0%       1.6      0%
+### --risk 1 --streak-budget 2.5 --pause 20 --scale-dd 40
+stop · trail 20%                       2.6%    1.1%    5.7%       28.7%   32.2%    0.27         53    -13.3%       2.2      0%
+fixed42 · 7% stop                      0.6%    0.2%    1.3%       30.8%   31.5%    0.11         61    -14.4%       1.8      0%
+```
+
 ## Recommendation, revised after the portfolio simulation
 
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.

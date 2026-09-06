@@ -35,7 +35,12 @@ const DD_FLATTEN = process.argv.includes("--dd-flatten"); // also flatten everyt
 const EQ_MA = arg("eq-ma", 0); // trade only while equity is above its own N-day SMA
 const STREAK = arg("streak", 0); // after N consecutive losing closes, pause new entries…
 const PAUSE = arg("pause", 20); // …for this many trading days
-const SCALE_DD = arg("scale-dd", 0); // risk per trade scales linearly to zero at this % drawdown
+const SCALE_DD = arg("scale-dd", 0);
+// Downside caps proposed for the rotation book:
+const STREAK_BUDGET = arg("streak-budget", 0); // % of equity: consecutive losses spend it; next trade risks what is left; a win resets it
+const HEAT = arg("heat", 0); // % of equity: total open risk-to-stop may not exceed this
+const PERIOD_LOSS = arg("period-loss", 0); // % of equity: realized losses over the last `period` days beyond this block entries
+const PERIOD = arg("period", 20); // risk per trade scales linearly to zero at this % drawdown
 const COST_BPS = arg("cost", 0);
 // Replacement rotation: when slots are full and a new candidate arrives, swap
 // out the weakest laggard (held >= swap-after bars, unrealized < swap-below %).
@@ -44,7 +49,7 @@ const SWAP_BELOW = arg("swap-below", 5); // transaction cost per side, basis poi
 const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
 const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
 const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
-const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
+const FILTERS = [COST_BPS ? `cost ${COST_BPS}bp/side` : null, STREAK_BUDGET ? `streak budget ${STREAK_BUDGET}%` : null, HEAT ? `heat cap ${HEAT}%` : null, PERIOD_LOSS ? `period loss cap ${PERIOD_LOSS}%/${PERIOD}d` : null, SWAP_AFTER ? `swap laggards after ${SWAP_AFTER}b below +${SWAP_BELOW}%` : null, REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -197,6 +202,9 @@ function simulate(name: string, pick: PathPicker): Result {
   let lossStreak = 0;
   let pausedUntil = -1;
   let haltedDays = 0;
+  let streakLossPct = 0; // realized loss (% of equity) in the current losing streak
+  let budgetSpentAt = -1; // day the streak budget ran out; refills after PAUSE days
+  const closedLog: Array<{ day: number; pnl: number }> = []; // realized pnl per close, for the rolling cap
 
   for (let d = startIdx; d < dates.length; d++) {
     // 1. advance open positions one trading day; close those whose path ended
@@ -205,9 +213,15 @@ function simulate(name: string, pick: PathPicker): Result {
       p.day++;
       if (p.day >= p.len) {
         const ret = p.data[p.start + p.len - 1];
-        cash += p.notional * (1 + ret) * (1 - COST_BPS / 10000);
+        const proceeds = p.notional * (1 + ret) * (1 - COST_BPS / 10000);
+        cash += proceeds;
         positions.splice(k, 1);
-        if (ret < 0) { if (++lossStreak >= STREAK && STREAK > 0) pausedUntil = d + PAUSE; } else lossStreak = 0;
+        const pnl = proceeds - p.notional;
+        closedLog.push({ day: d, pnl });
+        if (ret < 0) {
+          if (++lossStreak >= STREAK && STREAK > 0) pausedUntil = d + PAUSE;
+          streakLossPct += (-pnl / Math.max(cash, 1e-9)) * 100;
+        } else { lossStreak = 0; streakLossPct = 0; }
       }
     }
     // 2. equity mark (open positions at today's path value)
@@ -221,7 +235,13 @@ function simulate(name: string, pick: PathPicker): Result {
     }
     const eqMaOk = EQ_MA <= 0 || equityCurve.length < EQ_MA ||
       equity > equityCurve.slice(-EQ_MA).reduce((a, b) => a + b, 0) / EQ_MA;
-    const breakersOk = !ddHalted && eqMaOk && d >= pausedUntil;
+    let periodOk = true;
+    if (PERIOD_LOSS > 0) {
+      let lost = 0;
+      for (let q = closedLog.length - 1; q >= 0 && closedLog[q].day > d - PERIOD; q--) if (closedLog[q].pnl < 0) lost += -closedLog[q].pnl;
+      periodOk = (lost / equity) * 100 < PERIOD_LOSS;
+    }
+    const breakersOk = !ddHalted && eqMaOk && d >= pausedUntil && periodOk;
     if (!breakersOk) haltedDays++;
     const h = healthOn(dates[d]);
     const on = regimeOn(dates[d]) && h.enter && breakersOk;
@@ -256,7 +276,17 @@ function simulate(name: string, pick: PathPicker): Result {
       if (positions.some((p) => trades[p.tradeIdx].sym === t.sym)) continue;
       const path = pick(t, ti);
       if (path.len === 0) continue;
-      const riskPct = SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT;
+      let riskPct = SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT;
+      if (STREAK_BUDGET > 0) {
+        if (budgetSpentAt >= 0 && d >= budgetSpentAt + PAUSE) { streakLossPct = 0; budgetSpentAt = -1; }
+        riskPct = Math.min(riskPct, Math.max(0, STREAK_BUDGET - streakLossPct));
+        if (riskPct < 0.25 && budgetSpentAt < 0) budgetSpentAt = d;
+      }
+      if (HEAT > 0) {
+        const openRisk = positions.reduce((a, p) => a + p.notional * STOP, 0);
+        riskPct = Math.min(riskPct, Math.max(0, HEAT - (openRisk / equity) * 100));
+      }
+      if (riskPct < 0.25) { haltedDays += 0; continue; }
       const notional = Math.min((equity * riskPct) / 100 / STOP, (equity * CAP_PCT) / 100, cash);
       if (notional <= 0 || notional < equity * 0.01) continue;
       cash -= notional * (1 + COST_BPS / 10000);
