@@ -3378,9 +3378,14 @@
             : `<span class="font-mono tabular-nums text-gray-300">${boVol}x avg</span>`);
 
           const run = b.breakout && b.breakout.runPct != null ? b.breakout.runPct : null;
+          // A breakout bar that closed well past the pivot (a gap) is not an
+          // entry anyone got at the pivot: say so, and report the run from
+          // the close a trader actually paid.
+          const gap = b.breakout && b.breakout.gapPct != null && b.breakout.gapPct >= 5 ? b.breakout.gapPct : null;
+          const runLabel = run == null ? '' : `${gap != null ? `gapped <span class="text-amber-300 font-semibold">+${gap}%</span> through the pivot · ` : ''}ran <span class="${run >= 0 ? 'text-green-400' : 'text-red-400'} font-semibold">${run >= 0 ? '+' : ''}${run}%</span> from the ${CUR}${b.breakout.entryClose} entry`;
           const badges = [
             forming ? '<span class="badge bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30"><span class="badge-dot"></span>forming now</span>' : '',
-            (!forming && b.breakout) ? `<span class="text-[11px] px-2 py-0.5 rounded bg-gray-700/50 text-gray-400 ring-1 ring-gray-600/40">broke out ${b.breakout.date} — ran <span class="${run >= 0 ? 'text-green-400' : 'text-red-400'} font-semibold">${run >= 0 ? '+' : ''}${run}%</span></span>` : '',
+            (!forming && b.breakout) ? `<span class="text-[11px] px-2 py-0.5 rounded bg-gray-700/50 text-gray-400 ring-1 ring-gray-600/40">broke out ${b.breakout.date} — ${runLabel}</span>` : '',
             b.isBlueSky ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="This base sits at the highest price of the period — no trapped sellers overhead.">Blue Sky</span>' : '',
             b.isVcpShape ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Tightening coil on drying volume — the volatility-contraction shape.">VCP shape</span>' : '',
             b.isStaircase ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/30" data-tip="Progressive contraction: each third of the base tighter than the last — the classic staircase, and the strongest stratifier inside the VCP cohort.">Staircase</span>' : '',

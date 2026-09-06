@@ -22,6 +22,7 @@ const INTRABAR_BREAKOUT = 1.02;
 export function detectBases(bars) {
   const n = bars.length;
   const bases = [];
+  const meta = []; // bar indices per base, for the post-pass below
   let i = 0;
   while (i < n - 1) {
     const pivot = bars[i].high;
@@ -41,11 +42,31 @@ export function detectBases(bars) {
       const depth = (pivot - low) / pivot;
       if (depth <= MAX_DEPTH) {
         bases.push(buildBase(bars, i, j, ended, pivot, low, depth));
+        meta.push({ pivotIdx: i, endedIdx: ended });
         i = ended != null ? ended : j; // continue after the base resolves
         continue;
       }
     }
     i++;
+  }
+  // Breakout outcome, measured the way a trade would experience it: entry is
+  // the breakout bar's CLOSE (the same entry the studies and the trader use),
+  // the run is the best close AFTER that bar, and it stops where the next base
+  // starts (its pivot is the swing high that ended the move). Measuring from
+  // the pivot over the whole future double-counted gaps: MRNA 2026-08-19
+  // resolved a $78.30 base with a $174 close, and "ran +122.7%" was the gap.
+  for (let b = 0; b < bases.length; b++) {
+    const { endedIdx } = meta[b];
+    if (endedIdx == null) continue;
+    const entryClose = bars[endedIdx].close;
+    const stopAt = b + 1 < meta.length ? meta[b + 1].pivotIdx : bars.length - 1;
+    let maxClose = -Infinity;
+    for (let k = endedIdx + 1; k <= stopAt; k++) maxClose = Math.max(maxClose, bars[k].close);
+    const pivot = bases[b].pivot;
+    bases[b].breakout.entryClose = round(entryClose, 2);
+    bases[b].breakout.gapPct = round(((entryClose - pivot) / pivot) * 100, 1);
+    bases[b].breakout.runPct = maxClose === -Infinity ? 0 : round(((maxClose - entryClose) / entryClose) * 100, 1);
+    bases[b].breakout.runEnd = bars[stopAt].time;
   }
   return bases;
 }
@@ -97,19 +118,13 @@ function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
   const priorHigh = Math.max(...bars.slice(0, pivotIdx + 1).map((b) => b.high));
   const isBlueSky = pivot >= priorHigh * 0.98;
 
-  // Breakout outcome, when there is one: volume ratio on the breakout bar and
-  // the maximum run since (for "broke out — ran +X%" storytelling)
+  // Breakout bar volume; the run/gap fields are filled in by detectBases once
+  // the following base is known.
   let breakout = null;
   if (endedIdx != null) {
     const bo = bars[endedIdx];
     const boVolRatio = baseVol > 0 ? (bo.volume || 0) / baseVol : 0;
-    const after = bars.slice(endedIdx);
-    const maxCloseAfter = Math.max(...after.map((b) => b.close));
-    breakout = {
-      date: bars[endedIdx].time,
-      volumeRatio: round(boVolRatio, 2),
-      runPct: round(((maxCloseAfter - pivot) / pivot) * 100, 1),
-    };
+    breakout = { date: bars[endedIdx].time, volumeRatio: round(boVolRatio, 2), runPct: 0, gapPct: 0, entryClose: round(bo.close, 2), runEnd: null };
   }
 
   return {
