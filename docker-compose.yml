@@ -76,6 +76,11 @@ services:
   # Off unless TRADING_ENABLED=true; paper unless TRADING_MODE=live AND
   # TRADING_LIVE_CONFIRM=I_UNDERSTAND. See docs/autotrading.md.
   trader:
+    # Opt-in: only starts with `docker-compose --profile trading up -d` (or
+    # COMPOSE_PROFILES=trading), so a plain `up -d` on the droplet never runs
+    # it — the process exits when TRADING_ENABLED is unset and would otherwise
+    # sit in a restart loop.
+    profiles: ["trading"]
     build:
       context: .
       dockerfile: apps/trading-agent/Dockerfile

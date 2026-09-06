@@ -8,10 +8,17 @@ import { db } from "./db.js";
 const config = getConfig();
 
 if (!config.enabled) {
+  // Idle rather than exit: under `restart: unless-stopped` an exiting
+  // container becomes a restart loop on any host that brings the service up.
   console.log(
-    "[trader] TRADING_ENABLED is not true — exiting without doing anything.",
+    "[trader] TRADING_ENABLED is not true — idling, no orders will be placed.",
   );
-  process.exit(0);
+  setInterval(() => {}, 1 << 30);
+} else {
+  main().catch((err) => {
+    console.error("[trader] startup failed:", err);
+    process.exit(1);
+  });
 }
 const problems = validateConfig(config);
 if (problems.length) {
@@ -68,11 +75,6 @@ async function main() {
   cron.schedule(config.cronSchedule, cycle, { timezone: "America/New_York" });
   console.log(`[trader] scheduled ${config.cronSchedule} (New York)`);
 }
-
-main().catch((err) => {
-  console.error("[trader] startup failed:", err);
-  process.exit(1);
-});
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, async () => {

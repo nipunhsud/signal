@@ -62,7 +62,7 @@ TRADING_MODE=paper
 ALPACA_API_KEY=...
 ALPACA_API_SECRET=...
 
-docker-compose up -d migrations && docker-compose up -d --build trader
+docker-compose up -d migrations && docker-compose --profile trading up -d --build trader
 docker-compose logs -f trader
 ```
 

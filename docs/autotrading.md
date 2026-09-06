@@ -102,7 +102,7 @@ twice for one signal.
 
 ## Safety rails (all evaluated every cycle)
 
-- `TRADING_ENABLED` must be `true` or the process exits immediately.
+- `TRADING_ENABLED` must be `true` or the process idles and places nothing (it deliberately does not exit, so a stray container never restart-loops). The compose service is behind the `trading` profile, so a plain `docker-compose up -d` never starts it.
 - Live needs **both** `TRADING_MODE=live` and `TRADING_LIVE_CONFIRM=I_UNDERSTAND`,
   and refuses a paper URL. Paper refuses a live URL.
 - **Kill switch:** `RuntimeFlag` key `trading_halted` = `"true"` stops new
@@ -125,7 +125,7 @@ ALPACA_API_KEY=...
 ALPACA_API_SECRET=...
 
 # 2. Migrate (adds the Trade lifecycle columns), then start the service
-docker-compose up -d migrations && docker-compose up -d --build trader
+docker-compose up -d migrations && docker-compose --profile trading up -d --build trader
 docker-compose logs -f trader
 
 # Local, against the same DB:
