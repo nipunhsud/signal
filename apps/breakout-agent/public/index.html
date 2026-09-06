@@ -131,6 +131,11 @@
       border-radius: 999px;
       background: currentColor;
     }
+    /* Signal cell chips: fixed-width grade so the column lines up; dashed = forming */
+    .chip { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 1; padding: 4px 6px; white-space: nowrap; cursor: pointer; transition: filter .15s; }
+    .chip:hover { filter: brightness(1.25); }
+    .chip-grade { min-width: 28px; }
+    .chip-forming { border: 1px dashed rgba(156,163,175,0.5); color: #9ca3af; background: transparent; font-weight: 600; }
     /* Toast stack */
     #toast-stack {
       position: fixed;
@@ -503,6 +508,30 @@
     // Base-grade order for sort/filter: S › A+ › A › ungraded › X (unqualified).
     const GRADE_RANK = { S: 5, 'A+': 4, A: 3, X: 1 };
     const gradeRank = (s) => GRADE_RANK[s?.baseGrade] ?? 2;
+    const GRADE_CHIP = {
+      S:    'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30',
+      'A+': 'bg-green-500/15 text-green-400 ring-1 ring-green-500/30',
+      A:    'bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30',
+      X:    'bg-gray-600/20 text-gray-400 ring-1 ring-gray-600/40',
+    };
+    // Where a graded base stands right now. Drives the status chip, the Status
+    // filter and the status sort. Same checks, same order, as gradeBadgeHtml().
+    const BASE_STATUS = {
+      power:     { rank: 5, label: 'power',     filter: 'live',     cls: 'bg-green-500/20 text-green-300 ring-1 ring-green-500/40',    tip: 'Closed above the pivot on heavy volume — inside the 5% buy zone' },
+      confirmed: { rank: 4, label: 'confirmed', filter: 'live',     cls: 'bg-green-500/15 text-green-400 ring-1 ring-green-500/30',    tip: 'Closed above the pivot on above-average volume — inside the 5% buy zone' },
+      quiet:     { rank: 3, label: 'quiet',     filter: 'quiet',    cls: 'bg-yellow-500/15 text-yellow-300 ring-1 ring-yellow-500/30', tip: 'Above the pivot but volume below the confirmation bar — unconfirmed' },
+      forming:   { rank: 2, label: 'forming',   filter: 'forming',  cls: 'chip-forming',                                                tip: 'Price has not closed above the pivot yet — base still forming' },
+      extended:  { rank: 1, label: 'extended',  filter: 'extended', cls: 'bg-yellow-500/10 text-yellow-500 ring-1 ring-yellow-500/30', tip: 'More than 5% above the pivot — outside the buy zone; wait for a new base' },
+    };
+    const baseStatus = (s) => {
+      if (!s?.baseGrade || s.baseGrade === 'X') return null;
+      if (s.basePivot > 0 && s.currentPrice > 0) {
+        if (s.currentPrice < s.basePivot * 0.999) return 'forming';
+        if ((s.currentPrice - s.basePivot) / s.basePivot > 0.05) return 'extended';
+      }
+      return BASE_STATUS[s.volumeTag] ? s.volumeTag : 'confirmed';
+    };
+    const baseWeeks = (s) => (s?.baseBars ? Math.round(s.baseBars / 5) : null);
     const CUR = REGION === 'in' ? '₹' : '$';
     const REGION_Q = 'region=' + REGION;
 
@@ -559,6 +588,8 @@
         // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
         this.qualityFilters = prefs.qualityFilters ?? { vcp: false, blueSky: false, leaders: false };
         this.gradeFilter = prefs.gradeFilter ?? 'all'; // minimum base grade: 'all' | 'S' | 'A+' | 'A'
+        this.statusFilter = prefs.statusFilter ?? 'all'; // 'all' | 'live' (power+confirmed) | 'quiet' | 'forming' | 'extended'
+        this.minBaseWeeks = prefs.minBaseWeeks ?? 0;    // 0 = any; else only bases at least this many weeks long
         this.sectorFilter = prefs.sectorFilter ?? 'all';
         this.assetTypeFilter = prefs.assetTypeFilter ?? 'all';
         this._searchDebounceTimer = null;
@@ -1034,6 +1065,8 @@
             lookbackDays: this.lookbackDays,
             qualityFilters: this.qualityFilters,
             gradeFilter: this.gradeFilter,
+            statusFilter: this.statusFilter,
+            minBaseWeeks: this.minBaseWeeks,
           }));
         } catch {}
       }
@@ -1099,6 +1132,13 @@
           { id: 'grade:A+',      label: 'Filter: Grade A+ and better', desc: 'S and A+ bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A+'); this.closePalette(); this.toast('Grade ≥ A+', { kind: 'info' }); } },
           { id: 'grade:A',       label: 'Filter: Any graded base', desc: 'S, A+ and A — drops ungraded and unqualified', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A'); this.closePalette(); this.toast('Grade ≥ A', { kind: 'info' }); } },
           { id: 'grade:all',     label: 'Filter: Any grade', desc: 'Clear the grade filter', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'all'); this.closePalette(); } },
+          { id: 'st:live',       label: 'Filter: Live breakouts only', desc: 'Above the pivot on confirming volume, inside the buy zone', kind: 'filter', run: () => { this.setFilter('statusFilter', 'live'); this.closePalette(); this.toast('Status → Live', { kind: 'info' }); } },
+          { id: 'st:forming',    label: 'Filter: Forming bases only', desc: 'Not above the pivot yet — watchlist material', kind: 'filter', run: () => { this.setFilter('statusFilter', 'forming'); this.closePalette(); this.toast('Status → Forming', { kind: 'info' }); } },
+          { id: 'st:all',        label: 'Filter: Any status', desc: 'Clear the status filter', kind: 'filter', run: () => { this.setFilter('statusFilter', 'all'); this.closePalette(); } },
+          { id: 'wk:8',          label: 'Filter: Bases 8+ weeks', desc: 'Longer bases only', kind: 'filter', run: () => { this.setFilter('minBaseWeeks', 8); this.closePalette(); } },
+          { id: 'wk:0',          label: 'Filter: Any base length', desc: 'Clear the minimum', kind: 'filter', run: () => { this.setFilter('minBaseWeeks', 0); this.closePalette(); } },
+          { id: 'sort:weeks',    label: 'Sort: Longest base first', desc: 'Base length in weeks, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'weeks', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:status',   label: 'Sort: Live breakouts first', desc: 'power › confirmed › quiet › forming › extended, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'status', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then confidence', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:conf',     label: 'Sort: Confidence', desc: 'Highest confidence first', kind: 'action', run: () => { this.setSortPreset([{ key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:rs',       label: 'Sort: Relative strength', desc: 'Leaders first', kind: 'action', run: () => { this.setSortPreset([{ key: 'rs', dir: 'desc' }]); this.closePalette(); } },
@@ -3630,6 +3670,15 @@
           filtered = filtered.filter(s => s.baseGrade && s.baseGrade !== 'X' && gradeRank(s) >= min);
         }
 
+        // Base status (live = power or confirmed) and minimum base length.
+        // Both only make sense for graded bases, so ungraded rows drop out.
+        if (this.statusFilter && this.statusFilter !== 'all') {
+          filtered = filtered.filter(s => { const st = baseStatus(s); return st && BASE_STATUS[st].filter === this.statusFilter; });
+        }
+        if (this.minBaseWeeks > 0) {
+          filtered = filtered.filter(s => (baseWeeks(s) || 0) >= this.minBaseWeeks);
+        }
+
         if (this.filtering) {
           filtered = filtered.filter(s => s.asset.toLowerCase().includes(this.filtering.toLowerCase()));
         }
@@ -3647,6 +3696,8 @@
           sector: (s) => s.sector || null,
           price: (s) => s.currentPrice || null,
           updated: (s) => new Date(s.createdAt).getTime() || null,
+          weeks: (s) => baseWeeks(s),
+          status: (s) => { const st = baseStatus(s); return st ? BASE_STATUS[st].rank : null; },
         };
         const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }];
         filtered.sort((a, b) => {
@@ -3671,7 +3722,7 @@
 
       toggleSort(field, additive = false) {
         // Numeric columns start descending (best first); Asset starts A→Z.
-        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc' };
+        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc', weeks: 'desc', status: 'desc' };
         const keys = [...(this.sortKeys || [])];
         const i = keys.findIndex(k => k.key === field);
         if (additive) {
@@ -3749,6 +3800,8 @@
         this.sectorFilter = 'all';
         this.qualityFilters = { vcp: false, blueSky: false, leaders: false };
         this.gradeFilter = 'all';
+        this.statusFilter = 'all';
+        this.minBaseWeeks = 0;
         this.savePrefs();
         this.fetchSignals();
         this.toast('Filters reset', { kind: 'info' });
@@ -4559,6 +4612,30 @@
       // Grade badge (graded base system, Sep 2026): the stored evidence tier
       // replaces the old type/volume pills wherever a grade exists. S/A+/A are
       // the actionable tiers; X = evaluated and unqualified under the rules.
+      // Table cell for a graded base: [grade] [Nwk] [status], each its own chip
+      // so the eye can run down one column at a time, and each clickable to
+      // filter on that value. (Graded bases are blue-sky by definition, so the
+      // Blue Sky pill is dropped here — it's in the grade tooltip instead.)
+      // The drawer keeps the fuller gradeBadgeHtml() sentence.
+      signalCellHtml(signal) {
+        const g = signal.baseGrade;
+        if (!g) return '';
+        const wk = baseWeeks(signal);
+        const wkHtml = `<span class="font-mono text-[11px] tabular-nums text-gray-400 w-9 text-right" title="Base length">${wk ? wk + 'wk' : '—'}</span>`;
+        if (g === 'X') {
+          return `<span class="inline-flex items-center gap-1.5 whitespace-nowrap"><span class="chip chip-grade ${GRADE_CHIP.X}" style="cursor:default" title="Unqualified under the graded base rules — no blue-sky pivot, base >25% deep, or below the 200MA at signal time (32% historical win). Not alerted.">X</span>${wkHtml}<span class="text-[11px] text-gray-500">unqualified</span></span>`;
+        }
+        const gradeTip = { S: 'Grade S — 16wk+ tight blue-sky base · 62.6% historical win', 'A+': 'Grade A+ — 5wk+ tight blue-sky base · 57.7% historical win', A: 'Grade A — blue-sky base · 54.8% historical win' }[g] || '';
+        const st = baseStatus(signal);
+        const sd = st ? BASE_STATUS[st] : null;
+        const pivot = signal.basePivot > 0 ? ` · pivot ${CUR}${this.safeNum(signal.basePivot, 2)}` : '';
+        return `<span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <button type="button" data-grade="${g}" onclick="dashboard.setFilter('gradeFilter', '${g}')" class="chip chip-grade ${GRADE_CHIP[g] || GRADE_CHIP.A}" title="${gradeTip} · click to show ${g} and better">${g}</button>
+          ${wkHtml}
+          ${sd ? `<button type="button" data-status="${st}" onclick="dashboard.setFilter('statusFilter', '${sd.filter}')" class="chip ${sd.cls}" title="${sd.tip}${pivot} · click to filter">${sd.label}</button>` : ''}
+        </span>`;
+      }
+
       gradeBadgeHtml(signal) {
         const g = signal.baseGrade;
         if (!g) return '';
@@ -4602,7 +4679,7 @@
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
                         const signalLabel = signal.signalType === 'breakout'
                           ? (signal.baseGrade
-                              ? this.gradeBadgeHtml(signal)
+                              ? this.signalCellHtml(signal)
                               : signal.weakVolume
                               ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
                               : signal.isVcp
@@ -4610,7 +4687,7 @@
                                 : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
                           : signal.signalType === 'extension'
                             ? (signal.baseGrade && signal.baseGrade !== 'X'
-                                ? this.gradeBadgeHtml(signal)
+                                ? this.signalCellHtml(signal)
                                 : signal.isRetest
                                 ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
                                 : `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`)
@@ -4713,7 +4790,7 @@
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
                             <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
-                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${signal.signalType === 'breakout' && signal.isBlueSky ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ` <span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : ''}</td>
+                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ` <span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : ''}</td>
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
                             <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
@@ -4908,6 +4985,17 @@
                       <span class="pl-2 pr-1.5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Grade</span>
                       ${[['all', 'Any'], ['S', 'S'], ['A+', 'A+'], ['A', 'A']].map(([v, l]) => `<button onclick="dashboard.setFilter('gradeFilter', '${v}')" class="px-2 py-1 text-xs font-semibold transition ${this.gradeFilter === v ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white'}">${l}</button>`).join('')}
                     </div>
+                    <!-- Where the base stands: live = power or confirmed (above pivot, in the buy zone) -->
+                    <div class="inline-flex items-center rounded ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" data-tip="Base status. Live = closed above the pivot on confirming volume (power or confirmed) and inside the 5% buy zone · Quiet = above the pivot on thin volume · Forming = not above the pivot yet · Extended = past the buy zone. Ungraded rows drop out when set.">
+                      <span class="pl-2 pr-1.5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Status</span>
+                      ${[['all', 'Any'], ['live', 'Live'], ['quiet', 'Quiet'], ['forming', 'Forming'], ['extended', 'Ext']].map(([v, l]) => `<button onclick="dashboard.setFilter('statusFilter', '${v}')" class="px-2 py-1 text-xs font-semibold transition ${this.statusFilter === v ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white'}">${l}</button>`).join('')}
+                    </div>
+                    <label class="inline-flex items-center gap-1.5 text-xs text-gray-400" data-tip="Minimum base length in weeks. Longer bases have won more often historically (S grade starts at 16wk).">
+                      <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Base ≥</span>
+                      <select onchange="dashboard.setFilter('minBaseWeeks', parseInt(this.value, 10) || 0)" class="bg-gray-800 text-gray-200 text-xs rounded px-1.5 py-1 ring-1 ring-gray-700/60 outline-none">
+                        ${[[0, 'Any'], [3, '3wk'], [5, '5wk'], [8, '8wk'], [16, '16wk']].map(([v, l]) => `<option value="${v}" ${this.minBaseWeeks === v ? 'selected' : ''}>${l}</option>`).join('')}
+                      </select>
+                    </label>
                   </div>
 
                 </div>
@@ -4928,6 +5016,8 @@
                 if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
                 if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
                 if (this.gradeFilter && this.gradeFilter !== 'all') chips.push({ label: `Grade ≥ ${this.gradeFilter}`, clear: `dashboard.setFilter('gradeFilter', 'all')` });
+                if (this.statusFilter && this.statusFilter !== 'all') chips.push({ label: `Status: ${this.statusFilter}`, clear: `dashboard.setFilter('statusFilter', 'all')` });
+                if (this.minBaseWeeks > 0) chips.push({ label: `Base ≥ ${this.minBaseWeeks}wk`, clear: `dashboard.setFilter('minBaseWeeks', 0)` });
                 if (chips.length === 0) return '';
                 return `
                 <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
@@ -4998,8 +5088,12 @@
                           <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> ${this.sortIndicator('earnings')}
                         </th>
                         <th style="min-width:140px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('sector', event.shiftKey);">Sector ${this.sortIndicator('sector')}</th>
-                        <th style="min-width:120px;" title="Click to sort by base grade (S › A+ › A) · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('grade', event.shiftKey);">
-                          <span data-tip="Actionable = fresh breakout from a clean base. Setup = pre-breakout consolidation. Extension = continuation of a recent breakout. Sorts by base grade: S › A+ › A › ungraded › unqualified.">Signal</span> ${this.sortIndicator('grade')}
+                        <th style="min-width:210px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 select-none whitespace-nowrap">
+                          <span class="cursor-pointer hover:text-white transition" title="Sort by base grade (S › A+ › A) · shift-click to add as a secondary sort" onclick="dashboard.toggleSort('grade', event.shiftKey);"><span data-tip="Grade chip = base quality (S › A+ › A). Then base length in weeks, then where the base stands: power / confirmed / quiet = above the pivot, forming = not yet, extended = past the 5% buy zone. Click any chip to filter by it.">Signal</span> ${this.sortIndicator('grade')}</span>
+                          <span class="text-gray-600 mx-1">·</span>
+                          <span class="cursor-pointer hover:text-white transition" title="Sort by base length" onclick="dashboard.toggleSort('weeks', event.shiftKey);">wk ${this.sortIndicator('weeks')}</span>
+                          <span class="text-gray-600 mx-1">·</span>
+                          <span class="cursor-pointer hover:text-white transition" title="Sort by status: power › confirmed › quiet › forming › extended" onclick="dashboard.toggleSort('status', event.shiftKey);">status ${this.sortIndicator('status')}</span>
                         </th>
                         <th style="min-width:90px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('price', event.shiftKey);">Price ${this.sortIndicator('price')}</th>
                         <th style="min-width:150px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
