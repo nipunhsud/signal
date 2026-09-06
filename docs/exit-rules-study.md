@@ -687,6 +687,86 @@ trail 20% · 63-bar cap (90d)           5.8%    3.2%    7.6%       31.7%   40.1%
 trail 20% · 126-bar cap (180d)         9.2%    7.6%   10.7%       26.7%   31.5%    0.57         57
 ```
 
+## Circuit breakers: "stop trading when it isn't working"
+
+Four families of equity-based breakers, added to the simulator and run on
+the shipped setup (invested profile, RS-ranked, S&P 200MA switch with exit),
+12 orderings, 1990–2026. Columns add the worst calendar year, the number of
+years below −10 %, and the share of days the breaker kept the book halted.
+
+| Breaker | CAGR | Max DD | Sharpe | Worst year | Years < −10 % | Halted |
+| --- | --- | --- | --- | --- | --- | --- |
+| none (shipped setup) | **14.1%** | 26% | 0.92 | −11.6% | 1.0 | 0% |
+| halt entries at 10 % drawdown, resume at 5 % | 2.4% | 12% | 0.52 | 0.0% | 0.0 | 88% |
+| halt at 15 %, resume at 7.5 % | 4.4% | 17% | 0.68 | −3.6% | 0.3 | 77% |
+| halt at 20 %, resume at 10 % | 6.8% | 20% | 0.73 | −9.7% | 0.3 | 53% |
+| halt at 15 % and flatten | 3.7% | 15% | 0.63 | −5.2% | 0.0 | 80% |
+| trade only while equity > its 50-day MA | 0.9% | 9% | 0.25 | 0.0% | 0.0 | 95% |
+| trade only while equity > its 100-day MA | 2.1% | 12% | 0.43 | −5.4% | 0.0 | 89% |
+| trade only while equity > its 200-day MA | 4.8% | 18% | 0.72 | −2.6% | 0.2 | 76% |
+| pause 20 days after 3 straight losers | 10.2% | 26% | 0.78 | −12.1% | 1.3 | 42% |
+| pause 20 days after 5 straight losers | 10.6% | 27% | 0.77 | −13.3% | 1.3 | 30% |
+| risk scales to zero at 20 % drawdown | 9.3% | 18% | 0.88 | −9.9% | 0.5 | 0% |
+| risk scales to zero at 30 % drawdown | 12.3% | 21% | 0.94 | −11.4% | 0.9 | 0% |
+| risk scales to zero at 40 % drawdown | 13.1% | 23% | 0.93 | −11.9% | 1.0 | 0% |
+
+Without the market switch (RS-ranked only): baseline 12.7 % / 44 % DD /
+worst year −25 % / 3.7 bad years; every breaker drops it to 2–5 % a year.
+
+- **Equity-curve breakers destroy this strategy.** Its profit arrives in
+  bursts after stretches of small stop-outs; a drawdown halt or an
+  equity-MA filter switches the book off in exactly those stretches and
+  misses the burst that pays for them. The 15 % halt keeps the book idle
+  77 % of the time and earns 4.4 %.
+- **Loss-streak pauses cost a third of the return and remove no bad years.**
+  Streaks of stops are the normal texture of a 35 %-win-rate rule, not a
+  signal that something broke.
+- **The only breaker that does not hurt is sizing down with drawdown.**
+  Scaling risk to zero at 40 % drawdown gives up 1 point of CAGR for 3
+  points of max drawdown, at 30 % it is 2 for 5. It never halts, so it never
+  misses the recovery. Worth having as a lever, not a default.
+- **The deep losing years are already handled by the market switch.** With it,
+  the worst year is −11.6 % and one year in 36 lands below −10 %; without
+  it, −25 % and nearly four. Breakers cannot substitute for the switch —
+  Section B — because they react to the book's own losses, which lag the
+  market by weeks; the 200MA reacts to the market itself.
+- 2010+ is harsher on breakers still (drawdown halt: −0.5 %, equity-MA: 0.6 %).
+
+```
+## A. breakers WITH regime200-exit + RS80 + rank (the shipped setup), 1990+
+baseline 14.1%   13.4%   14.6%       25.9%   26.7%    0.92         44    -11.6%       1.0      0%
+dd-halt 10 (resume at half) 2.4%    1.5%    3.3%       12.4%   13.5%    0.52          4      0.0%       0.0     88%
+dd-halt 15 (resume at half) 4.4%    4.0%    4.9%       16.9%   17.5%    0.68          8     -3.6%       0.3     77%
+dd-halt 20 (resume at half) 6.8%    4.1%    7.4%       20.2%   20.3%    0.73         20     -9.7%       0.3     53%
+dd-halt 15 + flatten 3.7%    3.2%    4.2%       15.4%   16.6%    0.63          7     -5.2%       0.0     80%
+dd-halt 20 + flatten 6.8%    4.1%    7.4%       20.2%   20.3%    0.73         20     -9.7%       0.3     53%
+dd-halt 15 resume 5 4.2%    4.0%    4.4%       16.8%   17.5%    0.63         10    -11.6%       0.8     75%
+equity > MA50 0.9%    0.1%    2.0%        8.8%   12.3%    0.25          2      0.0%       0.0     95%
+equity > MA100 2.1%    1.4%    3.2%       12.3%   17.7%    0.43          4     -5.4%       0.0     89%
+equity > MA200 4.8%    4.5%    5.3%       18.4%   21.5%    0.72          9     -2.6%       0.2     76%
+streak 3 pause 20d 10.2%    8.5%   12.9%       26.0%   31.3%    0.78         31    -12.1%       1.3     42%
+streak 5 pause 20d 10.6%    9.9%   11.4%       27.1%   34.3%    0.77         35    -13.3%       1.3     30%
+streak 5 pause 60d 8.5%    5.3%   10.6%       37.4%   49.8%    0.69         27    -13.9%       2.8     55%
+scale risk to 0 at dd 20 9.3%    8.8%   10.0%       17.9%   18.4%    0.88         56     -9.9%       0.5      0%
+scale risk to 0 at dd 30 12.3%   11.6%   12.8%       21.1%   21.4%    0.94         56    -11.4%       0.9      0%
+scale risk to 0 at dd 40 13.1%   12.4%   13.7%       22.9%   23.8%    0.93         55    -11.9%       1.0      0%
+dd-halt 15 + scale 30 5.6%    4.4%    6.4%       16.5%   17.2%    0.82         12      0.0%       0.0     75%
+eq>MA100 + scale 30 1.5%    0.0%    4.0%        9.3%   15.9%    0.36          4      0.0%       0.0     91%
+## B. breakers WITHOUT the market switch (RS80 + rank only) — do they substitute for it?
+baseline (no switch) 12.7%   11.7%   13.7%       43.5%   49.0%    0.79         44    -25.0%       3.7      0%
+dd-halt 15 1.8%    1.4%    2.3%       19.0%   21.0%    0.39          4     -9.6%       0.5     89%
+dd-halt 15 + flatten 1.8%    1.4%    2.3%       15.5%   16.0%    0.41          4     -7.2%       0.0     89%
+equity > MA100 3.7%    2.7%    5.5%       23.9%   30.2%    0.51          8    -11.0%       0.5     83%
+scale-dd 30 4.8%    2.7%    8.9%       28.4%   28.7%    0.56         28    -18.6%       2.3      0%
+eq>MA100 + dd20 flatten 3.0%    1.7%    4.8%       20.3%   22.8%    0.48          6     -7.7%       0.4     86%
+## C. 2010+, shipped setup
+baseline 12.9%   11.2%   13.7%       25.9%   26.7%    0.79         46    -11.6%       1.0      0%
+dd-halt 15 -0.5%   -0.6%   -0.3%       16.5%   18.0%   -0.14          2      0.0%       0.0     97%
+equity > MA100 0.6%    0.0%    3.0%       13.3%   18.9%    0.13          3     -2.9%       0.1     94%
+scale-dd 30 8.6%    7.2%    9.6%       20.9%   21.4%    0.66         59    -11.4%       0.9      0%
+streak 5 pause 20d 5.4%    3.6%    7.1%       27.0%   34.3%    0.42         38    -13.3%       1.3     36%
+```
+
 ## Recommendation, revised after the portfolio simulation
 
 - Keep the 7% hard stop. The time backstop is one year, not 90 days.
@@ -698,6 +778,11 @@ trail 20% · 126-bar cap (180d)         9.2%    7.6%   10.7%       26.7%   31.5%
   took the simulated book from 9% to 14% a year and the worst drawdown from
   39% to 26%. The dashboard's health score is a weaker switch: only its
   risk-off line (< 45) is actionable, and "caution" must stay tradable.
+- **Do not add equity-curve circuit breakers.** Drawdown halts, equity-MA
+  filters and streak pauses all cut the return by two thirds or more and
+  remove no bad year the market switch had not already removed. If a softer
+  ride is wanted, scale risk with drawdown (`--scale-dd 30`: −2 pts CAGR,
+  −5 pts max DD) — a lever, not a default.
 - **Size for the drawdown you can hold**, via the `TRADE_PROFILE` lever:
   `invested` (default: 10 slots / 1% risk, ~9%/yr, 38% DD) or `conservative`
   (5 slots / 1% risk, 71% invested, ~7%/yr, 31% DD). Raising risk per trade

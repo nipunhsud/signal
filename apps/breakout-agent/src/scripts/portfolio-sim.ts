@@ -28,10 +28,18 @@ const REGIME = arg("regime", 0); // 50 | 200: enter only while S&P 500 closes ab
 const REGIME_EXIT = process.argv.includes("--regime-exit"); // also flatten everything while below
 const HEALTH = arg("health", 0); // enter only while the replayed market-health score >= this
 const HEALTH_EXIT = arg("health-exit", 0); // flatten everything while the score < this
+// Circuit breakers ("stop trading when it isn't working"):
+const DD_HALT = arg("dd-halt", 0); // % drawdown from the book's peak that stops new entries
+const DD_RESUME = arg("dd-resume", 0); // resume entries once drawdown shrinks below this (default: half of dd-halt)
+const DD_FLATTEN = process.argv.includes("--dd-flatten"); // also flatten everything at the halt level
+const EQ_MA = arg("eq-ma", 0); // trade only while equity is above its own N-day SMA
+const STREAK = arg("streak", 0); // after N consecutive losing closes, pause new entries…
+const PAUSE = arg("pause", 20); // …for this many trading days
+const SCALE_DD = arg("scale-dd", 0); // risk per trade scales linearly to zero at this % drawdown
 const RS_MIN = arg("rs", 0); // 0-100: enter only when the trade's 6-month RS percentile >= this
 const RANK_RS = process.argv.includes("--rank-rs"); // fill slots by RS instead of grade
 const SHOW_YEARS = process.argv.includes("--years"); // print per-year returns + best rolling 12 months
-const FILTERS = [REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
+const FILTERS = [REGIME ? `S&P>${REGIME}MA${REGIME_EXIT ? " (exit too)" : ""}` : null, DD_HALT ? `dd-halt ${DD_HALT}%${DD_FLATTEN ? " flatten" : ""}` : null, EQ_MA ? `eq>MA${EQ_MA}` : null, STREAK ? `streak ${STREAK}/${PAUSE}d` : null, SCALE_DD ? `scale-dd ${SCALE_DD}%` : null, HEALTH ? `health>=${HEALTH}` : null, HEALTH_EXIT ? `exit<${HEALTH_EXIT}` : null, RS_MIN ? `RS>=${RS_MIN}` : null, RANK_RS ? "rank by RS" : null].filter(Boolean).join(" · ");
 const onlyIdx = process.argv.indexOf("--only"); // substring filter on rule names, comma-separated
 const ONLY = onlyIdx > -1 ? process.argv[onlyIdx + 1].split(",").map((x) => x.trim()) : null;
 
@@ -158,6 +166,7 @@ interface Result {
   name: string; cagr: number; maxDD: number; vol: number; sharpe: number; trades: number;
   tradesPerYear: number; exposure: number; final: number; years: number; worstYear: number; bestYear: number;
   byDecade: Record<string, number>; best12m: number; worst12m: number; yearly: Array<[number, number]>;
+  badYears: number; haltedShare: number;
 }
 
 function simulate(name: string, pick: PathPicker): Result {
@@ -168,6 +177,11 @@ function simulate(name: string, pick: PathPicker): Result {
   let nTrades = 0;
   let exposureDays = 0;
   const yearEquity = new Map<number, number>();
+  let peak = 1;
+  let ddHalted = false;
+  let lossStreak = 0;
+  let pausedUntil = -1;
+  let haltedDays = 0;
 
   for (let d = startIdx; d < dates.length; d++) {
     // 1. advance open positions one trading day; close those whose path ended
@@ -178,14 +192,25 @@ function simulate(name: string, pick: PathPicker): Result {
         const ret = p.data[p.start + p.len - 1];
         cash += p.notional * (1 + ret);
         positions.splice(k, 1);
+        if (ret < 0) { if (++lossStreak >= STREAK && STREAK > 0) pausedUntil = d + PAUSE; } else lossStreak = 0;
       }
     }
     // 2. equity mark (open positions at today's path value)
     let equity = cash;
     for (const p of positions) equity += p.notional * (1 + p.data[p.start + p.day]);
+    peak = Math.max(peak, equity);
+    const dd = (peak - equity) / peak * 100;
+    if (DD_HALT > 0) {
+      if (!ddHalted && dd >= DD_HALT) ddHalted = true;
+      else if (ddHalted && dd <= (DD_RESUME > 0 ? DD_RESUME : DD_HALT / 2)) ddHalted = false;
+    }
+    const eqMaOk = EQ_MA <= 0 || equityCurve.length < EQ_MA ||
+      equity > equityCurve.slice(-EQ_MA).reduce((a, b) => a + b, 0) / EQ_MA;
+    const breakersOk = !ddHalted && eqMaOk && d >= pausedUntil;
+    if (!breakersOk) haltedDays++;
     const h = healthOn(dates[d]);
-    const on = regimeOn(dates[d]) && h.enter;
-    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit) && positions.length) {
+    const on = regimeOn(dates[d]) && h.enter && breakersOk;
+    if (((!regimeOn(dates[d]) && REGIME_EXIT) || h.exit || (DD_FLATTEN && ddHalted)) && positions.length) {
       // risk-off: flatten at today's mark
       for (const p of positions) cash += p.notional * (1 + p.data[p.start + Math.max(0, p.day)]);
       positions.length = 0;
@@ -200,7 +225,8 @@ function simulate(name: string, pick: PathPicker): Result {
       if (positions.some((p) => trades[p.tradeIdx].sym === t.sym)) continue;
       const path = pick(t, ti);
       if (path.len === 0) continue;
-      const notional = Math.min((equity * RISK_PCT) / 100 / STOP, (equity * CAP_PCT) / 100, cash);
+      const riskPct = SCALE_DD > 0 ? RISK_PCT * Math.max(0, 1 - dd / SCALE_DD) : RISK_PCT;
+      const notional = Math.min((equity * riskPct) / 100 / STOP, (equity * CAP_PCT) / 100, cash);
       if (notional <= 0 || notional < equity * 0.01) continue;
       cash -= notional;
       positions.push({ tradeIdx: ti, notional, data: path.data, start: path.start, len: path.len, day: -1 });
@@ -219,8 +245,8 @@ function simulate(name: string, pick: PathPicker): Result {
   const n = equityCurve.length;
   const years = (n - 1) / 252;
   const cagr = Math.pow(finalEq, 1 / years) - 1;
-  let peak = -Infinity, maxDD = 0;
-  for (const e of equityCurve) { peak = Math.max(peak, e); maxDD = Math.max(maxDD, (peak - e) / peak); }
+  let ddPeak = -Infinity, maxDD = 0;
+  for (const e of equityCurve) { ddPeak = Math.max(ddPeak, e); maxDD = Math.max(maxDD, (ddPeak - e) / ddPeak); }
   const rets: number[] = [];
   for (let i = 1; i < n; i++) rets.push(equityCurve[i] / equityCurve[i - 1] - 1);
   const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
@@ -249,6 +275,7 @@ function simulate(name: string, pick: PathPicker): Result {
     name, cagr, maxDD, vol, sharpe, trades: nTrades, tradesPerYear: nTrades / years, exposure: exposureDays / (n - 1),
     final: finalEq, years, worstYear: Math.min(...yearly.map((y) => y[1])), bestYear: Math.max(...yearly.map((y) => y[1])), byDecade,
     best12m, worst12m, yearly,
+    badYears: yearly.filter((y) => y[1] < -0.10).length, haltedShare: haltedDays / (n - 1),
   };
 }
 
@@ -268,13 +295,14 @@ if (SEEDS <= 1) {
     runs.push(pickers.map(([name, pick]) => simulate(name, pick)));
   }
   console.log(`\n=== ${SEEDS} orderings${NO_GRADE ? " (grade priority OFF)" : ""} · ${SLOTS} slots · ${RISK_PCT}% risk · ${FROM_YEAR}–${FILTERS ? " · " + FILTERS : ""} ===`);
-  console.log("rule".padEnd(32) + "CAGR mean".padStart(11) + "min".padStart(8) + "max".padStart(8) + "maxDD mean".padStart(12) + "worst".padStart(8) + "Sharpe".padStart(8) + "trades/yr".padStart(11));
+  console.log("rule".padEnd(32) + "CAGR mean".padStart(11) + "min".padStart(8) + "max".padStart(8) + "maxDD mean".padStart(12) + "worst".padStart(8) + "Sharpe".padStart(8) + "trades/yr".padStart(11) + "worst yr".padStart(10) + "yrs<-10%".padStart(10) + "halted".padStart(8));
   pickers.forEach(([name], i) => {
     const rs = runs.map((r) => r[i]);
     const m = (f: (x: Result) => number) => rs.reduce((a, x) => a + f(x), 0) / rs.length;
     console.log(
       name.padEnd(32) + pct(m((x) => x.cagr)).padStart(11) + pct(Math.min(...rs.map((x) => x.cagr))).padStart(8) + pct(Math.max(...rs.map((x) => x.cagr))).padStart(8) +
-      pct(m((x) => x.maxDD)).padStart(12) + pct(Math.max(...rs.map((x) => x.maxDD))).padStart(8) + m((x) => x.sharpe).toFixed(2).padStart(8) + m((x) => x.tradesPerYear).toFixed(0).padStart(11),
+      pct(m((x) => x.maxDD)).padStart(12) + pct(Math.max(...rs.map((x) => x.maxDD))).padStart(8) + m((x) => x.sharpe).toFixed(2).padStart(8) + m((x) => x.tradesPerYear).toFixed(0).padStart(11) +
+      pct(m((x) => x.worstYear)).padStart(10) + m((x) => x.badYears).toFixed(1).padStart(10) + pct(m((x) => x.haltedShare), 0).padStart(8),
     );
   });
   process.exit(0);
