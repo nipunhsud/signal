@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Data Quant — Breakouts confirmed by earnings tone</title>
+  <title>Data Quant — Breakout screener: graded bases, pivots, earnings tone</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/vendor/klinecharts.min.js"></script>
   <style>
@@ -369,7 +369,7 @@
        tab strip from VIEWS and mirrors Dashboard.view + the URL. Cmd+K opens the
        palette from anywhere; the ⋯ menu holds everything outside the dashboard. -->
   <nav id="top-nav" class="flex-shrink-0 h-12 bg-gray-950/95 backdrop-blur border-b border-gray-800 flex items-center gap-3 sm:gap-5 px-3 sm:px-6 z-30">
-    <a href="/dashboard" onclick="return dashboard.navClick(event, 'dashboard')" class="flex items-center gap-2 group flex-shrink-0" title="Signals">
+    <a href="/dashboard" onclick="return dashboard.navClick(event, 'dashboard')" class="flex items-center gap-2 group flex-shrink-0" title="Screener">
       <span class="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] font-bold text-white group-hover:scale-105 transition">DQ</span>
       <span class="font-semibold tracking-tight text-gray-100 hidden lg:inline">Data Quant</span>
     </a>
@@ -413,7 +413,7 @@
             <span><span class="sf-kbd">⌘K</span></span><span>Jump to a ticker or action</span>
             <span><span class="sf-kbd">[</span> <span class="sf-kbd">]</span></span><span>Previous / next tab</span>
             <span><span class="sf-kbd">/</span></span><span>Search</span>
-            <span><span class="sf-kbd">1</span>–<span class="sf-kbd">5</span></span><span>Signal-type filter</span>
+            <span><span class="sf-kbd">1</span>–<span class="sf-kbd">5</span></span><span>Screen-type filter</span>
             <span><span class="sf-kbd">space</span> <span class="sf-kbd">←</span><span class="sf-kbd">→</span></span><span>Step through tickers</span>
             <span><span class="sf-kbd">c</span></span><span>Full chart of the open ticker</span>
             <span><span class="sf-kbd">esc</span></span><span>Back / close</span>
@@ -492,13 +492,13 @@
     // palette, URL routing and view validation. `path` is relative to DASH_BASE.
     const DASH_BASE = REGION === 'in' ? '/in/dashboard' : '/dashboard';
     const VIEWS = [
-      { key: 'dashboard',      label: 'Signals',        path: '',                group: 'screens', desc: 'Live breakout signals' },
+      { key: 'dashboard',      label: 'Screener',       path: '',                group: 'screens', desc: 'Pre-built breakout screen: graded bases, pivots, earnings tone' },
       { key: 'winners',        label: 'Winners',        path: '/winners',        group: 'screens', desc: 'Strongest movers over the window' },
       { key: 'beat-raise',     label: 'Beat & Raise',   path: '/beat-raise',     group: 'screens', desc: 'Beat EPS and raised guidance last quarter' },
       { key: 'unusual-volume', label: 'Unusual Volume', path: '/unusual-volume', group: 'screens', desc: '100%+ above-average volume on a bullish candle' },
       { key: 'sectors',        label: 'Sectors',        path: '/sectors',        group: 'screens', desc: 'Sector strength ranked by trailing returns' },
       { key: 'shortlist',      label: 'Shortlist',      path: '/shortlist',      group: 'tools',   desc: 'Your saved tickers' },
-      { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'Historical performance of past signals' },
+      { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'How past screen hits played out — research, not a track record' },
     ];
     const VIEW_KEYS = VIEWS.map(v => v.key);
     const viewDef = (key) => VIEWS.find(v => v.key === key);
@@ -517,11 +517,11 @@
     // Where a graded base stands right now. Drives the status chip, the Status
     // filter and the status sort. Same checks, same order, as gradeBadgeHtml().
     const BASE_STATUS = {
-      power:     { rank: 5, label: 'power',     filter: 'live',     cls: 'bg-green-500/20 text-green-300 ring-1 ring-green-500/40',    tip: 'Closed above the pivot on heavy volume — inside the 5% buy zone' },
-      confirmed: { rank: 4, label: 'confirmed', filter: 'live',     cls: 'bg-green-500/15 text-green-400 ring-1 ring-green-500/30',    tip: 'Closed above the pivot on above-average volume — inside the 5% buy zone' },
+      power:     { rank: 5, label: 'power',     filter: 'live',     cls: 'bg-green-500/20 text-green-300 ring-1 ring-green-500/40',    tip: 'Closed above the pivot on heavy volume — within 5% of the pivot' },
+      confirmed: { rank: 4, label: 'confirmed', filter: 'live',     cls: 'bg-green-500/15 text-green-400 ring-1 ring-green-500/30',    tip: 'Closed above the pivot on above-average volume — within 5% of the pivot' },
       quiet:     { rank: 3, label: 'quiet',     filter: 'quiet',    cls: 'bg-yellow-500/15 text-yellow-300 ring-1 ring-yellow-500/30', tip: 'Above the pivot but volume below the confirmation bar — unconfirmed' },
       forming:   { rank: 2, label: 'forming',   filter: 'forming',  cls: 'chip-forming',                                                tip: 'Price has not closed above the pivot yet — base still forming' },
-      extended:  { rank: 1, label: 'extended',  filter: 'extended', cls: 'bg-yellow-500/10 text-yellow-500 ring-1 ring-yellow-500/30', tip: 'More than 5% above the pivot — outside the buy zone; wait for a new base' },
+      extended:  { rank: 1, label: 'extended',  filter: 'extended', cls: 'bg-yellow-500/10 text-yellow-500 ring-1 ring-yellow-500/30', tip: 'More than 5% above the pivot — already moved; a new base has to form' },
     };
     const baseStatus = (s) => {
       if (!s?.baseGrade || s.baseGrade === 'X') return null;
@@ -1123,16 +1123,16 @@
           }));
         // Filter actions
         const actions = [
-          { id: 'sig:breakout',  label: 'Filter: Actionable breakouts', desc: 'Fresh breakouts from a clean base', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'breakout'); this.closePalette(); this.toast('Filter → Actionable', { kind: 'info' }); } },
+          { id: 'sig:breakout',  label: 'Filter: Breakouts', desc: 'Closed above the pivot of a clean base', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'breakout'); this.closePalette(); this.toast('Filter → Breakouts', { kind: 'info' }); } },
           { id: 'sig:setup',     label: 'Filter: Setups',     desc: 'Show pre-breakout Type 2 setups', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'setup'); this.closePalette(); this.toast('Filter → Setups', { kind: 'info' }); } },
           { id: 'sig:extension', label: 'Filter: Extensions',           desc: 'Continuation of a recent breakout', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'extension'); this.closePalette(); this.toast('Filter → Extension', { kind: 'info' }); } },
-          { id: 'sig:retest',    label: 'Filter: Retests',    desc: 'Alerted breakouts back within 3% of the buy point', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'retest'); this.closePalette(); this.toast('Filter → Retest', { kind: 'info' }); } },
+          { id: 'sig:retest',    label: 'Filter: Retests',    desc: 'Breakouts that pulled back to within 3% of the pivot', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'retest'); this.closePalette(); this.toast('Filter → Retest', { kind: 'info' }); } },
           { id: 'sig:ep',        label: 'Filter: Episodic Pivots', desc: 'Catalyst-class ⚡ EP repricings (≥5x volume, +8% day)', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'ep'); this.closePalette(); this.toast('Filter → EP', { kind: 'info' }); } },
           { id: 'grade:S',       label: 'Filter: Grade S only', desc: '16wk+ tight blue-sky bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'S'); this.closePalette(); this.toast('Grade ≥ S', { kind: 'info' }); } },
           { id: 'grade:A+',      label: 'Filter: Grade A+ and better', desc: 'S and A+ bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A+'); this.closePalette(); this.toast('Grade ≥ A+', { kind: 'info' }); } },
           { id: 'grade:A',       label: 'Filter: Any graded base', desc: 'S, A+ and A — drops ungraded and unqualified', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A'); this.closePalette(); this.toast('Grade ≥ A', { kind: 'info' }); } },
           { id: 'grade:all',     label: 'Filter: Any grade', desc: 'Clear the grade filter', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'all'); this.closePalette(); } },
-          { id: 'st:live',       label: 'Filter: Live breakouts only', desc: 'Above the pivot on confirming volume, inside the buy zone', kind: 'filter', run: () => { this.setFilter('statusFilter', 'live'); this.closePalette(); this.toast('Status → Live', { kind: 'info' }); } },
+          { id: 'st:live',       label: 'Filter: Live breakouts only', desc: 'Above the pivot on confirming volume, within 5% of it', kind: 'filter', run: () => { this.setFilter('statusFilter', 'live'); this.closePalette(); this.toast('Status → Live', { kind: 'info' }); } },
           { id: 'st:forming',    label: 'Filter: Forming bases only', desc: 'Not above the pivot yet — watchlist material', kind: 'filter', run: () => { this.setFilter('statusFilter', 'forming'); this.closePalette(); this.toast('Status → Forming', { kind: 'info' }); } },
           { id: 'st:all',        label: 'Filter: Any status', desc: 'Clear the status filter', kind: 'filter', run: () => { this.setFilter('statusFilter', 'all'); this.closePalette(); } },
           { id: 'wk:8',          label: 'Filter: Bases 8+ weeks', desc: 'Longer bases only', kind: 'filter', run: () => { this.setFilter('minBaseWeeks', 8); this.closePalette(); } },
@@ -1996,7 +1996,7 @@
       // Editable preview overlay for admin tweets: textareas with live char
       // counts, publish sends the edited text. DOM built with value assignment
       // (never innerHTML for tweet text) so $/quotes/emoji can't break markup.
-      openTweetEditor(endpoint, asset, tweets, label) {
+      openTweetEditor(endpoint, asset, tweets, label, opts = {}) {
         document.getElementById('tweet-editor-overlay')?.remove();
         const ov = document.createElement('div');
         ov.id = 'tweet-editor-overlay';
@@ -2011,6 +2011,7 @@
             <button class="text-gray-500 hover:text-white transition" data-x="close">✕</button>
           </div>
           <div class="text-[12px] text-gray-500 mb-3">Edit before publishing. Links count as 23 chars on X regardless of length.</div>
+          ${opts.png ? '<div class="mb-3 rounded-lg overflow-hidden ring-1 ring-gray-700"><img data-x="media" alt="Attached chart" class="w-full block"></div>' : ''}
           <div data-x="fields" class="space-y-3"></div>
           <div class="mt-4 flex justify-end gap-2 items-center">
             <span data-x="err" class="text-xs text-red-400 mr-auto"></span>
@@ -2018,6 +2019,7 @@
             <button data-x="post" class="px-3 py-1.5 rounded text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition">🐦 Publish to X</button>
           </div>`;
         ov.appendChild(card);
+        if (opts.png) card.querySelector('[data-x="media"]').src = opts.png;
 
         const fields = card.querySelector('[data-x="fields"]');
         const areas = tweets.map((t, i) => {
@@ -2062,7 +2064,7 @@
             const r = await fetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ asset, confirm: true, tweets: edited }),
+              body: JSON.stringify({ asset, confirm: true, tweets: edited, png: opts.png || undefined }),
             });
             if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
             close();
@@ -2148,6 +2150,78 @@
         if (this.view === 'chart') setTimeout(() => { try { this._pageKline?.resize?.(); } catch (e) {} }, 230);
       }
 
+      // No-signal drawer body: the facts the screen has on any ticker, and a
+      // plain reading of why it is not on the screen today.
+      renderProfile(p) {
+        if (!p || !this.selectedAsset || this.selectedAsset.asset !== p.symbol) return;
+        const tiles = document.getElementById('profile-tiles');
+        const body = document.getElementById('profile-body');
+        if (!tiles || !body) return;
+        const n = (v, d = 2) => (v == null || !Number.isFinite(v) ? '—' : Number(v).toFixed(d));
+        const money = (v) => (v == null ? '—' : CUR + n(v));
+        const pctHtml = (v, d = 1) => v == null ? '<span class="text-gray-600">—</span>'
+          : `<span class="${v >= 0 ? 'text-green-400' : 'text-red-400'} font-mono tabular-nums">${v >= 0 ? '+' : ''}${n(v, d)}%</span>`;
+        const tile = (label, val, sub) => `
+          <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
+            <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">${label}</div>
+            <div class="font-mono text-base font-bold text-white tabular-nums leading-tight mt-0.5">${val}</div>
+            ${sub ? `<div class="text-[10px] font-mono tabular-nums">${sub}</div>` : ''}
+          </div>`;
+        const rs = p.rs && p.rs.rating != null ? p.rs.rating : null;
+        const rsCls = rs == null ? 'text-gray-600' : rs >= 80 ? 'text-green-400' : rs >= 50 ? 'text-gray-200' : 'text-red-400';
+        const stackWord = p.mas.stack == null ? '—' : p.mas.above50 && p.mas.above200 && p.mas.stack ? 'up' : !p.mas.above200 ? 'down' : 'mixed';
+        tiles.className = 'px-5 pb-3';
+        tiles.innerHTML = `
+          <div class="grid grid-cols-4 gap-3">
+            ${tile('Price', money(p.price.close), pctHtml(p.price.changePct))}
+            ${tile('52-wk high', money(p.range52.high), pctHtml(p.range52.pctFromHigh))}
+            ${tile('RS', `<span class="${rsCls}">${rs == null ? '—' : rs}</span>`, p.returns.m3 != null ? `3m ${p.returns.m3 >= 0 ? '+' : ''}${n(p.returns.m3, 0)}%` : '')}
+            ${tile('MA stack', `<span class="${stackWord === 'up' ? 'text-green-400' : stackWord === 'down' ? 'text-red-400' : 'text-yellow-400'}">${stackWord}</span>`, p.mas.above200 == null ? '' : p.mas.above200 ? 'above the 200-day' : 'below the 200-day')}
+          </div>
+          <div class="mt-3 flex items-center gap-1.5 text-[11px]">
+            <span class="bg-gray-800/60 text-gray-300 ring-1 ring-gray-700/60 px-2 py-0.5 rounded">${(p.rs && p.rs.sector) || (p.lastSignal && p.lastSignal.sector) || 'Sector unknown'}</span>
+            ${p.lastSignal && p.lastSignal.industry ? `<span class="text-gray-500">${p.lastSignal.industry}</span>` : ''}
+          </div>`;
+
+        const row = (label, html) => `
+          <div class="flex items-center justify-between gap-3 px-2.5 py-1.5 bg-gray-800/40 ring-1 ring-gray-700/50 rounded text-[13px]">
+            <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold flex-shrink-0">${label}</span>
+            <span class="min-w-0 text-right">${html}</span>
+          </div>`;
+        const maCell = (label, v, above) => v == null ? '' : `<span class="mr-2">${label} <span class="font-mono ${above ? 'text-green-400' : 'text-red-400'}">${CUR}${n(v)}</span></span>`;
+        const b = p.base;
+        const baseHtml = b && b.count ? `${b.count} in 2y · newest ${n(b.weeks, 1)} wks, ${n(b.depthPct, 1)}% deep, ${b.status === 'forming' ? 'still forming' : 'resolved'} · pivot ${CUR}${n(b.pivot)}` : 'none found in 2y';
+        const ls = p.lastSignal;
+        const lsHtml = ls ? `${this.formatRelative(ls.createdAt)} · ${ls.breakoutType || 'row'}${ls.baseGrade ? ' · grade ' + ls.baseGrade : ''}${ls.entryPrice ? ' · pivot ' + CUR + n(ls.entryPrice) : ''}` : 'never';
+
+        // Why it is not on the screen: each unmet rule, in words.
+        const why = [];
+        if (p.mas.above200 === false) why.push('It is below its 200-day average. Graded bases have to sit above it.');
+        if (p.range52.pctFromHigh != null && p.range52.pctFromHigh < -25) why.push(`It is ${n(Math.abs(p.range52.pctFromHigh), 0)}% under its 52-week high, so no base here is a blue-sky base.`);
+        if (b && b.count && b.depthPct > 25) why.push(`The newest base is ${n(b.depthPct, 0)}% deep. The screen grades bases up to 25% deep.`);
+        if (b && b.count && b.status === 'forming' && p.price.close < b.pivot) why.push(`Price is ${n(Math.abs(((p.price.close - b.pivot) / b.pivot) * 100), 1)}% under the newest pivot at ${CUR}${n(b.pivot)}. Nothing to grade until a close clears it.`);
+        if (!b || !b.count) why.push('No consolidation of two weeks or more in the last two years, so there is no base to grade.');
+        if (p.liquidityOk === false) why.push('Average volume is under 100k shares, below the liquidity floor.');
+        if (rs != null && rs < 50) why.push(`Relative strength is ${rs}, in the weaker half of the market.`);
+        if (!why.length) why.push('Nothing rules it out on these numbers. It has not closed above a graded pivot yet.');
+
+        body.className = '';
+        body.innerHTML = `
+          <div class="grid grid-cols-1 gap-1.5">
+            ${row('Close', `<span class="font-mono">${money(p.price.close)}</span> ${pctHtml(p.price.changePct)} <span class="text-gray-500 text-[11px]">${p.asOf}</span>`)}
+            ${row('Returns', `1w ${pctHtml(p.returns.w1)} · 1m ${pctHtml(p.returns.m1)} · 3m ${pctHtml(p.returns.m3)}`)}
+            ${row('52-week', `<span class="font-mono text-xs">${money(p.range52.low)} – ${money(p.range52.high)}</span> · ${pctHtml(p.range52.pctFromHigh)} from the high`)}
+            ${row('Averages', `<span class="text-xs">${maCell('20', p.mas.ma20, p.mas.above20)}${maCell('50', p.mas.ma50, p.mas.above50)}${maCell('200', p.mas.ma200, p.mas.above200)}</span>`)}
+            ${row('Volume', `<span class="font-mono text-xs">${(p.price.volume / 1e6).toFixed(2)}M</span> · ${p.price.volumeRatio != null ? n(p.price.volumeRatio, 1) + 'x the 20-day average' : '—'}`)}
+            ${row('Bases', `<span class="text-xs">${baseHtml}</span>`)}
+            ${row('On the screen', `<span class="text-xs">${lsHtml}</span>`)}
+          </div>
+          <div class="border-t border-gray-700/60 pt-4 mt-5">
+            <h3 class="font-semibold text-gray-200 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>Why it is not on the screen</h3>
+            <ul class="space-y-1.5 text-[13px] text-gray-300">${why.map((w) => `<li class="pl-3 border-l-2 border-gray-700">${w}</li>`).join('')}</ul>
+          </div>`;
+      }
+
       renderDrawer() {
         const drawer = document.getElementById('drawer');
         const app = document.getElementById('app');
@@ -2166,6 +2240,9 @@
         this._afterDrawerResize(true);
 
         const signal = this.selectedAsset;
+        // No signal row (any-ticker search): the drawer shows what the screen
+        // knows about the name instead of an empty signal template.
+        const noSignal = !signal.signalType;
         const inShortlist = this.shortlist.some(item => item.asset === signal.asset);
 
         const navList = this.getNavList();
@@ -2189,17 +2266,17 @@
                         ? this.signalCellHtml(signal)
                         : signal.weakVolume
                         ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
-                        : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
+                        : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>')
                     : signal.signalType === 'setup'
                       ? '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                       : signal.signalType === 'extension'
                         ? (signal.baseGrade && signal.baseGrade !== 'X'
                             ? this.signalCellHtml(signal)
-                            : signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
+                            : signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to or below the pivot while the base structure still holds — a second look at the same level."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
                       : signal.signalType === 'ep'
-                        ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class: huge-volume repricing day, no trend requirement. Stop = event day low; wider risk, size accordingly."><span class="badge-dot"></span>⚡ EP · catalyst</span>'
+                        ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class: huge-volume repricing day, no trend requirement. Reference low = the event-day low; these move a lot both ways."><span class="badge-dot"></span>⚡ EP · catalyst</span>'
                         : ''}
-                  ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Price closed at/below the stop — trade is stopped out"><span class="badge-dot"></span>Stopped out</span>' : signal.noEntry ? '<span class="badge bg-gray-500/15 text-gray-300 ring-1 ring-gray-500/30" title="Price never closed above the entry level (a gap bar set it) — nothing was entered, so nothing is stopped out"><span class="badge-dot"></span>Below pivot · no entry</span>' : ''}
+                  ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed"><span class="badge-dot"></span>Failed</span>' : signal.noEntry ? '<span class="badge bg-gray-500/15 text-gray-300 ring-1 ring-gray-500/30" title="Price never closed above the pivot (a gap bar set it) — no breakout to track, so it cannot fail"><span class="badge-dot"></span>Below pivot</span>' : ''}
                   ${signal.confidence >= 90 && !signal.stoppedOut ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
                   <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition ml-1" title="Open on TradingView">↗</a>
                   <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-sm text-gray-400 hover:text-white transition" title="Full chart">⤢</button>
@@ -2207,11 +2284,12 @@
                 <button onclick="dashboard.closeDrawer();" class="text-gray-500 hover:text-white transition text-xl leading-none flex-shrink-0" title="Close">✕</button>
               </div>
 
-              <!-- Above-the-fold key stats: Price · BO/Entry · Stop · Conf · Sector -->
+              <!-- Above-the-fold key stats: Price · Pivot/Level · Fail level · Conf · Sector -->
               ${(() => {
+                if (noSignal) return `<div id="profile-tiles" class="px-5 pb-3 text-xs text-gray-500">Loading…</div>`;
                 const stop = signal.stopLoss != null ? signal.stopLoss : null;
-                const buyLabel = signal.signalType === 'breakout' ? 'Buy Point' :
-                                 signal.signalType === 'extension' ? 'Entry' :
+                const buyLabel = signal.signalType === 'breakout' ? 'Pivot' :
+                                 signal.signalType === 'extension' ? 'Level' :
                                  signal.signalType === 'setup' ? 'MA20' : 'Level';
                 // Both breakout and extension read the frozen entryPrice (snapshotted
                 // at flip) — signal.resistance is a rolling Donchian value that drifts
@@ -2238,7 +2316,7 @@
                     ${pctVsBuy != null ? `<div class="text-[10px] font-mono ${pctVsBuy >= 0 ? 'text-green-400' : 'text-red-400'} tabular-nums">${pctVsBuy >= 0 ? '+' : ''}${pctVsBuy.toFixed(1)}%</div>` : ''}
                   </div>
                   <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
-                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Stop</div>
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium" data-tip="Fail level — 7% below the pivot. A close here means the breakout did not hold.">Fail level</div>
                     <div class="font-mono text-base font-bold text-red-400 tabular-nums leading-tight mt-0.5">${stop != null ? CUR + stop.toFixed(2) : '<span class="text-gray-600">—</span>'}</div>
                   </div>
                   <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
@@ -2280,6 +2358,7 @@
               <!-- At a glance: every column of the Signals table row, so the
                    sidebar is a full view of the row without scrolling back. -->
               ${(() => {
+                if (noSignal) return `<div id="profile-body" class="text-xs text-gray-500">Loading what the screen knows about ${signal.asset}…</div>`;
                 const c = this.rowCells(signal);
                 const row = (label, html) => `
                   <div class="flex items-center justify-between gap-3 px-2.5 py-1.5 bg-gray-800/40 ring-1 ring-gray-700/50 rounded text-[13px]">
@@ -2362,6 +2441,7 @@
               ` : ''}
 
               <!-- Price & MA Levels -->
+              ${noSignal ? '' : `
               <div class="border-t border-gray-700/60 pt-4 space-y-3">
                 <h3 class="font-semibold text-gray-200 flex items-center gap-2">
                   <span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
@@ -2393,7 +2473,7 @@
                     </div>
                   ` : signal.signalType === 'extension' ? `
                     <div class="flex justify-between items-center">
-                      <span class="text-gray-400">Entry / Breakout Level</span>
+                      <span class="text-gray-400">Breakout level</span>
                       <span class="font-mono text-yellow-400 text-lg">${CUR}${signal.entryResistance !== null ? signal.entryResistance.toFixed(2) : '—'}</span>
                     </div>
                     <div class="flex justify-between items-center">
@@ -2511,13 +2591,14 @@
                 </div>
               </div>
               ` : ''}
+              `}
 
               <!-- Extension Metrics -->
               ${signal.signalType === 'extension' ? `
               <div class="border-t border-gray-700/60 pt-4">
                 <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
                   <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
-                  <span data-tip="Extension — a fresh breakout fired within the last 5 bars and price is still holding above that resistance. Not a fresh entry, but a continuation opportunity.">Extension Phase</span>
+                  <span data-tip="Extension — a fresh breakout fired within the last 5 bars and price is still holding above that resistance. Already past the pivot — no longer a fresh screen hit; tracked for how the move holds.">Extension Phase</span>
                 </h3>
                 <div class="bg-yellow-500/10 ring-1 ring-yellow-500/30 rounded-lg px-3 py-2.5 mb-3">
                   <p class="text-yellow-300 text-sm font-medium">
@@ -2526,7 +2607,7 @@
                 </div>
                 <div class="space-y-2 text-sm">
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
-                    <span class="text-gray-400">Entry Price (orig. resistance)</span>
+                    <span class="text-gray-400">Breakout level (orig. resistance)</span>
                     <span class="text-yellow-400 font-mono">${CUR}${signal.entryResistance !== null ? signal.entryResistance.toFixed(2) : '—'}</span>
                   </div>
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
@@ -2534,7 +2615,7 @@
                     <span class="text-white font-mono font-bold">${CUR}${signal.currentPrice.toFixed(2)}</span>
                   </div>
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
-                    <span class="text-gray-400">% Gain from Entry</span>
+                    <span class="text-gray-400">% from breakout level</span>
                     <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'} font-mono font-bold">
                       ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= 0 ? '+' : '') + signal.pctGainFromEntry.toFixed(2) + '%' : '—'}
                     </span>
@@ -2548,9 +2629,9 @@
                     <span class="text-gray-300">${signal.firstGreenAt ? new Date(signal.firstGreenAt).toLocaleDateString() + ' ' + new Date(signal.firstGreenAt).toLocaleTimeString() : '—'}</span>
                   </div>
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
-                    <span class="text-gray-400">Still Above Entry</span>
+                    <span class="text-gray-400">Holding the level</span>
                     <span class="${signal.pctGainFromEntry !== null && signal.pctGainFromEntry >= -1 ? 'text-green-400' : 'text-red-400'}">
-                      ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= -1 ? '✓ Yes' : '✗ No — below entry') : '—'}
+                      ${signal.pctGainFromEntry !== null ? (signal.pctGainFromEntry >= -1 ? '✓ Yes' : '✗ No — back below it') : '—'}
                     </span>
                   </div>
                 </div>
@@ -2680,11 +2761,23 @@
 
               <!-- Timestamp -->
               <div class="border-t border-gray-700/60 pt-3 text-[11px] text-gray-500 font-mono">
-                Updated ${new Date(signal.createdAt).toLocaleString()}
+                ${signal.createdAt ? `Updated ${new Date(signal.createdAt).toLocaleString()}` : 'No signal row on file. Price context from the daily bars.'}
               </div>
             </div>
           </div>
         `;
+
+        if (noSignal) {
+          fetch('/api/profile/' + encodeURIComponent(signal.asset))
+            .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.error || 'HTTP ' + r.status); }))
+            .then(p => this.renderProfile(p))
+            .catch(err => {
+              const el = document.getElementById('profile-body');
+              if (el) el.innerHTML = `<span class="text-gray-500">No price history for ${signal.asset}${err.message ? ' (' + err.message + ')' : ''}.</span>`;
+              const t = document.getElementById('profile-tiles');
+              if (t) t.innerHTML = '';
+            });
+        }
 
         // Lazy load earnings transcript analysis for US stocks only (FMP has no
         // NSE/BSE transcripts — skip the fetch, the section shows an N/A note).
@@ -2948,10 +3041,10 @@
           if (signal.support) level(signal.support, '#10b981', 'S');
           // Frozen entry — skip when it coincides with R (labels would collide)
           if (signal.entryPrice != null && (!signal.resistance || Math.abs(signal.entryPrice - signal.resistance) / signal.resistance > 0.001)) {
-            level(signal.entryPrice, '#eab308', 'entry');
+            level(signal.entryPrice, '#eab308', 'pivot');
           }
         } else if (signal.signalType === 'extension' && signal.entryResistance) {
-          level(signal.entryResistance, '#eab308', 'Entry', 2);
+          level(signal.entryResistance, '#eab308', 'Level', 2);
           if (signal.resistance && signal.resistance !== signal.entryResistance) {
             level(signal.resistance, '#ef4444', 'R');
           }
@@ -3114,7 +3207,7 @@
           `<span class="inline-flex items-center gap-1 cursor-help" data-tip="${tip}"><span class="${glyphCls}">${glyph}</span><span>${label}</span></span>`;
         return `<div class="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-gray-500 font-mono select-none">
           ${item('▦', 'text-gray-400', 'base', 'Dashed box: a detected consolidation base — the quiet range price built before a move. Amber = still forming.')}
-          ${item('╌╌', 'text-yellow-500', 'entry / stop', 'Dashed lines: yellow = entry (the breakout level), red = stop or resistance R, green = support S, blue = 20-day MA on setups.')}
+          ${item('╌╌', 'text-yellow-500', 'pivot / fail', 'Dashed lines: yellow = pivot (the breakout level), red = fail level or resistance R, green = support S, blue = 20-day MA on setups.')}
           ${item('✗', 'text-red-400', 'failed poke', 'Price wicked up to the pivot but closed well below it — sellers defended the level. 2+ inside a base means supply overhead.')}
           ${item('▲', 'text-yellow-500', 'breakout bar', 'The session that cleared the pivot and fired the signal.')}
           ${item('↳', 'text-gray-400', 'hi·lo in view', 'Chart furniture: the highest and lowest prices currently visible. Moves as you pan or zoom.')}
@@ -3173,6 +3266,13 @@
                   <span class="w-px h-4 bg-gray-700 mx-1"></span>
                   <button onclick="dashboard.toggleChartMA(50)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA50)}">MA50</button>
                   <button onclick="dashboard.toggleChartMA(200)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA200)}">MA200</button>
+                  <span class="w-px h-4 bg-gray-700 mx-1"></span>
+                  <button onclick="dashboard.startDrawing('segment')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Trendline: click two points on the chart">Trendline</button>
+                  <button onclick="dashboard.startDrawing('rayLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Ray: click two points, extends right">Ray</button>
+                  <button onclick="dashboard.startDrawing('horizontalStraightLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Horizontal level: click once">Level</button>
+                  <button onclick="dashboard.clearDrawings()" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Remove every line you drew on this ticker">Clear</button>
+                  <span class="w-px h-4 bg-gray-700 mx-1"></span>
+                  <button onclick="dashboard.shareChart()" class="px-2.5 py-1 rounded text-xs font-semibold transition bg-sky-600/20 text-sky-300 ring-1 ring-sky-500/40 hover:bg-sky-600/30" title="${this.isAdmin ? 'Post this chart to X with the levels and your lines' : 'Save the chart as an image and open a post on X'}">Share to X</button>
                 </div>
               </div>
               <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
@@ -3184,6 +3284,132 @@
         `;
         this._buildPageChart(sig);
         this._renderBaseXray(); // paints immediately when this asset's bases are cached
+      }
+
+      // ── Drawing + sharing on the full chart ──
+      // User lines (trendline / ray / level) are klinecharts built-in overlays.
+      // Their points persist per ticker in localStorage so they survive range,
+      // timeframe and MA rebuilds, and they ride along in the shared image.
+      _drawKey() { return 'dq.draw.' + this.chartAsset; }
+      _loadDrawings() {
+        try { return JSON.parse(localStorage.getItem(this._drawKey()) || '[]'); } catch (_) { return []; }
+      }
+      _saveDrawings(list) {
+        try { localStorage.setItem(this._drawKey(), JSON.stringify(list)); } catch (_) {}
+      }
+      _drawStyles() {
+        return { line: { color: '#38bdf8', size: 2 }, point: { color: '#38bdf8', borderColor: '#0c4a6e' } };
+      }
+      startDrawing(name) {
+        const chart = this._pageKline;
+        if (!chart) return;
+        chart.createOverlay({
+          name,
+          styles: this._drawStyles(),
+          onDrawEnd: (e) => {
+            const pts = (e.overlay && e.overlay.points) || [];
+            if (!pts.length) return;
+            const list = this._loadDrawings();
+            list.push({ id: e.overlay.id, name, points: pts.map((p) => ({ timestamp: p.timestamp, value: p.value })) });
+            this._saveDrawings(list);
+            return true;
+          },
+          onRemoved: (e) => {
+            const id = e.overlay && e.overlay.id;
+            if (!id) return;
+            this._saveDrawings(this._loadDrawings().filter((d) => d.id !== id));
+          },
+        });
+        this.toast(name === 'horizontalStraightLine' ? 'Click the chart to place the level' : 'Click two points on the chart', { kind: 'info' });
+      }
+      _restoreDrawings(chart) {
+        const list = this._loadDrawings();
+        if (!list.length) return;
+        const kept = [];
+        for (const d of list) {
+          try {
+            const id = chart.createOverlay({ name: d.name, points: d.points, styles: this._drawStyles() });
+            if (id) kept.push({ ...d, id });
+          } catch (_) {}
+        }
+        this._saveDrawings(kept);
+      }
+      clearDrawings() {
+        const chart = this._pageKline;
+        for (const d of this._loadDrawings()) { try { chart && chart.removeOverlay({ id: d.id }); } catch (_) {} }
+        this._saveDrawings([]);
+      }
+
+      // Compose the share image: a header band (ticker, timeframe, date, the
+      // levels in words) above the chart capture, which already includes the
+      // signal levels, base boxes and any lines the user drew.
+      async _composeChartPng() {
+        const chart = this._pageKline;
+        if (!chart || !chart.getConvertPictureUrl) throw new Error('Chart is not ready');
+        const src = chart.getConvertPictureUrl(true, 'png', '#111827');
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('capture failed')); i.src = src; });
+        const sig = (this.signals || []).find((s) => s.asset === this.chartAsset) || null;
+        const scale = 2;
+        const header = 76 * scale;
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height + header;
+        const g = c.getContext('2d');
+        g.fillStyle = '#111827'; g.fillRect(0, 0, c.width, c.height);
+        g.fillStyle = '#f9fafb';
+        g.font = `700 ${26 * scale}px -apple-system, Inter, sans-serif`;
+        g.fillText(this.chartAsset, 24 * scale, 34 * scale);
+        g.fillStyle = '#9ca3af';
+        g.font = `${13 * scale}px -apple-system, Inter, sans-serif`;
+        const sub = [
+          this.chartTf === 'w' ? 'Weekly' : 'Daily',
+          this.chartRange.toUpperCase(),
+          new Date().toISOString().slice(0, 10),
+          sig && sig.entryPrice ? `pivot ${CUR}${this.safeNum(sig.entryPrice, 2)}` : null,
+          sig && sig.stopLoss ? `fail level ${CUR}${this.safeNum(sig.stopLoss, 2)}` : null,
+          sig && sig.baseGrade && sig.baseGrade !== 'X' ? `grade ${sig.baseGrade}` : null,
+        ].filter(Boolean).join('  ·  ');
+        g.fillText(sub, 24 * scale, 58 * scale);
+        g.textAlign = 'right';
+        g.fillStyle = '#f59e0b';
+        g.font = `600 ${13 * scale}px -apple-system, Inter, sans-serif`;
+        g.fillText('dataquant.ai', c.width - 24 * scale, 34 * scale);
+        g.fillStyle = '#6b7280';
+        g.font = `${11 * scale}px -apple-system, Inter, sans-serif`;
+        g.fillText('Screen output for research, not advice', c.width - 24 * scale, 58 * scale);
+        g.drawImage(img, 0, header);
+        return c.toDataURL('image/png');
+      }
+      _chartShareText() {
+        const sig = (this.signals || []).find((s) => s.asset === this.chartAsset) || null;
+        const a = this.chartAsset.replace(/\.(NS|BO)$/i, '');
+        const tf = this.chartTf === 'w' ? 'weekly' : 'daily';
+        const weeks = sig && sig.baseBars ? Math.round(sig.baseBars / 5) : null;
+        const bits = [];
+        if (sig && sig.entryPrice) bits.push(`pivot ${CUR}${this.safeNum(sig.entryPrice, 2)}`);
+        if (sig && sig.stopLoss) bits.push(`fail level ${CUR}${this.safeNum(sig.stopLoss, 2)}`);
+        const base = sig && sig.baseGrade && sig.baseGrade !== 'X' ? ` Grade ${sig.baseGrade} base${weeks ? `, ${weeks} weeks long` : ''}.` : '';
+        const main = `$${a}, ${tf}.${bits.length ? ' ' + bits.join(', ').replace(/^./, (ch) => ch.toUpperCase()) + '.' : ''}${base}`;
+        const reply = `The chart and the 2-year base X-ray: dataquant.ai/$${this.chartAsset.toLowerCase()}`;
+        return [main, reply];
+      }
+      async shareChart() {
+        try {
+          const png = await this._composeChartPng();
+          const tweets = this._chartShareText();
+          if (this.isAdmin) {
+            this.openTweetEditor('/api/admin/tweet-chart', this.chartAsset, tweets, 'chart', { png });
+            return;
+          }
+          // Not an admin: save the image and open a prefilled post. X does not
+          // accept an image through the intent URL, so the reader attaches it.
+          const a = document.createElement('a');
+          a.href = png; a.download = `${this.chartAsset}-${new Date().toISOString().slice(0, 10)}.png`;
+          document.body.appendChild(a); a.click(); a.remove();
+          window.open('https://x.com/intent/post?text=' + encodeURIComponent(tweets[0]), '_blank', 'noopener');
+          this.toast('Chart saved. Attach it to the post that just opened.', { kind: 'success' });
+        } catch (err) {
+          this.toast('Share failed: ' + err.message, { kind: 'warn' });
+        }
       }
 
       _buildPageChart(sig) {
@@ -3219,6 +3445,7 @@
             this._applySignalOverlays(chart, sig, bars, { daily: this.chartTf !== 'w', skipBaseBox: true });
             this._ensureBases(chart, token);
             this._addEarningsMarkers(chart, bars, token);
+            this._restoreDrawings(chart);
           })
           .catch(err => {
             const el = document.getElementById('chart-page-container');
@@ -3456,7 +3683,7 @@
           }
         } catch (_) {}
 
-        const buyLabel = s.signalType === 'breakout' ? 'Buy Point' : s.signalType === 'extension' ? 'Entry' : s.signalType === 'setup' ? 'MA20' : 'Level';
+        const buyLabel = s.signalType === 'breakout' ? 'Pivot' : s.signalType === 'extension' ? 'Level' : s.signalType === 'setup' ? 'MA20' : 'Level';
 
         // Flag badges (replaces the signal-type label): which lists this name is
         // in — Beat & Raise, Unusual Volume — plus whether it has earnings analysis.
@@ -3466,7 +3693,7 @@
           inList('beat-raise') ? '<span class="badge" style="background:#f3e8ff;color:#7e22ce">Beat &amp; Raise</span>' : '',
           inList('unusual-volume') ? '<span class="badge" style="background:#ffedd5;color:#c2410c">Unusual Volume</span>' : '',
           ta ? '<span class="badge" style="background:#dcfce7;color:#166534">Earnings</span>' : '',
-          s.stoppedOut ? '<span class="badge" style="background:#fef2f2;color:#dc2626">Stopped out</span>' : '',
+          s.stoppedOut ? '<span class="badge" style="background:#fef2f2;color:#dc2626">Failed</span>' : '',
         ].join('');
         const buyVal = s.signalType === 'setup' ? s.ma20 : s.entryPrice;
 
@@ -3479,8 +3706,8 @@
         if (s.signalType === 'breakout') {
           levels = row('Resistance (R)', CUR + n(s.resistance)) + row('Support (S)', CUR + n(s.support));
         } else if (s.signalType === 'extension') {
-          levels = row('Entry / breakout level', s.entryResistance != null ? CUR + n(s.entryResistance) : '—')
-            + row('% gain from entry', s.pctGainFromEntry != null ? (s.pctGainFromEntry >= 0 ? '+' : '') + n(s.pctGainFromEntry) + '%' : '—')
+          levels = row('Breakout level', s.entryResistance != null ? CUR + n(s.entryResistance) : '—')
+            + row('% from breakout level', s.pctGainFromEntry != null ? (s.pctGainFromEntry >= 0 ? '+' : '') + n(s.pctGainFromEntry) + '%' : '—')
             + row('Days in extension', s.daysSinceBreakout != null ? n(s.daysSinceBreakout, 1) + ' days' : '—');
         } else if (s.signalType === 'setup') {
           levels = row('Setup type', (s.setupType || 'base').toUpperCase())
@@ -3894,7 +4121,7 @@
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Type</span>
                   <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
-                    ${controlPill('Actionable', 'type', 'Type1', p.type)}
+                    ${controlPill('Breakout', 'type', 'Type1', p.type)}
                     ${controlPill('Extension', 'type', 'Type3', p.type)}
                   </div>
                 </div>
@@ -3947,7 +4174,7 @@
                   <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
                     <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Avg return</div>
                     <div class="text-2xl font-bold ${returnColor(bt.summary.avgReturn)} tabular-nums leading-tight mt-0.5">${fmt(bt.summary.avgReturn, { sign: true, pct: true })}</div>
-                    <div class="text-[10px] text-gray-500 mt-0.5">assumes ${bt.summary.stopLossPct ?? 8}% stop-loss · median ${fmt(bt.summary.medianReturn, { sign: true, pct: true })}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5">exits ${bt.summary.stopLossPct ?? 8}% below the level · median ${fmt(bt.summary.medianReturn, { sign: true, pct: true })}</div>
                   </div>
                   <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
                     <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Return range</div>
@@ -4128,7 +4355,7 @@
                               ? item.signal.signalType === 'breakout'
                                 ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>'
                                 : item.signal.signalType === 'extension'
-                                ? (signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
+                                ? (signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to or below the pivot while the base structure still holds — a second look at the same level."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
                                 : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                               : '<span class="text-gray-500">—</span>'
                             }
@@ -4378,7 +4605,7 @@
             <td data-label="Ratio" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
             <td data-label="Type" class="px-3 py-2.5 whitespace-nowrap text-center text-gray-400 text-xs">
               ${s.breakoutType || '—'}
-              ${s.lowConfidence ? `<span class="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-900/50 text-amber-400 ring-1 ring-amber-700/40" title="Below the actionable confidence bar — surfaced for the volume surge, not in the Signals list">low conf</span>` : ''}
+              ${s.lowConfidence ? `<span class="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-900/50 text-amber-400 ring-1 ring-amber-700/40" title="Below the screener's confidence bar — surfaced for the volume surge, not in the Screener list">low conf</span>` : ''}
             </td>
             <td data-label="Scanned" class="px-3 py-2.5 whitespace-nowrap text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
           </tr>
@@ -4700,7 +4927,7 @@
           ? ((signal.currentPrice - signal.basePivot) / signal.basePivot) * 100
           : null;
         if (pctFromPivot != null && pctFromPivot > 5) {
-          return `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30" title="${tip} — broke out above the ${CUR}${this.safeNum(signal.basePivot, 2)} pivot and is now +${pctFromPivot.toFixed(1)}% beyond it: an EXTENSION, outside the 5% buy zone. Wait for a new base."><span class="badge-dot"></span>${g}${wk} · ext +${pctFromPivot.toFixed(0)}%</span>`;
+          return `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30" title="${tip} — broke out above the ${CUR}${this.safeNum(signal.basePivot, 2)} pivot and is now +${pctFromPivot.toFixed(1)}% beyond it: an EXTENSION, more than 5% past the pivot. A new base has to form."><span class="badge-dot"></span>${g}${wk} · ext +${pctFromPivot.toFixed(0)}%</span>`;
         }
         return `<span class="badge ${cls} ring-1" title="${tip}"><span class="badge-dot"></span>${g}${wk}${vt}</span>`;
       }
@@ -4715,22 +4942,22 @@
               ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
               : signal.isVcp
                 ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" title="Volatility Contraction Pattern: tight base (ATR<2.5%), volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>'
-                : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Actionable</span>')
+                : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>')
           : signal.signalType === 'extension'
             ? (signal.baseGrade && signal.baseGrade !== 'X'
                 ? this.signalCellHtml(signal)
                 : signal.isRetest
-                ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to/below entry while holding the breakout structure — the second-chance zone. Stop discipline unchanged."><span class="badge-dot"></span>Retest${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
+                ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to or below the pivot while the base structure still holds — a second look at the same level."><span class="badge-dot"></span>Retest${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`
                 : `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`)
             : signal.signalType === 'ep'
-            ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class repricing on huge volume; stop = event day low, wider risk"><span class="badge-dot"></span>⚡ EP</span>'
+            ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class repricing on huge volume; reference low = the event-day low"><span class="badge-dot"></span>⚡ EP</span>'
             : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>';
         const price = CUR + this.safeNum(signal.currentPrice, 2);
         const levels = signal.signalType === 'breakout'
           ? `<span class="text-gray-400" data-tip="Resistance — breakout level to clear.">R</span> <span class="text-red-400">${CUR}${this.safeNum(signal.resistance, 2)}</span> <span class="text-gray-600">·</span> <span class="text-gray-400" data-tip="Support — recent low, used to set stop loss.">S</span> <span class="text-green-400">${CUR}${this.safeNum(signal.support, 2)}</span>`
           : signal.signalType === 'extension'
             ? (signal.entryResistance != null
-                ? `<span class="text-gray-400" data-tip="Entry — the original breakout resistance level, when the fresh breakout fired.">entry</span> <span class="text-yellow-400">${CUR}${signal.entryResistance.toFixed(2)}</span>`
+                ? `<span class="text-gray-400" data-tip="Level — the resistance the breakout originally cleared.">level</span> <span class="text-yellow-400">${CUR}${signal.entryResistance.toFixed(2)}</span>`
                 : '<span class="text-gray-500">—</span>')
             : `<span class="text-gray-400" data-tip="20-day moving average — the setup pivots around this level.">MA20</span> <span class="text-blue-400">${CUR}${this.safeNum(signal.ma20, 2)}</span>`;
         const detail = signal.signalType === 'breakout'
@@ -4746,8 +4973,8 @@
             })()
           : signal.signalType === 'extension'
             ? (signal.pctGainFromEntry != null
-                ? `<span class="${signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'}">${signal.pctGainFromEntry >= 0 ? '+' : ''}${signal.pctGainFromEntry.toFixed(1)}%</span> <span class="text-gray-400">from entry</span>`
-                : '<span class="text-gray-400">below entry</span>')
+                ? `<span class="${signal.pctGainFromEntry >= 0 ? 'text-green-400' : 'text-red-400'}">${signal.pctGainFromEntry >= 0 ? '+' : ''}${signal.pctGainFromEntry.toFixed(1)}%</span> <span class="text-gray-400">from level</span>`
+                : '<span class="text-gray-400">below level</span>')
             : `<span class="text-gray-200 font-semibold" data-tip="${signal.setupType === 'handle' ? 'Handle — tight late-stage consolidation right at the pivot, just before the breakout.' : 'Base — broader flat consolidation zone forming below resistance.'}">${(signal.setupType || 'base').toUpperCase()}</span> <span class="text-gray-600">·</span> <span class="text-gray-400">${this.safeNum(signal.distanceFromMA20, 1)}% from MA20</span>`;
         const earnings = (() => {
           if (signal.earningsTone == null) {
@@ -4811,7 +5038,7 @@
                                 <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${signal.assetType === 'etf' ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700/40' : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'}">
                                   ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
                                 </span>
-                                ${signal.stoppedOut ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-red-500/15 text-red-400 ring-red-500/30" title="Price closed at/below the stop — stopped out">Stopped</span>' : signal.noEntry ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-gray-500/15 text-gray-300 ring-gray-500/30" title="Price never closed above the entry level — no trade">No entry</span>' : ''}
+                                ${signal.stoppedOut ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-red-500/15 text-red-400 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed">Failed</span>' : signal.noEntry ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-gray-500/15 text-gray-300 ring-gray-500/30" title="Price never closed above the pivot — no breakout to track">Below pivot</span>' : ''}
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
@@ -4858,12 +5085,12 @@
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
                 <div>
                   <div class="flex items-center gap-3 flex-wrap">
-                    <h1 class="text-2xl font-bold tracking-tight">Signals</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">Screener</h1>
                     ${this.marketHealthPill()}
                     ${this.fmpTogglePill()}
                     ${this.rulebookPill()}
                   </div>
-                  <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} after filters</p>
+                  <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} pass the current filters · screener output for research, not investment advice</p>
                 </div>
                 <div class="flex flex-col items-end gap-1 text-xs">
                   ${this.freshnessDot()}
@@ -4879,11 +5106,11 @@
                 const retestCount = validSignals.filter(s => s.isRetest).length;
                 const stoppedCount = this.signals.filter(s => s.stoppedOut).length; // all stopped, ignore conf slider
                 const stats = [
-                  { key: 'breakout',  label: 'Actionable', count: breakoutCount, accent: 'border-green-500',  glow: 'shadow-green-500/10',  text: 'text-green-400' },
+                  { key: 'breakout',  label: 'Breakouts',  count: breakoutCount, accent: 'border-green-500',  glow: 'shadow-green-500/10',  text: 'text-green-400' },
                   { key: 'retest',    label: 'Retest',     count: retestCount,   accent: 'border-teal-500',   glow: 'shadow-teal-500/10',   text: 'text-teal-300' },
                   { key: 'setup',     label: 'Handles',    count: setupCount,    accent: 'border-blue-500',   glow: 'shadow-blue-500/10',   text: 'text-blue-400' },
                   { key: 'extension', label: 'Extension',  count: extCount,      accent: 'border-yellow-500', glow: 'shadow-yellow-500/10', text: 'text-yellow-400' },
-                  { key: 'stopped',   label: 'Stopped',    count: stoppedCount,  accent: 'border-red-500',    glow: 'shadow-red-500/10',    text: 'text-red-400' },
+                  { key: 'stopped',   label: 'Failed',     count: stoppedCount,  accent: 'border-red-500',    glow: 'shadow-red-500/10',    text: 'text-red-400' },
                 ];
                 return `
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
@@ -4964,7 +5191,7 @@
                       { key: 'breakout',  label: 'Breakout',  color: 'bg-green-600',  shortcut: '1' },
                       { key: 'setup',     label: 'Setup',     color: 'bg-blue-600',   shortcut: '2' },
                       { key: 'extension', label: 'Extension', color: 'bg-yellow-600', shortcut: '3' },
-                      { key: 'stopped',   label: 'Stopped',   color: 'bg-red-600',    shortcut: '4' },
+                      { key: 'stopped',   label: 'Failed',    color: 'bg-red-600',    shortcut: '4' },
                     ].map(tab => `<button onclick="dashboard.setFilter('signalTypeFilter', '${tab.key}');"
                       title="Press ${tab.shortcut} to toggle"
                       class="px-2.5 py-1 rounded text-xs font-medium transition ${this.signalTypeFilter === tab.key ? tab.color + ' text-white' : 'text-gray-400 hover:text-white'}">
@@ -5029,7 +5256,7 @@
                       ${[['all', 'Any'], ['S', 'S'], ['A+', 'A+'], ['A', 'A']].map(([v, l]) => `<button onclick="dashboard.setFilter('gradeFilter', '${v}')" class="px-2 py-1 text-xs font-semibold transition ${this.gradeFilter === v ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white'}">${l}</button>`).join('')}
                     </div>
                     <!-- Where the base stands: live = power or confirmed (above pivot, in the buy zone) -->
-                    <div class="inline-flex items-center rounded ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" data-tip="Base status. Live = closed above the pivot on confirming volume (power or confirmed) and inside the 5% buy zone · Quiet = above the pivot on thin volume · Forming = not above the pivot yet · Extended = past the buy zone. Ungraded rows drop out when set.">
+                    <div class="inline-flex items-center rounded ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" data-tip="Base status. Live = closed above the pivot on confirming volume (power or confirmed) and within 5% of the pivot · Quiet = above the pivot on thin volume · Forming = not above the pivot yet · Extended = more than 5% past the pivot. Ungraded rows drop out when set.">
                       <span class="pl-2 pr-1.5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Status</span>
                       ${[['all', 'Any'], ['live', 'Live'], ['quiet', 'Quiet'], ['forming', 'Forming'], ['extended', 'Ext']].map(([v, l]) => `<button onclick="dashboard.setFilter('statusFilter', '${v}')" class="px-2 py-1 text-xs font-semibold transition ${this.statusFilter === v ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-white'}">${l}</button>`).join('')}
                     </div>
@@ -5100,7 +5327,7 @@
               ` : filtered.length === 0 ? `
                 <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
                   <div class="text-4xl mb-3 opacity-40">◎</div>
-                  <h3 class="text-lg font-semibold text-gray-200 mb-1">No signals match your filters</h3>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">Nothing passes the screen with these filters</h3>
                   <p class="text-sm text-gray-500 mb-5">
                     ${validSignals.length > 0
                       ? `${validSignals.length} signals were fetched but none pass the current filter set.`
@@ -5140,7 +5367,7 @@
                         </th>
                         <th style="min-width:90px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('price', event.shiftKey);">Price ${this.sortIndicator('price')}</th>
                         <th style="min-width:150px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                          <span data-tip="R = Resistance (breakout level). S = Support (recent low). Entry = original breakout resistance for extensions.">Levels</span>
+                          <span data-tip="R = Resistance (breakout level). S = Support (recent low). Level = original breakout resistance for extensions.">Levels</span>
                         </th>
                         <th style="min-width:170px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                           <span data-tip="Handle = tight late-stage consolidation before breakout. Base = broader flat consolidation zone. 'from MA20' = % distance from 20-day moving average.">Detail</span>
@@ -5164,11 +5391,11 @@
                 return `
                 <div class="mt-6">
                   <button onclick="dashboard._showTracking = !dashboard._showTracking; dashboard.render();" class="w-full flex items-center justify-between bg-gray-800/60 hover:bg-gray-800 ring-1 ring-gray-700/60 rounded-lg px-4 py-3 transition text-left">
-                    <span class="text-sm font-semibold text-gray-300">Tracking · ${tr.length} post-breakout extension${tr.length === 1 ? '' : 's'} past the entry window</span>
+                    <span class="text-sm font-semibold text-gray-300">Tracking · ${tr.length} post-breakout extension${tr.length === 1 ? '' : 's'} past the pivot window</span>
                     <svg class="text-gray-500 transition-transform ${this._showTracking ? 'rotate-180' : ''}" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
                   </button>
                   ${this._showTracking ? `
-                    <p class="mt-2 mb-3 text-xs text-gray-500">More than 5 days past their breakout — monitoring for holders, not entry candidates. This is where most stopped-out signals come from.</p>
+                    <p class="mt-2 mb-3 text-xs text-gray-500">More than 5 days past their breakout — no longer fresh screen hits, kept so you can see how the move held. Most failed breakouts end up here.</p>
                     <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="tracking-x">
                       <table class="w-full signals-responsive" style="min-width:1140px;">
                         <thead class="sticky-head">

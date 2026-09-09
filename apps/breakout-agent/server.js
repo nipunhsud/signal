@@ -156,7 +156,8 @@ app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async
 });
 
 // JSON body parser for everything else. Placed AFTER the raw-body webhook.
-app.use(express.json());
+// 8mb: the chart-share endpoint carries a PNG data URL in the JSON body.
+app.use(express.json({ limit: '8mb' }));
 
 // Find or create the local User row for the current Clerk session. Called by
 // billing endpoints and the paywall middleware to keep our DB in sync with the
@@ -400,36 +401,28 @@ const SECTOR_TAILWINDS = {
 };
 const sectorTailwind = (sector = '') =>
   Object.entries(SECTOR_TAILWINDS).find(([k]) => sector.includes(k))?.[1] || '';
-const capWord = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // One cohesive long-form tweet (Premium accounts allow up to 25k chars), built
 // as blank-line-separated sections. Returned as a single-element array so the
 // caller posts it as one tweet — no thread, no truncation.
 function composeEarningsTweets(asset, ta, sig) {
-  const emoji = ta.tone === 'bullish' ? '📈' : ta.tone === 'bearish' ? '📉' : '➖';
+  // Voice: .claude/skills/dataquant-voice/SKILL.md — sentences, not label pairs.
   const highlights = Array.isArray(ta.highlights) ? ta.highlights : [];
   const risks = Array.isArray(ta.riskFlags) ? ta.riskFlags : [];
   const tailwind = sectorTailwind(sig?.sector || '');
-  const hasGuidance = ta.guidanceDirection && ta.guidanceDirection !== 'none';
 
   const sections = [];
-  sections.push(
-    `${emoji} $${asset} Q${ta.quarter} ${ta.year} — ${capWord(ta.tone)} tone` +
-      (hasGuidance ? `, guidance ${ta.guidanceDirection}` : '') + '.',
-  );
+  const guideWord = ta.guidanceDirection === 'raised' ? 'guidance went up' : ta.guidanceDirection === 'lowered' ? 'guidance came down' : ta.guidanceDirection === 'maintained' ? 'guidance held' : 'no guidance was given';
+  sections.push(`$${asset} Q${ta.quarter} ${ta.year}. The call read ${ta.tone} and ${guideWord}.`);
   if (ta.summary) sections.push(ta.summary);
 
-  const meta = [];
-  if (hasGuidance) meta.push(`🔹 Guidance: ${capWord(ta.guidanceDirection)}`);
-  if (tailwind) meta.push(`🔹 Tailwinds: ${tailwind}`);
-  if (meta.length) sections.push(meta.join('\n'));
-
-  if (highlights.length) sections.push(['✅ Highlights', ...highlights.map((h) => `• ${h}`)].join('\n'));
-  if (risks.length) sections.push(['⚠️ Risks', ...risks.map((r) => `• ${r}`)].join('\n'));
+  if (tailwind) sections.push(`Sector backdrop: ${tailwind}.`);
+  if (highlights.length) sections.push(['What management said.', ...highlights].join('\n'));
+  if (risks.length) sections.push(['What to keep an eye on.', ...risks].join('\n'));
 
   // Exactly ONE cashtag per post (X API limit) — it's already in the header, so
   // the closing line must not repeat $ASSET.
-  sections.push(`Full breakdown & key levels → dataquant.ai 👇\nNot advice`);
+  sections.push(`The full read and the chart: dataquant.ai. Screen output for research, not advice.`);
 
   return [sections.join('\n\n')];
 }
@@ -615,29 +608,25 @@ function composeBreakoutTweet(asset, sig) {
   const cur = /\.(NS|BO)$/i.test(asset) ? '₹' : '$';
   const money = (v) => (v != null && Number.isFinite(Number(v)) ? cur + Number(v).toFixed(2) : null);
   const isExt = sig.breakoutType === 'Type3';
-  const tags = [];
-  if (sig.isVcp) tags.push('VCP');
-  if (sig.isBlueSky) tags.push('Blue Sky · 52w-high base');
-  if (sig.rsRating != null) tags.push(`RS ${sig.rsRating}`);
-  const conf = sig.confidence != null ? Math.round(Number(sig.confidence) * 100) : null;
   // Two-tweet thread: main post is link-free (X deprioritizes posts with
   // external links) and carries the one allowed cashtag; the reply holds the
   // /$TICKER deep link — legal there since the cashtag limit is per post —
   // whose OG scorecard unfurls the chart card.
+  // Voice: .claude/skills/dataquant-voice/SKILL.md — one fact, one number.
+  const weeks = sig.baseBars ? Math.round(sig.baseBars / 5) : null;
+  const pivot = money(sig.entryPrice ?? sig.basePivot);
+  const pct = sig.entryPrice > 0 && sig.currentPrice > 0 ? ((sig.currentPrice - sig.entryPrice) / sig.entryPrice) * 100 : null;
+  const baseBits = [sig.baseGrade && sig.baseGrade !== 'X' ? `grade ${sig.baseGrade}` : null, weeks ? `${weeks} weeks long` : null, sig.isVcp ? 'volatility contracted into the pivot' : null].filter(Boolean);
   const main = [
-    `$${asset.replace(/\.(NS|BO)$/i, '')} ${isExt ? 'breakout extension' : 'breakout'} 🚨`,
-    '',
-    [money(sig.entryPrice) && `Entry ${money(sig.entryPrice)}`, money(sig.stopLoss) && `Stop ${money(sig.stopLoss)}`, money(sig.currentPrice) && `Now ${money(sig.currentPrice)}`]
-      .filter(Boolean).join(' · '),
-    [conf != null && `Confidence ${conf}/100`, ...tags].filter(Boolean).join(' · '),
-    '',
-    'Systematic signal — not advice.',
+    `$${asset.replace(/\.(NS|BO)$/i, '')} ${isExt ? 'is holding past its pivot' : 'closed above its pivot'}${pivot ? `, ${pivot}` : ''}${pct != null && isExt ? `, now ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% past it` : ''}.`,
+    baseBits.length ? `Base ${baseBits.join(', ')}.` : null,
+    'Screen output for research, not advice.',
   ].filter((l) => l !== null).join('\n');
   // The ?s= version matters: X caches link cards BY THE TWEETED URL and won't
   // re-scrape a URL it has seen — an unversioned link can unfurl a stale card
   // forever. A fresh query per signal forces a fresh scrape.
   const ver = encodeURIComponent(String(sig.id || Date.now()).slice(-10));
-  const reply = `Chart, levels & the 2-year base X-ray → https://dataquant.ai/$${encodeURIComponent(asset)}?s=${ver}`;
+  const reply = `The chart and the 2-year base X-ray: https://dataquant.ai/$${encodeURIComponent(asset)}?s=${ver}`;
   return [main, reply];
 }
 
@@ -683,6 +672,25 @@ function sanitizeEditedTweets(raw) {
   if (over >= 0) return { error: `tweet ${over + 1} exceeds 280 characters (${tweets[over].length})` };
   return { tweets };
 }
+
+// Share the full chart from the dashboard: the browser renders the capture
+// (levels, base boxes, user-drawn lines, header band) and sends it as a PNG
+// data URL with the tweet text it composed in the product voice.
+app.post('/api/admin/tweet-chart', async (req, res) => {
+  if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
+  const asset = String(req.body?.asset || '').toUpperCase().trim();
+  if (!asset) return res.status(400).json({ error: 'asset required' });
+  const edited = sanitizeEditedTweets(req.body?.tweets);
+  if (!edited || edited.error) return res.status(400).json({ error: edited?.error || 'tweets required' });
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.png || ''));
+  if (!m) return res.status(400).json({ error: 'png must be a PNG data URL' });
+  const mediaPng = Buffer.from(m[1], 'base64');
+  if (mediaPng.length > 5 * 1024 * 1024) return res.status(413).json({ error: 'image over 5MB' });
+  const result = await postXThreadDetailed(edited.tweets, { mediaPng });
+  if (!result.ok) return res.status(502).json({ error: `X post failed: ${result.error}` });
+  console.log(`✓ Admin tweeted $${asset} chart (${edited.tweets.length} tweets)`);
+  res.json({ ok: true, tweets: edited.tweets });
+});
 
 app.post('/api/admin/tweet-earnings', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
@@ -1895,10 +1903,10 @@ async function computeMarketHealth(region) {
     const score = trendScore + distributionScore + breadthScore;
     const regime = score >= 70 ? 'risk-on' : score >= 45 ? 'caution' : 'risk-off';
     const advice = regime === 'risk-on'
-      ? 'Tape supports breakouts — normal position sizing.'
+      ? 'Breakouts have been holding. A normal week for the screen.'
       : regime === 'caution'
-        ? 'Mixed tape — take only the best setups, size down, honor stops fast.'
-        : 'Defensive — avoid new entries; breakouts fail in this tape. Protect open positions.';
+        ? 'Mixed. Fewer breakouts hold in this tape, so the screen leans on S and A+ bases.'
+        : 'Weak. Most breakouts fail in this tape. Mostly a week for watching bases form.';
 
     const data = {
       region,
@@ -2031,32 +2039,32 @@ async function oncePerDay(flagKey, date, fn) {
   }
 }
 
-async function postDailyMarketHealth() {
+async function postWeeklyMarketHealth() {
+  // Voice: .claude/skills/dataquant-voice/SKILL.md. The card carries the
+  // numbers; the text is one reading with two of them. The reply links to the
+  // methodology page, not /pulse, so the health card does not unfurl twice.
   const mh = await computeMarketHealth('US');
   const c = mh.components || {};
-  const label = mh.regime === 'risk-on' ? 'RISK-ON ✅' : mh.regime === 'caution' ? 'CAUTION ⚠️' : 'RISK-OFF 🛑';
+  const word = mh.regime === 'risk-on' ? 'supportive' : mh.regime === 'caution' ? 'caution' : 'weak';
   const dd = c.distribution?.days;
-  const ddPer = c.distribution?.perBenchmark ? Object.entries(c.distribution.perBenchmark).map(([b, d]) => `${b} ${d}`).join(' · ') : '';
   const br = c.breadth?.pctPositive1m;
-  const lines = [
-    `Market health: ${mh.score}/100 — ${label}`,
-    '',
-    `Trend ${c.trend?.score ?? '—'}/50${c.trend?.aboveMA50 === false ? ' (a benchmark below its 50-day)' : ''}`,
-    dd != null ? `Distribution days: ${dd} in 25 sessions${ddPer ? ` (${ddPer})` : ''}` : null,
-    br != null ? `Breadth: ${br}% of ${(c.breadth?.universe || 0).toLocaleString('en-US')} stocks positive over 1m${c.breadth?.pctPositive1w != null ? ` · ${c.breadth.pctPositive1w}% 1w` : ''}` : null,
-    '',
-    mh.advice,
-  ].filter((l) => l !== null);
-  const reply = `Methodology + live gauge (free, no login) → https://dataquant.ai/pulse?d=${mh.asOf}`;
+  const num = (n) => ['zero','one','two','three','four','five','six','seven','eight','nine','ten'][n] ?? String(n);
+  const ddClause = dd != null ? `${num(dd).replace(/^./, (ch) => ch.toUpperCase())} distribution day${dd === 1 ? '' : 's'} in the last 25 sessions` : null;
+  const brClause = br != null
+    ? (br >= 60 ? 'most of the market is up on the month' : br >= 50 ? 'about half the market is up on the month' : br >= 40 ? 'under half the market is up on the month' : 'most of the market is down on the month')
+    : null;
+  const reading = [ddClause, brClause].filter(Boolean).join(' and ');
+  const text = `Market health ${mh.score} this week, ${word}.${reading ? ` ${reading}.` : ''}`;
+  const reply = `How the score is built: https://dataquant.ai/learn/market-health-gauge`;
   let mediaPng = null;
-  try { mediaPng = renderMarketHealthPng(mh); } catch (e) { console.warn('[daily-health] card render failed:', e.message); }
-  const r = await postXThreadDetailed([lines.join('\n'), reply], mediaPng ? { mediaPng } : undefined);
-  console.log(r.ok ? `✓ Daily market-health posted (${mh.score} ${mh.regime})` : `⊘ Daily market-health post failed: ${r.error}`);
+  try { mediaPng = renderMarketHealthPng(mh); } catch (e) { console.warn('[weekly-health] card render failed:', e.message); }
+  const r = await postXThreadDetailed([text, reply], mediaPng ? { mediaPng } : undefined);
+  console.log(r.ok ? `✓ Weekly market-health posted (${mh.score} ${mh.regime})` : `⊘ Weekly market-health post failed: ${r.error}`);
 }
 
 async function postWeeklyReceipts() {
   // Honest weekly ledger: every fresh US breakout (Type1/1b) from the last 7
-  // days, judged by its latest row — above entry, stopped, or underwater.
+  // days, judged by its latest row — past the pivot, fell through the fail level, or below.
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const rows = await db.breakoutSignal.findMany({
     where: { breakoutType: { in: ['Type1', 'Type1b'] }, createdAt: { gte: since } },
@@ -2066,29 +2074,31 @@ async function postWeeklyReceipts() {
   });
   const us = rows.filter((r) => !/\.(NS|BO)$/i.test(r.asset) && r.entryPrice > 0 && r.currentPrice > 0);
   if (us.length < 3) { console.log(`⊘ Weekly receipts: only ${us.length} signals — skipping`); return; }
-  const graded = us.map((r) => ({ ...r, pct: ((r.currentPrice - r.entryPrice) / r.entryPrice) * 100, stopped: r.stopLoss != null && r.currentPrice <= r.stopLoss }));
+  const graded = us.map((r) => {
+    const pct = ((r.currentPrice - r.entryPrice) / r.entryPrice) * 100;
+    const failPct = r.stopLoss != null ? ((r.stopLoss - r.entryPrice) / r.entryPrice) * 100 : -7;
+    return { ...r, pct, failPct, stopped: r.stopLoss != null && r.currentPrice <= r.stopLoss };
+  });
   const winners = graded.filter((g) => !g.stopped && g.pct > 0).sort((a, b) => b.pct - a.pct);
   const stopped = graded.filter((g) => g.stopped);
-  const avg = graded.reduce((s, g) => s + Math.max(-8, g.pct), 0) / graded.length;
+  const avg = graded.reduce((s, g) => s + Math.max(g.failPct, g.pct), 0) / graded.length;
   const fmtPct = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+  const worst = [...graded].sort((a, b) => a.pct - b.pct)[0];
   const main = [
-    `This week's breakout signals — all of them, wins and losses:`,
-    '',
-    `${graded.length} fresh breakouts · ${winners.length} above entry · ${stopped.length} stopped (-8% cap)`,
-    `Average: ${fmtPct(avg)} (equal weight, stop-capped)`,
-    winners[0] ? `Best: $${winners[0].asset} ${fmtPct(winners[0].pct)}` : null,
-    stopped[0] ? `Worst: stopped out — that's the discipline working` : null,
-    '',
-    `We publish every signal, not a highlight reel. Not advice.`,
+    `Last week the screen produced ${graded.length} breakouts. ${winners.length} are still past their pivot and ${stopped.length} fell through the fail level.`,
+    `Average ${fmtPct(avg)}, equal weight, exits at the fail level.`,
+    winners[0] ? `Best was ${winners[0].asset} at ${fmtPct(winners[0].pct)}.` : null,
+    worst && worst.pct < 0 ? `Worst was ${worst.asset} at ${fmtPct(Math.max(worst.failPct, worst.pct))}.` : null,
+    `Every one is counted. Screen output for research, not advice.`,
   ].filter((l) => l !== null).join('\n');
-  const reply = `Live signals, market health & methodology → https://dataquant.ai/pulse?w=${new Date().toISOString().slice(0, 10)}`;
+  const reply = `The full list and the market pulse: https://dataquant.ai/pulse?w=${new Date().toISOString().slice(0, 10)}`;
   const r = await postXThreadDetailed([main, reply]);
   console.log(r.ok ? `✓ Weekly receipts posted (${graded.length} signals, avg ${fmtPct(avg)})` : `⊘ Weekly receipts failed: ${r.error}`);
 }
 
 setInterval(() => {
   const t = etParts();
-  if (t.hhmm === '09:00') oncePerDay('daily_health_post', t.date, postDailyMarketHealth);
+  if (t.day === 'Mon' && t.hhmm === '08:30') oncePerDay('weekly_health_post', t.date, postWeeklyMarketHealth);
   if (t.day === 'Sat' && t.hhmm === '11:00') oncePerDay('weekly_receipts_post', t.date, postWeeklyReceipts);
 }, 60 * 1000);
 
@@ -2165,6 +2175,79 @@ app.delete('/mcp', (req, res) => res.status(405).end());
 // breakout outcome. Computed on demand (pure function of the candles) and
 // cached; nothing is persisted.
 const basesCache = new Map(); // symbol -> { payload, expiresAt }
+// Ticker profile: what the screen knows about a name that has NO signal row —
+// price/volume context, returns, 52-week position, MA stack, RS percentile,
+// the newest base, and the last time it was on the screen. Powers the drawer
+// for any-ticker searches. Bars come from the same 2y daily cache as /api/candles.
+const profileCache = new Map();
+const PROFILE_TTL_MS = 15 * 60 * 1000;
+let rsUniverseCache = { at: 0, groups: null };
+async function rsRatingFor(row) {
+  if (!row) return null;
+  if (Date.now() - rsUniverseCache.at > 30 * 60 * 1000) {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const universe = await db.assetReturn.findMany({ where: { updatedAt: { gte: dayAgo } }, select: { region: true, assetType: true, rsScore: true } });
+    const groups = new Map();
+    for (const r of universe) {
+      const k = `${r.region}:${r.assetType}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r.rsScore);
+    }
+    for (const list of groups.values()) list.sort((a, b) => a - b);
+    rsUniverseCache = { at: Date.now(), groups };
+  }
+  const g = rsUniverseCache.groups.get(`${row.region}:${row.assetType}`);
+  if (!g || g.length < 20) return null;
+  let lo = 0, hi = g.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (g[mid] < row.rsScore) lo = mid + 1; else hi = mid; }
+  return Math.min(99, Math.max(1, Math.round((lo / g.length) * 99)));
+}
+app.get('/api/profile/:symbol', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!symbol) return res.status(400).json({ error: 'symbol required' });
+  const cached = profileCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.payload);
+  try {
+    const bars = await getDailyCandles(symbol);
+    if (!bars || bars.length < 5) return res.status(404).json({ error: 'no price history' });
+    const n = bars.length;
+    const last = bars[n - 1], prev = bars[n - 2];
+    const closeAt = (back) => (n - 1 - back >= 0 ? bars[n - 1 - back].close : null);
+    const pct = (a, b) => (a != null && b != null && b > 0 ? ((a - b) / b) * 100 : null);
+    const ma = (len) => (n >= len ? bars.slice(n - len).reduce((a, b) => a + b.close, 0) / len : null);
+    const yr = bars.slice(Math.max(0, n - 252));
+    const hi52 = Math.max(...yr.map((b) => b.high)), lo52 = Math.min(...yr.map((b) => b.low));
+    const hiIdx = yr.reduce((best, b, i) => (b.high > yr[best].high ? i : best), 0);
+    const vol20 = n >= 21 ? bars.slice(n - 21, n - 1).reduce((a, b) => a + (b.volume || 0), 0) / 20 : null;
+    const ma20 = ma(20), ma50 = ma(50), ma200 = ma(200);
+    const bases = detectBases(bars);
+    const newest = bases.length ? bases[bases.length - 1] : null;
+    const ret = await db.assetReturn.findUnique({ where: { asset: symbol } });
+    const lastSignal = await db.breakoutSignal.findFirst({
+      where: { asset: symbol },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, breakoutType: true, baseGrade: true, entryPrice: true, stopLoss: true, currentPrice: true, sector: true, industry: true, signalDate: true },
+    });
+    const payload = {
+      symbol,
+      asOf: last.time,
+      price: { close: last.close, changePct: pct(last.close, prev?.close), volume: last.volume || 0, avgVolume20: vol20, volumeRatio: vol20 ? (last.volume || 0) / vol20 : null },
+      returns: { w1: pct(last.close, closeAt(5)), m1: pct(last.close, closeAt(21)), m3: pct(last.close, closeAt(63)) },
+      range52: { high: hi52, low: lo52, highDate: yr[hiIdx]?.time || null, pctFromHigh: pct(last.close, hi52), pctAboveLow: pct(last.close, lo52) },
+      mas: { ma20, ma50, ma200, above20: ma20 != null ? last.close > ma20 : null, above50: ma50 != null ? last.close > ma50 : null, above200: ma200 != null ? last.close > ma200 : null, stack: ma50 != null && ma200 != null ? ma50 > ma200 : null },
+      rs: ret ? { rating: await rsRatingFor(ret), score: ret.rsScore, sector: ret.sector, updatedAt: ret.updatedAt } : null,
+      base: newest ? { status: newest.status, weeks: newest.weeks, depthPct: newest.depthPct, pivot: newest.pivot, low: newest.low, start: newest.start, end: newest.end, count: bases.length } : { count: 0 },
+      lastSignal,
+      liquidityOk: vol20 != null ? vol20 >= 100000 : null,
+    };
+    profileCache.set(symbol, { payload, expiresAt: Date.now() + PROFILE_TTL_MS });
+    res.json(payload);
+  } catch (err) {
+    console.error(`[/api/profile] ${symbol}: ${err.message}`);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/api/bases/:symbol', async (req, res) => {
   const { symbol } = req.params;
   const cached = basesCache.get(symbol);

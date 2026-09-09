@@ -35,7 +35,7 @@ export function cardFields(s) {
   // "Confidence 1/100" on real cards.)
   const confRaw = s.confidence != null ? Number(s.confidence) : null;
   const conf = confRaw != null ? Math.round(confRaw <= 1 ? confRaw * 100 : confRaw) : null;
-  const type = s.breakoutType === 'Type3' ? 'Extension' : 'Actionable breakout';
+  const type = s.breakoutType === 'Type3' ? 'Extension' : 'Breakout';
   // The scanner defaults missing EPS data to 0 — on a card that reads as a
   // bullish "+0%", so treat 0 as unknown (true 0.0% growth is vanishingly rare).
   const epsG = (() => { const v = num(s.epsGrowthPct); return v === 0 ? null : v; })();

@@ -111,7 +111,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => dashboard.openPalette());
   await page.fill('#sf-palette-input', 'open ');
   const txt = await page.locator('#sf-palette-results').innerText();
-  check(['Signals', 'Winners', 'Beat & Raise', 'Unusual Volume', 'Sectors', 'Shortlist', 'Backtest'].every((l) => txt.includes('Open ' + l)), 'palette lists all 7 views');
+  check(['Screener', 'Winners', 'Beat & Raise', 'Unusual Volume', 'Sectors', 'Shortlist', 'Backtest'].every((l) => txt.includes('Open ' + l)), 'palette lists all 7 views');
   await page.keyboard.press('Escape');
 
   // Grade sort + filter (Signals view)
@@ -157,6 +157,22 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     return a.left >= t.left && a.right <= t.right && more.right <= innerWidth && document.documentElement.scrollWidth === innerWidth;
   });
   check(fit, 'active tab visible, ⋯ on screen, no horizontal page scroll');
+
+  // Any-ticker drawer: a name with no signal row shows the profile, not dashes
+  await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.openAsset('OPEN'); }); await settle(page, 600);
+  const prof = await page.locator('#profile-body').innerText().catch(() => '');
+  check(prof.includes('Why it is not on the screen') && prof.includes('200-day'), 'no-signal drawer renders the profile and the unmet rules');
+  const tiles = await page.locator('#profile-tiles').innerText().catch(() => '');
+  check(/52-wk high/i.test(tiles) && tiles.includes('$3.07') && !tiles.includes('undefined'), 'no-signal header tiles carry price context');
+  check(!(await page.locator('#drawer').innerText()).includes('Invalid Date'), 'no Invalid Date in the no-signal drawer');
+
+  // Full chart: drawing tools and Share to X are in the toolbar
+  await page.evaluate(() => dashboard.openChartView('NVDA')); await settle(page, 600);
+  const bar = await page.locator('#app').innerText();
+  check(['Trendline', 'Ray', 'Level', 'Clear', 'Share to X'].every((l) => bar.includes(l)), 'chart toolbar has drawing tools and Share to X');
+  const share = await page.evaluate(() => dashboard._chartShareText());
+  check(share[0].startsWith('$NVDA, daily.') && share[0].includes('Grade A base') && share[1].includes('dataquant.ai/$nvda'), `share text composes in the product voice (${share[0]})`);
+  await page.evaluate(() => dashboard.closeDrawer());
 
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await page.close();

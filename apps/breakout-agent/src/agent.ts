@@ -913,7 +913,7 @@ export class BreakoutAgent {
               asset,
               assetType: mode === "etfs" ? "etf" : "stock",
               confidence: epAlert ? 0.85 : 0.75,
-              agentDecision: `⚡ Episodic Pivot: +${dayGainPct.toFixed(1)}% on ${volumeRatio.toFixed(1)}x avg volume — catalyst repricing. Entry ${data.close.toFixed(2)}, stop = day low ${data.low.toFixed(2)} (${(((data.low - data.close) / data.close) * 100).toFixed(1)}%). Catalyst class: no trend requirement, wider risk, size accordingly.`,
+              agentDecision: `Episodic pivot: up ${dayGainPct.toFixed(1)}% on ${volumeRatio.toFixed(1)}x average volume, a catalyst repricing. Closed at ${data.close.toFixed(2)}; the event-day low is ${data.low.toFixed(2)} (${Math.abs(((data.low - data.close) / data.close) * 100).toFixed(1)}% below). No trend requirement for this class, and these move a lot both ways.`,
               shouldAlert: epAlert,
               resistance: breakoutAnalysis.resistance,
               support: breakoutAnalysis.support,
@@ -1089,34 +1089,29 @@ export class BreakoutAgent {
       );
     }
 
-    // Get asset type and breakout type from database record
-    const assetTypeIndicator =
-      latestRecord.assetType === "etf" ? "📊 ETF" : "📈 STOCK";
-    const etfInfo =
-      latestRecord.assetType === "etf" && latestRecord.expenseRatio
-        ? `\nExpense Ratio: ${latestRecord.expenseRatio}%`
-        : "";
-
-    const breakoutLabel = latestRecord.breakoutType === "Type1" ? (latestRecord.isVcp ? "Type1 VCP Breakout" : "Fresh Breakout") : latestRecord.breakoutType === "Type1b" ? "Weak-Vol Breakout" : latestRecord.breakoutType === "Type3" ? "Extension Re-test" : latestRecord.breakoutType === "EP" ? "⚡ Episodic Pivot (catalyst)" : "Base Breakout";
-    // Subject leads with the base grade + volume character + base length —
-    // the labels that replaced the type/volume gates. Cohort letter stays as
-    // fallback for rows without a grade (EPs, pre-migration re-alerts).
+    // Voice: .claude/skills/dataquant-voice/SKILL.md — report what the screen
+    // saw, no recommendation. Subject is the fact; body is levels + why.
     const rec = latestRecord as any;
-    const grade = rec.baseGrade
-      ? `[${rec.baseGrade}${rec.baseBars ? ` · ${Math.round(rec.baseBars / 5)}wk` : ''}${rec.volumeTag ? ` · ${rec.volumeTag}` : ''}] `
-      : rec.cohort ? `[${rec.cohort}] ` : '';
-    const subject = `${grade}${(latestRecord.volumeRatio ?? 0) >= 4 ? '🔥 ' : ''}🚀 ${breakoutLabel}: ${result.asset} [${assetTypeIndicator}]`;
+    const isExt = latestRecord.breakoutType === "Type3";
+    const isEp = latestRecord.breakoutType === "EP";
+    const weeks = rec.baseBars ? Math.round(rec.baseBars / 5) : null;
+    const baseBits = [
+      rec.baseGrade ? `grade ${rec.baseGrade}` : null,
+      weeks ? `${weeks}-week base` : null,
+    ].filter(Boolean);
+    const what = isEp
+      ? "repriced on a catalyst"
+      : isExt
+        ? "is holding past its pivot"
+        : "closed above its pivot";
+    const subject = `${result.asset} ${what}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
-    // Trade setup for Type 1 & Type 3 — read frozen entry/stop that were
-    // snapshotted at the moment breakoutType first flipped from unknown.
-    const entryPriceVal = latestRecord.entryPrice ?? result.resistance;
-    const stopLossVal = latestRecord.stopLoss ?? entryPriceVal * 0.93;
-    const buyPoint = entryPriceVal > 0 ? entryPriceVal.toFixed(2) : "N/A";
-    const stopLoss = stopLossVal > 0 ? stopLossVal.toFixed(2) : "N/A";
-    const riskReward = entryPriceVal > 0 && stopLossVal > 0
-      ? ((result.currentPrice - stopLossVal) / (entryPriceVal - stopLossVal)).toFixed(2)
-      : "N/A";
+    // Levels: the frozen pivot and its fail level (7% below), snapshotted when
+    // the close first cleared it. Never the rolling Donchian value.
+    const pivotVal = latestRecord.entryPrice ?? result.resistance;
+    const failVal = latestRecord.stopLoss ?? pivotVal * 0.93;
+    const pctPast = pivotVal > 0 ? ((result.currentPrice - pivotVal) / pivotVal) * 100 : null;
 
     // Pull cached earnings transcript analysis (if any) for stock signals
     let transcriptSection = "";
@@ -1128,13 +1123,19 @@ export class BreakoutAgent {
       if (ta) {
         const risks = (ta.riskFlags as string[]) || [];
         const highlights = (ta.highlights as string[]) || [];
+        const toneWord = ta.tone === "bullish" ? "bullish" : ta.tone === "bearish" ? "bearish" : "neutral";
+        const guideWord =
+          ta.guidanceDirection === "raised" ? "guidance went up"
+          : ta.guidanceDirection === "lowered" ? "guidance came down"
+          : ta.guidanceDirection === "maintained" ? "guidance held"
+          : "no guidance given";
         transcriptSection = `
-═══ EARNINGS CALL (Q${ta.quarter} ${ta.year}) ═══
-Tone: ${ta.tone} (${ta.toneScore.toFixed(2)}) | Guidance: ${ta.guidanceDirection}
+Earnings call, Q${ta.quarter} ${ta.year}
+The call read ${toneWord} (${ta.toneScore >= 0 ? "+" : ""}${ta.toneScore.toFixed(2)}) and ${guideWord}.
 ${ta.summary}
-${highlights.length ? "+ " + highlights.join(" | ") : ""}
-${risks.length ? "⚠ " + risks.join(" | ") : ""}
-`;
+${highlights.length ? highlights.map((h) => "  + " + h).join("\n") : ""}
+${risks.length ? risks.map((r) => "  - " + r).join("\n") : ""}
+`.replace(/\n{3,}/g, "\n\n");
       }
     }
 
@@ -1159,34 +1160,43 @@ ${risks.length ? "⚠ " + risks.join(" | ") : ""}
       });
       if (review) {
         aiReviewSection = `
-═══ AI REVIEW (${review.rating}/10) ═══
-Strength: ${review.strength}
-Watch for: ${review.watchFor}
+Second read (${review.rating}/10)
+${review.strength}
+Worth watching: ${review.watchFor}
 `;
       }
     }
 
-    const body = `
-Asset: ${result.asset} ${assetTypeIndicator}
-Type: ${breakoutLabel}
-Current Price: $${result.currentPrice}
-Confidence: ${(result.confidence * 100).toFixed(0)}%${etfInfo}
+    const fmt = (v: number) => "$" + v.toFixed(2);
+    const pad = (k: string, v: string) => `${k.padEnd(12)}${v}`;
+    const baseLine = [
+      rec.baseGrade ? `grade ${rec.baseGrade}` : null,
+      weeks ? `${weeks} weeks` : null,
+      rec.baseDepthPct ? `${Number(rec.baseDepthPct).toFixed(0)}% deep` : null,
+      latestRecord.volumeRatio ? `volume ${latestRecord.volumeRatio.toFixed(1)}x` : null,
+    ].filter(Boolean).join(" · ");
+    const levels = [
+      pad("Pivot", pivotVal > 0 ? fmt(pivotVal) : "n/a"),
+      pad("Close", fmt(result.currentPrice) + (pctPast != null ? `  (${pctPast >= 0 ? "+" : ""}${pctPast.toFixed(1)}% vs the pivot)` : "")),
+      pad("Fail level", failVal > 0 ? fmt(failVal) + "  (7% below the pivot)" : "n/a"),
+      baseLine ? pad("Base", baseLine) : null,
+      pad("Sector", `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
+      pad("Confidence", `${(result.confidence * 100).toFixed(0)}%`),
+      latestRecord.assetType === "etf" && latestRecord.expenseRatio ? pad("Expense", `${latestRecord.expenseRatio}%`) : null,
+    ].filter(Boolean).join("\n");
 
-═══ TRADE SETUP ═══
-Buy Point (Entry): $${buyPoint}
-Stop Loss: $${stopLoss}
-Support: $${result.support.toFixed(2)}
-Risk/Reward: ${riskReward}
+    const body = `${result.asset} ${what}.
 
-═══ ANALYSIS ═══
-Resistance: $${result.resistance.toFixed(2)}
-Reasoning: ${result.reasoning}
+${levels}
+
+Why the screen flagged it
+${result.reasoning}
 ${aiReviewSection}${transcriptSection}
-TradingView: ${tradingViewUrl}
+Chart   ${tradingViewUrl}
+Screen  ${dqLink(result.asset)}
 
-Source: Signal Forge - Breakout Agent
-Time: ${result.timestamp.toISOString()}
-    `;
+Screen output for research, not advice.
+`;
 
     await sendEmail(subject, body);
 
@@ -1203,20 +1213,17 @@ Time: ${result.timestamp.toISOString()}
     console.log(`✓ Alert sent: ${result.asset} @ $${result.currentPrice}`);
   }
 
-  // ── X use case 1: automated signal teasers ────────────────────────────────
-  // A few times a day, post the top 1-2 fresh high-confidence breakouts as
-  // teasers: reveal the cross price + AI earnings tone/guidance (organic hook),
-  // withhold the stop/R:R (the paid product). Runs on the shard-0 tier only
-  // (gated in index.ts), reads the shared DB, so it covers every tier's signals.
-  // Pilot bar: confidence ≥ 95%, or ≥ 85% with raised guidance.
+  // ── X use case 1: the daily tease ─────────────────────────────────────────
+  // Once a day after the close: ONE graded fresh breakout, one line. Voice in
+  // .claude/skills/dataquant-voice/SKILL.md. Extensions never tease (they are
+  // not what the screen is for); ungraded rows never tease. Runs on the
+  // shard-0 tier only (gated in index.ts), reads the shared DB.
   async postXSignalTeasers(): Promise<void> {
     const now = new Date();
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0); // container TZ is America/New_York
-    const maxPerDay = parseInt(process.env.X_TEASER_MAX || "2");
+    const maxPerDay = parseInt(process.env.X_TEASER_MAX || "1");
 
-    // Tickers already teased today — don't repeat, even though newer scan rows
-    // for the same asset carry xPostedAt = null.
     const postedToday = await db.breakoutSignal.findMany({
       where: { xPostedAt: { gte: startOfToday } },
       distinct: ["asset"],
@@ -1224,52 +1231,44 @@ Time: ${result.timestamp.toISOString()}
     });
     const postedSet = new Set(postedToday.map((r) => r.asset));
 
-    // Latest alerted row per asset that fired today, best confidence first.
     const candidates = await db.breakoutSignal.findMany({
       where: { lastAlertAt: { gte: startOfToday } },
       orderBy: { createdAt: "desc" },
       distinct: ["asset"],
     });
 
+    const gradeRank: Record<string, number> = { S: 3, "A+": 2, A: 1 };
     const qualifying = candidates
-      .filter(
-        (s) =>
+      .filter((s) => {
+        const r = s as any;
+        return (
           !postedSet.has(s.asset) &&
           regionOf(s.asset) === "US" && // X audience is US — never tease NSE/BSE names
-          (s.confidence >= 0.95 ||
-            (s.confidence >= 0.85 && s.earningsGuidance === "raised")),
-      )
-      .sort((a, b) => b.confidence - a.confidence)
+          ["Type1", "Type1b"].includes(s.breakoutType) &&
+          gradeRank[r.baseGrade] != null &&
+          s.entryPrice != null
+        );
+      })
+      .sort((a, b) => (gradeRank[(b as any).baseGrade] - gradeRank[(a as any).baseGrade]) || b.confidence - a.confidence)
       .slice(0, maxPerDay);
 
     if (qualifying.length === 0) {
-      console.log("⊘ X teasers: no qualifying signals this window");
+      console.log("⊘ X tease: no graded fresh breakout today");
       return;
     }
 
-    const tweets = qualifying.map((s) => {
-      const cross = s.entryPrice ?? s.resistance;
-      const setup = s.breakoutType === "Type3" ? "Extension" : "Actionable";
-      const earnings =
-        s.earningsTone && s.earningsToneScore != null
-          ? `AI Earnings — Tone: ${capitalize(s.earningsTone)} (${fmtScore(s.earningsToneScore)})` +
-            (s.earningsGuidance && s.earningsGuidance !== "none"
-              ? ` · Guidance: ${capitalize(s.earningsGuidance)}`
-              : "") +
-            "\n"
-          : "";
-      // No link in the lead — it moves to the final CTA reply below.
-      return `🚀 Breakout: $${s.asset} crossed $${cross.toFixed(2)} · ${setup}\n` + earnings.trimEnd();
-    });
-
-    const posted = await postXThread([...tweets, ctaReply()]);
-    if (posted) {
-      const assets = qualifying.map((s) => s.asset);
-      await db.breakoutSignal.updateMany({
-        where: { asset: { in: assets } },
-        data: { xPostedAt: now },
-      });
-      console.log(`✓ X teasers posted (${assets.length}): ${assets.join(", ")}`);
+    for (const s of qualifying) {
+      const r = s as any;
+      const weeks = r.baseBars ? Math.round(r.baseBars / 5) : null;
+      const lead =
+        `$${s.asset} closed above its pivot today, $${(s.entryPrice as number).toFixed(2)}. ` +
+        `Grade ${r.baseGrade} base${weeks ? `, ${weeks} weeks long` : ""}.`;
+      const reply = `Why it graded ${r.baseGrade}, and the rest of today's screen: ${dqLink(s.asset)}`;
+      const posted = await postXThread([lead, reply]);
+      if (posted) {
+        await db.breakoutSignal.updateMany({ where: { asset: s.asset }, data: { xPostedAt: now } });
+        console.log(`✓ X tease posted: ${s.asset} (grade ${r.baseGrade})`);
+      }
     }
   }
 
@@ -1298,22 +1297,17 @@ Time: ${result.timestamp.toISOString()}
     }
 
     const lead =
-      `📊 DataQuant performance audit — trailing 30 days\n` +
-      `Signals: ${s.totalSignals} · Win rate: ${s.winRate.toFixed(0)}% · Avg/trade: ${fmtPct(s.avgReturn)} (8% stop)\n` +
-      `Median: ${fmtPct(s.medianReturn)}\n` +
-      `We publish wins AND losses. Not advice`;
+      `Thirty days of the screen: ${s.totalSignals} breakouts, ` +
+      `${s.winRate.toFixed(0)}% were past their pivot twenty days later, ` +
+      `average ${fmtPct(s.avgReturn)} with exits at the fail level. ` +
+      `Median ${fmtPct(s.medianReturn)}.`;
 
     const tierLines = (data.byTier || [])
       .filter((t: any) => t.count > 0)
-      .map(
-        (t: any) =>
-          `${t.label}: ${t.count} signals · ${t.winRate.toFixed(0)}% win · ${fmtPct(t.avgReturn)} avg`,
-      );
+      .map((t: any) => `${t.label}: ${t.count}, ${t.winRate.toFixed(0)}% past the pivot, ${fmtPct(t.avgReturn)} average.`);
 
     const thread = [lead];
-    if (tierLines.length) {
-      thread.push(...chunkLines(["By confidence tier:", ...tierLines], 270));
-    }
+    if (tierLines.length) thread.push(...chunkLines(["By confidence tier.", ...tierLines], 270));
     thread.push(ctaReply());
     await postXThread(thread);
   }
@@ -1355,33 +1349,22 @@ Time: ${result.timestamp.toISOString()}
 
       const highlights = (ta.highlights as string[]) || [];
       const risks = (ta.riskFlags as string[]) || [];
-      const guidance =
-        ta.guidanceDirection && ta.guidanceDirection !== "none"
-          ? ` · Guidance: ${capitalize(ta.guidanceDirection)}`
-          : "";
-
-      // Reveal the breakout too (this is the top pick): cross price + volume
-      // confirmation for Type1, or extension for Type3. Stop/R:R still withheld.
+      // The breakout in one clause, the call in one sentence. No label pairs.
       const cross = (c.entryPrice ?? c.resistance).toFixed(2);
       const brk =
         c.breakoutType === "Type3"
-          ? `🚀 $${ta.asset} extension — holding above $${cross}`
-          : `🚀 $${ta.asset} broke out $${cross} on strong volume`;
-      const lead =
-        `${brk}\n` +
-        `📞 Q${ta.quarter} ${ta.year} earnings — Tone: ${capitalize(ta.tone)} (${fmtScore(ta.toneScore)})${guidance}`;
+          ? `$${ta.asset} is holding past its $${cross} pivot.`
+          : `$${ta.asset} closed above its $${cross} pivot.`;
+      const guideWord =
+        ta.guidanceDirection === "raised" ? "guidance went up"
+        : ta.guidanceDirection === "lowered" ? "guidance came down"
+        : ta.guidanceDirection === "maintained" ? "guidance held"
+        : "no guidance was given";
+      const lead = `${brk} The Q${ta.quarter} ${ta.year} call read ${ta.tone} and ${guideWord}.`;
 
       const thread = [lead, truncate(ta.summary, 270)];
-      if (highlights.length) {
-        thread.push(
-          ...chunkLines(["✅ Highlights", ...highlights.map((h) => `• ${h}`)], 270),
-        );
-      }
-      if (risks.length) {
-        thread.push(
-          ...chunkLines(["⚠️ Risk flags", ...risks.map((r) => `• ${r}`)], 270),
-        );
-      }
+      if (highlights.length) thread.push(...chunkLines(["What management said.", ...highlights], 270));
+      if (risks.length) thread.push(...chunkLines(["What to keep an eye on.", ...risks], 270));
       thread.push(ctaReply(ta.asset));
 
       const posted = await postXThread(thread);
@@ -1436,13 +1419,13 @@ Time: ${result.timestamp.toISOString()}
       const beat = e.epsActual >= e.epsEstimated;
       const revLine =
         e.revenueActual != null && e.revenueEstimated != null
-          ? `\n• Revenue: ${fmtB(e.revenueActual)} vs ${fmtB(e.revenueEstimated)} est (${e.revenueActual >= e.revenueEstimated ? "Beat" : "Miss"})`
+          ? ` Revenue ${fmtB(e.revenueActual)} against ${fmtB(e.revenueEstimated)}, a ${e.revenueActual >= e.revenueEstimated ? "beat" : "miss"}.`
           : "";
       const card =
-        `${beat ? "📈" : "📉"} $${s.asset} reported earnings — EPS ${beat ? "Beat" : "Miss"} ${fmtPct(e.epsSurprisePct)}\n` +
-        `• EPS: ${e.epsActual.toFixed(2)} vs ${e.epsEstimated.toFixed(2)} est` +
+        `$${s.asset} reported. EPS ${e.epsActual.toFixed(2)} against ${e.epsEstimated.toFixed(2)} expected, ` +
+        `a ${beat ? "beat" : "miss"} of ${fmtPct(e.epsSurprisePct).replace("+", "")}.` +
         revLine +
-        `\nWe flagged this breakout.`;
+        ` It is on the screen.`;
 
       const ok = await postXThread([card, ctaReply(s.asset)]);
       if (ok) {
@@ -1475,7 +1458,6 @@ function chunkLines(lines: string[], maxLen: number): string[] {
   return chunks;
 }
 
-const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const fmtScore = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(2);
 const fmtPct = (v: number) => (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
 const fmtB = (v: number) => "$" + (v / 1e9).toFixed(1) + "B";
@@ -1483,9 +1465,7 @@ const truncate = (s: string, n: number) =>
   s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 // Per-ticker deep link, e.g. dataquant.ai/$hpe
 const dqLink = (asset: string) => `dataquant.ai/$${asset.toLowerCase()}`;
-// Final reply for a thread: bookmark CTA + the link kept OUT of the lead tweet
-// (link-in-reply preserves lead-tweet reach — the strongest lever in X ranking).
-// asset omitted → homepage link.
+// Final reply for a thread: where the rest lives. The link stays OUT of the
+// lead tweet (link-in-reply preserves lead-tweet reach). asset omitted → homepage.
 const ctaReply = (asset?: string) =>
-  `🔖 Bookmark this for market open.\n` +
-  `Full entry, stop & R:R → ${asset ? dqLink(asset) : "dataquant.ai"} · Not advice`;
+  `Base grades, the 2-year X-ray and the full screen: ${asset ? dqLink(asset) : "dataquant.ai"}. Screen output for research, not advice.`;

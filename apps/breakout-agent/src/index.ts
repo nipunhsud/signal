@@ -99,8 +99,8 @@ if (IMMEDIATE_SCAN) {
       console.log(`X ${name} scheduled: ${cronExpr} (Timezone: ${timezone})`);
     };
 
-    // 1) Signal teasers — noon & 4pm ET weekdays.
-    scheduleX("teasers", process.env.X_TEASER_CRON || "0 12,16 * * 1-5", () => agent.postXSignalTeasers());
+    // 1) The daily tease — one graded breakout, once, after the close.
+    scheduleX("tease", process.env.X_TEASER_CRON || "10 16 * * 1-5", () => agent.postXSignalTeasers());
     // 2) Performance audit — 1pm ET on the 1st of each month.
     scheduleX("audit", process.env.X_AUDIT_CRON || "0 13 1 * *", () => agent.postXPerformanceAudit());
     // 3) Earnings breakdowns are posted manually via the dashboard admin button
