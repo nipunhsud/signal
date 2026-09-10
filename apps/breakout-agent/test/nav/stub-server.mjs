@@ -38,6 +38,22 @@ export function startStub(port = 0) {
   app.get('/api/backtest', (q, r) => r.json({ summary: { totalSignals: 0 }, recent: [] }));
   app.get('/api/market-health', (q, r) => r.json({}));
   app.get('/api/admin/status', (q, r) => r.json({ isAdmin: false }));
+  // Two years of bars so the chart, base X-ray and profile have something to chew on.
+  const bars = []; let px = 8; const d0 = new Date('2024-09-09');
+  for (let i = 0; i < 500; i++) { const d = new Date(d0); d.setDate(d0.getDate() + Math.floor(i * 7 / 5)); px = Math.max(1, px * (1 + (Math.sin(i / 9) * 0.01 - 0.002)));
+    bars.push({ time: d.toISOString().slice(0, 10), open: px * 0.99, high: px * 1.02, low: px * 0.97, close: px, volume: 20e6 }); }
+  app.get('/api/candles/:s', (q, r) => r.json(bars));
+  app.get('/api/bases/:s', (q, r) => r.json({ symbol: q.params.s, asOf: bars.at(-1).time, bases: [] }));
+  app.get('/api/profile/:s', (q, r) => r.json({
+    symbol: q.params.s, asOf: bars.at(-1).time,
+    price: { close: 3.07, changePct: -2.54, volume: 25.93e6, avgVolume20: 30e6, volumeRatio: 0.86 },
+    returns: { w1: -4.1, m1: -12.3, m3: -31.5 },
+    range52: { high: 5.64, low: 3.01, highDate: '2026-05-29', pctFromHigh: -45.6, pctAboveLow: 2.0 },
+    mas: { ma20: 3.35, ma50: 3.7, ma200: 4.4, above20: false, above50: false, above200: false, stack: false },
+    rs: { rating: 8, score: -0.3, sector: 'Real Estate', updatedAt: new Date().toISOString() },
+    base: { status: 'forming', weeks: 7.2, depthPct: 34.3, pivot: 4.2, low: 3.01, start: '2026-07-20', end: bars.at(-1).time, count: 8 },
+    lastSignal: null, liquidityOk: true,
+  }));
   app.get('/api/*', (q, r) => r.json({}));
   const spa = (q, r) => r.sendFile(path.join(pub, 'index.html'));
   app.get(['/dashboard', '/dashboard/*', '/in/dashboard', '/in/dashboard/*', /^\/\$.*/, '/s/:s'], spa);
