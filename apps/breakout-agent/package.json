@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "dashboard": "node server.js",
     "lint": "prettier --check .",
+    "test": "npm run build && node --test test/*.test.mjs",
     "test:nav": "node test/nav/nav.test.mjs"
   },
   "dependencies": {

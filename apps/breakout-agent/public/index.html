@@ -498,7 +498,7 @@
       { key: 'unusual-volume', label: 'Unusual Volume', path: '/unusual-volume', group: 'screens', desc: '100%+ above-average volume on a bullish candle' },
       { key: 'sectors',        label: 'Sectors',        path: '/sectors',        group: 'screens', desc: 'Sector strength ranked by trailing returns' },
       { key: 'shortlist',      label: 'Shortlist',      path: '/shortlist',      group: 'tools',   desc: 'Your saved tickers' },
-      { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'How past screen hits played out — research, not a track record' },
+      { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'How the breakouts the screen emailed played out — research, not a track record' },
     ];
     const VIEW_KEYS = VIEWS.map(v => v.key);
     const viewDef = (key) => VIEWS.find(v => v.key === key);
@@ -578,6 +578,7 @@
         this.chartMA50 = true;
         this.chartMA200 = true;
         this._basesCache = null;    // { asset, data } — /api/bases result (null data = unavailable)
+        this._historyCache = null;  // { asset, data } — /api/history result (every previous breakout for the ticker)
         this._showAllBases = false; // Base X-ray card-list expander
         // Admin (Clerk private metadata admin:"true") — gates the "Tweet" button.
         this.isAdmin = false;
@@ -2266,7 +2267,7 @@
                         ? this.signalCellHtml(signal)
                         : signal.weakVolume
                         ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
-                        : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>')
+                        : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="Closed above its 20-bar high on volume, inside a base the screen did not grade (not blue sky, deeper than 25%, or under the 200-day). Tracked here, not emailed."><span class="badge-dot"></span>Breakout</span>')
                     : signal.signalType === 'setup'
                       ? '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>'
                       : signal.signalType === 'extension'
@@ -2370,7 +2371,7 @@
                 const vcp = signal.isVcp ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Volatility Contraction Pattern: tight base, volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>' : '';
                 const sky = signal.isBlueSky ? '<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : '';
                 // Graded rows: the fuller sentence here (the header carries the chips).
-                const sig = `<span class="inline-flex items-center gap-1.5 flex-wrap justify-end">${signal.baseGrade ? this.gradeBadgeHtml(signal) : c.signalLabel}${vcp}${sky}${cohort}</span>`;
+                const sig = `<span class="inline-flex items-center gap-1.5 flex-wrap justify-end">${signal.baseGrade ? this.gradeBadgeHtml(signal) : c.signalLabel}${this.alertChipHtml(signal)}${vcp}${sky}${cohort}</span>`;
                 const rs = signal.rsRating != null
                   ? `<span class="font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}">${signal.rsRating}${signal.rsRating >= 80 ? ' <span class="text-[10px] font-sans font-normal text-gray-500">leader</span>' : signal.rsRating < 50 ? ' <span class="text-[10px] font-sans font-normal text-gray-500">laggard</span>' : ''}</span>`
                   : dash;
@@ -2716,6 +2717,17 @@
               </div>
               `}
 
+              <!-- Alert history: every previous breakout the screen recorded (loaded lazily) -->
+              <div id="history-section" class="border-t border-gray-700/60 pt-4">
+                <h3 class="font-semibold text-gray-200 flex items-center gap-2 mb-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Alert history
+                </h3>
+                <div id="history-content" class="text-[13px] text-gray-300 leading-relaxed">
+                  <span class="text-gray-500">Loading…</span>
+                </div>
+              </div>
+
               <!-- Social sentiment & news (loaded lazily) — US-listed only -->
               ${/\.(NS|BO)$/i.test(signal.asset) ? '' : `
               <div id="pulse-section" class="border-t border-gray-700/60 pt-4">
@@ -2790,6 +2802,9 @@
               if (el) el.innerHTML = '<span class="text-gray-500">Failed to load analysis.</span>';
             });
         }
+
+        // Every previous breakout the screen recorded for this ticker.
+        this.loadSignalHistory(signal.asset, 'history-content');
 
         // Lazy load per-ticker social sentiment + news (US-listed only).
         if (!/\.(NS|BO)$/i.test(signal.asset)) {
@@ -3279,11 +3294,17 @@
               <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}<span id="next-earnings" class="text-purple-300"></span></span><span>space next · ← → nav · esc back</span></div>
               ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
+              <div class="mt-6">
+                <h2 class="text-lg font-bold text-white">Alert history</h2>
+                <p class="text-xs text-gray-500 mb-3">Every breakout the screen recorded for this ticker, and whether it was emailed.</p>
+                <div id="chart-history"></div>
+              </div>
             </div>
           </div>
         `;
         this._buildPageChart(sig);
         this._renderBaseXray(); // paints immediately when this asset's bases are cached
+        this.loadSignalHistory(this.chartAsset, 'chart-history');
       }
 
       // ── Drawing + sharing on the full chart ──
@@ -4109,7 +4130,7 @@
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
                 <div>
                   <h1 class="text-2xl font-bold tracking-tight">Backtest</h1>
-                  <p class="text-gray-500 text-sm">Historical forward return of persisted signals · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
+                  <p class="text-gray-500 text-sm">${p.type === 'Type1' ? 'Forward return of every breakout the screen emailed, from the close on the day it went out' : 'Forward return of extension rows, from the close on the signal day'} · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
                 </div>
                 <div class="text-right text-[11px] text-gray-500">
                   ${bt?.generatedAt ? `Generated ${new Date(bt.generatedAt).toLocaleTimeString()}${bt.cached ? ' · cached' : ''}` : ''}
@@ -4121,7 +4142,7 @@
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Type</span>
                   <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
-                    ${controlPill('Breakout', 'type', 'Type1', p.type)}
+                    ${controlPill('Emailed breakouts', 'type', 'Type1', p.type)}
                     ${controlPill('Extension', 'type', 'Type3', p.type)}
                   </div>
                 </div>
@@ -4899,6 +4920,67 @@
         </span>`;
       }
 
+      // Was THIS episode emailed? Only graded pivot closes go out (src/agent.ts
+      // shouldAlert). The chip makes the difference between an emailed
+      // breakout and a tracked shelf breakout visible on the row.
+      alertChipHtml(signal) {
+        if (!signal || !signal.alertedAt) return '';
+        const d = new Date(signal.alertedAt);
+        const when = Number.isFinite(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        return `<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" data-tip="Emailed to subscribers on ${when}: the base graded and the close cleared its pivot. This is the population the weekly receipts count."><span class="badge-dot"></span>emailed${when ? ' ' + when : ''}</span>`;
+      }
+
+      // Every previous breakout the screen recorded for this ticker, one card
+      // per episode (frozen pivot + fail level), newest first.
+      async loadSignalHistory(asset, elId) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const cache = this._historyCache;
+        if (cache && cache.asset === asset && cache.data) { this.renderSignalHistory(cache.data, elId); return; }
+        el.innerHTML = '<span class="text-gray-500 text-xs">Loading…</span>';
+        try {
+          const r = await fetch('/api/history/' + encodeURIComponent(asset));
+          const data = r.ok ? await r.json() : null;
+          this._historyCache = { asset, data };
+          if (this.selectedAsset?.asset === asset || this.chartAsset === asset) this.renderSignalHistory(data, elId);
+        } catch (e) {
+          el.innerHTML = '<span class="text-gray-500 text-xs">History is not available right now.</span>';
+        }
+      }
+
+      renderSignalHistory(data, elId) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const eps = data && Array.isArray(data.episodes) ? data.episodes : [];
+        if (!eps.length) { el.innerHTML = '<div class="text-xs text-gray-500">No previous breakouts on record for this ticker.</div>'; return; }
+        const fmtD = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : ''; };
+        const n2 = (v) => v == null ? '—' : Number(v).toFixed(2);
+        const pctHtml = (v) => v == null ? '<span class="text-gray-600">—</span>' : `<span class="font-mono tabular-nums ${v >= 0 ? 'text-green-400' : 'text-red-400'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
+        const stand = { past: ['past the pivot', 'text-green-400'], fell: ['fell through the fail level', 'text-red-400'], below: ['below the pivot', 'text-gray-400'], tracking: ['tracked, no level cleared', 'text-gray-500'] };
+        const card = (ep) => {
+          const [word, cls] = stand[ep.status] || stand.tracking;
+          const what = ep.alertedAt
+            ? `<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"><span class="badge-dot"></span>emailed ${fmtD(ep.alertedAt)}</span>`
+            : ep.grade && ep.grade !== 'X'
+              ? `<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30"><span class="badge-dot"></span>grade ${ep.grade} · not emailed</span>`
+              : `<span class="badge bg-gray-600/20 text-gray-400 ring-1 ring-gray-600/40" data-tip="Cleared a 20-bar high inside a base the screen did not grade (not blue sky, deeper than 25%, or under the 200-day). Tracked on the screener, never emailed."><span class="badge-dot"></span>shelf breakout · not emailed</span>`;
+          const base = ep.baseWeeks ? ` · ${ep.baseWeeks}wk base${ep.baseDepthPct != null ? `, ${Number(ep.baseDepthPct).toFixed(0)}% deep` : ''}` : '';
+          return `
+            <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-3 py-2 text-[12px]">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="text-gray-300 font-mono tabular-nums">${fmtD(ep.firstSeen)}${ep.lastSeen && fmtD(ep.lastSeen) !== fmtD(ep.firstSeen) ? ` → ${fmtD(ep.lastSeen)}` : ''}</span>
+                ${what}
+              </div>
+              <div class="mt-1 text-gray-400">pivot ${CUR}${n2(ep.entry ?? ep.basePivot)} · fail ${CUR}${n2(ep.fail)}${base}${ep.xPostedAt ? ' · posted to X' : ''}</div>
+              <div class="mt-1 flex items-center justify-between gap-2">
+                <span class="${cls}">${word}</span>
+                <span>${pctHtml(ep.pct)}${ep.maxPct != null && ep.maxPct > 0 ? ` <span class="text-gray-500">(best ${ep.maxPct >= 0 ? '+' : ''}${ep.maxPct.toFixed(1)}%)</span>` : ''}</span>
+              </div>
+            </div>`;
+        };
+        el.innerHTML = `<div class="space-y-2">${eps.slice(0, 12).map(card).join('')}</div>${eps.length > 12 ? `<div class="mt-2 text-[11px] text-gray-500">${eps.length - 12} older episodes not shown.</div>` : ''}`;
+      }
+
       gradeBadgeHtml(signal) {
         const g = signal.baseGrade;
         if (!g) return '';
@@ -4942,7 +5024,7 @@
               ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Clean breakout pattern but volume <1.2x avg — not alerted"><span class="badge-dot"></span>Breakout · weak vol</span>'
               : signal.isVcp
                 ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" title="Volatility Contraction Pattern: tight base (ATR<2.5%), volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>'
-                : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30"><span class="badge-dot"></span>Breakout</span>')
+                : '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="Closed above its 20-bar high on volume, inside a base the screen did not grade (not blue sky, deeper than 25%, or under the 200-day). Tracked here, not emailed."><span class="badge-dot"></span>Breakout</span>')
           : signal.signalType === 'extension'
             ? (signal.baseGrade && signal.baseGrade !== 'X'
                 ? this.signalCellHtml(signal)
@@ -5060,7 +5142,7 @@
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
                             <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
-                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ` <span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : ''}</td>
+                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${this.alertChipHtml(signal) ? ' ' + this.alertChipHtml(signal) : ''}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ` <span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : ''}</td>
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
                             <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>

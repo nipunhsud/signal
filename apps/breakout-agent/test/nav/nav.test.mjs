@@ -50,6 +50,10 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   check((await url()) === '/dashboard/winners?s=AAPL', 'switching ticker replaces ?s');
   const dtxt = await page.locator('#drawer').innerText();
   check(['SIGNAL', 'RS', 'TREND', 'EARNINGS', 'LEVELS', 'DETAIL', 'UPDATED'].every((l) => dtxt.includes(l)) && (await page.locator('#drawer [data-grade="A+"]').count()) >= 1, 'drawer mirrors every table column and shows the grade chip');
+  await settle(page, 300);
+  const hist = await page.locator('#drawer #history-content').innerText();
+  check(hist.includes('emailed Sep 8') && hist.includes('past the pivot') && hist.includes('pivot $120.00'), 'drawer alert history lists the emailed episode with its levels');
+  check((await page.locator('#drawer .badge:has-text("emailed")').count()) >= 1, 'drawer signal row carries the emailed chip');
   await page.goBack(); await settle(page, 200);
   check((await drawer()) === null && (await url()) === '/dashboard/winners', 'browser back closes the drawer');
   await page.evaluate(() => dashboard.openAsset('NVDA'));
@@ -181,6 +185,16 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
 // Public discovery surfaces: the newest Learn article is linked from the index,
 // the sitemap and llms.txt, and carries structured data for crawlers.
 {
+  console.log('--- receipts');
+  {
+    const p2 = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    await p2.goto(`${base}/dashboard`); await settle(p2, 400);
+    check((await p2.locator('#app tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
+    await p2.goto(`${base}/pulse?w=2026-09-12`); await settle(p2, 400);
+    const rtxt = await p2.locator('#receipts-section').innerText();
+    check(rtxt.includes('week ending 2026-09-12') && rtxt.includes('$AAPL') && rtxt.includes('past the pivot') && rtxt.includes('produced 1 breakout'), 'pulse?w= shows the week the post names, with the same sentence');
+    await p2.close();
+  }
   console.log('--- discovery');
   const get = async (p) => { const r = await fetch(base + p); return { status: r.status, text: await r.text() }; };
   const art = await get('/learn/exit-rules-study.html');

@@ -1,6 +1,7 @@
 // Simple API endpoint to fetch signals
 // Run with: node server.js
 import 'dotenv/config';
+import { gradeAlerts, summarize, weekWindow, composeReceipts } from './alert-ledger.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
 import Stripe from 'stripe';
@@ -839,6 +840,10 @@ app.get('/api/signals', async (req, res) => {
           -- own high became the Donchian resistance — MRNA 2026-08-19) and the
           -- row is tracking, not a trade: it must not read as "stopped out".
           MAX(bs."currentPrice") OVER (PARTITION BY bs.asset, bs."entryPrice") AS "streakHigh",
+          -- When this episode (same frozen entry or base pivot) was emailed, if ever.
+          (SELECT MAX(x."lastAlertAt") FROM "BreakoutSignal" x
+            WHERE x.asset = bs.asset AND x."lastAlertAt" IS NOT NULL
+              AND (x."entryPrice" = bs."entryPrice" OR x."basePivot" = bs."basePivot")) AS "episodeAlertedAt",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
         FROM "BreakoutSignal" bs
         LEFT JOIN first_green fg ON fg.asset = bs.asset
@@ -892,7 +897,8 @@ app.get('/api/signals', async (req, res) => {
         "earningsQuarter",
         "earningsYear",
         "firstGreenAt",
-        "entryResistance"
+        "entryResistance",
+        "episodeAlertedAt"
       FROM ranked
       WHERE rn = 1
         AND confidence >= 0.80
@@ -1012,6 +1018,7 @@ app.get('/api/signals', async (req, res) => {
         stoppedOut,
         noEntry,
         alertSentAt: s.alertSentAt || null,
+        alertedAt: s.episodeAlertedAt || null, // this episode was emailed (graded pivot close)
         agentDecision: s.agentDecision || '',
         createdAt: s.createdAt,
         pineScriptGreen: s.pineScriptGreen || false,
@@ -2062,39 +2069,143 @@ async function postWeeklyMarketHealth() {
   console.log(r.ok ? `✓ Weekly market-health posted (${mh.score} ${mh.regime})` : `⊘ Weekly market-health post failed: ${r.error}`);
 }
 
-async function postWeeklyReceipts() {
-  // Honest weekly ledger: every fresh US breakout (Type1/1b) from the last 7
-  // days, judged by its latest row — past the pivot, fell through the fail level, or below.
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const rows = await db.breakoutSignal.findMany({
-    where: { breakoutType: { in: ['Type1', 'Type1b'] }, createdAt: { gte: since } },
-    orderBy: { createdAt: 'desc' },
-    distinct: ['asset'],
-    select: { asset: true, entryPrice: true, stopLoss: true, currentPrice: true },
-  });
-  const us = rows.filter((r) => !/\.(NS|BO)$/i.test(r.asset) && r.entryPrice > 0 && r.currentPrice > 0);
-  if (us.length < 3) { console.log(`⊘ Weekly receipts: only ${us.length} signals — skipping`); return; }
-  const graded = us.map((r) => {
-    const pct = ((r.currentPrice - r.entryPrice) / r.entryPrice) * 100;
-    const failPct = r.stopLoss != null ? ((r.stopLoss - r.entryPrice) / r.entryPrice) * 100 : -7;
-    return { ...r, pct, failPct, stopped: r.stopLoss != null && r.currentPrice <= r.stopLoss };
-  });
-  const winners = graded.filter((g) => !g.stopped && g.pct > 0).sort((a, b) => b.pct - a.pct);
-  const stopped = graded.filter((g) => g.stopped);
-  const avg = graded.reduce((s, g) => s + Math.max(g.failPct, g.pct), 0) / graded.length;
-  const fmtPct = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-  const worst = [...graded].sort((a, b) => a.pct - b.pct)[0];
-  const main = [
-    `Last week the screen produced ${graded.length} breakouts. ${winners.length} are still past their pivot and ${stopped.length} fell through the fail level.`,
-    `Average ${fmtPct(avg)}, equal weight, exits at the fail level.`,
-    winners[0] ? `Best was ${winners[0].asset} at ${fmtPct(winners[0].pct)}.` : null,
-    worst && worst.pct < 0 ? `Worst was ${worst.asset} at ${fmtPct(Math.max(worst.failPct, worst.pct))}.` : null,
-    `Every one is counted. Screen output for research, not advice.`,
-  ].filter((l) => l !== null).join('\n');
-  const reply = `The full list and the market pulse: https://dataquant.ai/pulse?w=${new Date().toISOString().slice(0, 10)}`;
-  const r = await postXThreadDetailed([main, reply]);
-  console.log(r.ok ? `✓ Weekly receipts posted (${graded.length} signals, avg ${fmtPct(avg)})` : `⊘ Weekly receipts failed: ${r.error}`);
+// ── Alert ledger ────────────────────────────────────────────────────────────
+// ONE population for every public number: the breakouts the screen actually
+// emailed (graded base, close above the pivot — src/agent.ts shouldAlert).
+// The Saturday receipts post, /pulse?w=, the Backtest tab and the monthly X
+// audit all read this, so the tweet, the page and the inbox always agree.
+// Before Sep 2026 the receipts counted Type1/1b rows (the pre-grade gate),
+// which included ungraded shelf breakouts nobody was emailed about.
+// Grading and wording live in alert-ledger.js (pure, tested); this is the SQL.
+//
+// Each alert is judged from the row that was emailed (frozen pivot = entry,
+// fail level = stopLoss) against the asset's latest scan price. Legacy rows
+// (before per-row stamping) carry the stamp on every row of the asset, so the
+// alerted row is "the newest row at the time of the alert".
+async function alertLedger({ since, until, region = 'us' } = {}) {
+  const rows = await db.$queryRaw`
+    WITH alerted AS (
+      SELECT DISTINCT ON (bs.asset)
+        bs.asset, bs."entryPrice", bs."stopLoss", bs."basePivot", bs."baseGrade", bs."baseBars",
+        bs."baseDepthPct", bs."breakoutType", bs."lastAlertAt", bs."createdAt", bs."currentPrice"
+      FROM "BreakoutSignal" bs
+      WHERE bs."lastAlertAt" >= ${since} AND bs."lastAlertAt" < ${until}
+        AND bs."createdAt" <= bs."lastAlertAt"
+        ${regionSql(region)}
+      ORDER BY bs.asset, bs."createdAt" DESC
+    )
+    SELECT a.*, l."currentPrice" AS "latestPrice", l."createdAt" AS "latestAt"
+    FROM alerted a
+    LEFT JOIN LATERAL (
+      SELECT b."currentPrice", b."createdAt" FROM "BreakoutSignal" b
+      WHERE b.asset = a.asset AND b."createdAt" >= a."createdAt"
+      ORDER BY b."createdAt" DESC LIMIT 1
+    ) l ON true
+    ORDER BY a."lastAlertAt" ASC
+  `;
+  const alerts = gradeAlerts(rows);
+  return { since, until, region, alerts, summary: summarize(alerts) };
 }
+
+async function postWeeklyReceipts() {
+  const { weekEnding, since, until } = weekWindow(etParts().date, etParts().date);
+  const ledger = await alertLedger({ since, until, region: 'us' });
+  if (ledger.summary.count < 1) { console.log('⊘ Weekly receipts: no alerts in the window — skipping'); return; }
+  const tweets = composeReceipts(ledger, weekEnding);
+  const r = await postXThreadDetailed(tweets);
+  console.log(r.ok ? `✓ Weekly receipts posted (${ledger.summary.count} alerts, avg ${ledger.summary.avgCappedPct}%)` : `⊘ Weekly receipts failed: ${r.error}`);
+}
+
+// The list behind the Saturday post. Public: the tweet links here and promises
+// every name. `w` = week ending (YYYY-MM-DD); defaults to today.
+app.get('/api/alerts', async (req, res) => {
+  try {
+    const { weekEnding, since, until } = weekWindow(req.query.w, etParts().date);
+    const region = req.query.region === 'in' ? 'in' : 'us';
+    const ledger = await alertLedger({ since, until, region });
+    res.json({ weekEnding, ...ledger, text: composeReceipts(ledger, weekEnding) });
+  } catch (e) {
+    console.error('[/api/alerts] failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Everything the screen recorded for one ticker, folded into episodes: a
+// frozen pivot/entry and its fail level, first seen to last seen, whether it
+// was emailed and when, and how it went. The drawer and the chart page show
+// this so a reader can go back to any previous breakout.
+app.get('/api/history/:symbol', async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!symbol) return res.status(400).json({ error: 'symbol required' });
+  try {
+    const rows = await db.breakoutSignal.findMany({
+      where: { asset: symbol, createdAt: { gte: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000) } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        createdAt: true, breakoutType: true, currentPrice: true, entryPrice: true, stopLoss: true,
+        basePivot: true, baseGrade: true, baseBars: true, baseDepthPct: true, volumeTag: true,
+        alertSentAt: true, lastAlertAt: true, xPostedAt: true, resistance: true,
+      },
+    });
+    const episodes = [];
+    const key = (r) => `${r.entryPrice ?? 'none'}|${r.basePivot ?? 'none'}`;
+    for (const r of rows) {
+      const last = episodes[episodes.length - 1];
+      if (!last || last.key !== key(r)) {
+        episodes.push({
+          key: key(r),
+          firstSeen: r.createdAt, lastSeen: r.createdAt,
+          types: new Set([r.breakoutType]),
+          grade: r.baseGrade || null, basePivot: r.basePivot, baseBars: r.baseBars, baseDepthPct: r.baseDepthPct,
+          entry: r.entryPrice, fail: r.stopLoss, volumeTag: r.volumeTag || null,
+          firstPrice: r.currentPrice, lastPrice: r.currentPrice, high: r.currentPrice, low: r.currentPrice,
+          alertedAt: null, xPostedAt: null, scans: 0,
+        });
+      }
+      const ep = episodes[episodes.length - 1];
+      ep.lastSeen = r.createdAt;
+      ep.types.add(r.breakoutType);
+      ep.lastPrice = r.currentPrice;
+      ep.high = Math.max(ep.high, r.currentPrice);
+      ep.low = Math.min(ep.low, r.currentPrice);
+      ep.scans++;
+      if (r.baseGrade && !ep.grade) ep.grade = r.baseGrade;
+      // Per-row stamp (current) or legacy asset-wide stamp: credit the alert
+      // to the episode that was live when it went out.
+      const stamp = r.lastAlertAt || r.alertSentAt;
+      if (stamp && stamp >= ep.firstSeen && stamp <= new Date(new Date(ep.lastSeen).getTime() + 24 * 60 * 60 * 1000)) {
+        ep.alertedAt = ep.alertedAt && ep.alertedAt < stamp ? ep.alertedAt : stamp;
+      }
+      if (r.xPostedAt && r.xPostedAt >= ep.firstSeen) ep.xPostedAt = ep.xPostedAt || r.xPostedAt;
+    }
+    const out = episodes
+      .filter((ep) => ep.entry != null || ep.grade || ep.alertedAt)
+      .map((ep) => {
+        const entry = ep.entry != null ? Number(ep.entry) : null;
+        const fail = ep.fail != null ? Number(ep.fail) : entry != null ? entry * 0.93 : null;
+        const pct = entry ? ((ep.lastPrice - entry) / entry) * 100 : null;
+        const fellThrough = entry != null && fail != null && ep.low <= fail;
+        const status = entry == null ? 'tracking' : fellThrough ? 'fell' : ep.lastPrice > entry ? 'past' : 'below';
+        return {
+          firstSeen: ep.firstSeen, lastSeen: ep.lastSeen, scans: ep.scans,
+          types: [...ep.types],
+          grade: ep.grade, basePivot: ep.basePivot, baseWeeks: ep.baseBars ? Math.round(ep.baseBars / 5) : null, baseDepthPct: ep.baseDepthPct,
+          volumeTag: ep.volumeTag,
+          entry, fail: fail != null ? Math.round(fail * 100) / 100 : null,
+          lastPrice: ep.lastPrice, high: ep.high, low: ep.low,
+          pct: pct != null ? Math.round(pct * 10) / 10 : null,
+          maxPct: entry ? Math.round(((ep.high - entry) / entry) * 1000) / 10 : null,
+          status,
+          alertedAt: ep.alertedAt, xPostedAt: ep.xPostedAt,
+        };
+      })
+      .reverse();
+    res.json({ asset: symbol, episodes: out, rows: rows.length });
+  } catch (e) {
+    console.error('[/api/history] failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 setInterval(() => {
   const t = etParts();
@@ -2570,7 +2681,27 @@ app.get('/api/backtest', async (req, res) => {
     // Using MAKE_INTERVAL(days => ..::int) avoids Prisma int-coercion issues with INTERVAL * int.
     const startDaysAgo = lookback + horizon + 5;
     const endDaysAgo = horizon;
-    const signals = await db.$queryRaw`
+    // "Type1" = the alert record: rows the screen emailed (graded base, close
+    // above the pivot), dated by the alert. Same population as the Saturday
+    // receipts and /pulse?w=, so the public track record is the inbox record.
+    // "Type3" stays the extension classifier, for research only.
+    const signals = type === 'Type1'
+      ? await db.$queryRaw`
+      SELECT DISTINCT ON (asset)
+        asset,
+        "createdAt",
+        "currentPrice",
+        confidence,
+        sector,
+        "lastAlertAt" AS "signalDate"
+      FROM "BreakoutSignal"
+      WHERE "lastAlertAt" IS NOT NULL
+        AND "createdAt" <= "lastAlertAt"
+        AND "lastAlertAt" > NOW() - MAKE_INTERVAL(days => ${startDaysAgo}::int)
+        AND "lastAlertAt" < NOW() - MAKE_INTERVAL(days => ${endDaysAgo}::int)
+      ORDER BY asset, "lastAlertAt" ASC, "createdAt" DESC
+    `
+      : await db.$queryRaw`
       SELECT DISTINCT ON (asset)
         asset,
         "createdAt",

@@ -1200,11 +1200,14 @@ Screen output for research, not advice.
 
     await sendEmail(subject, body);
 
-    // Update alert tracking
-    await db.breakoutSignal.updateMany({
-      where: { asset: result.asset },
+    // Stamp the row that was emailed — only that row. The ledger (/api/alerts,
+    // the Saturday receipts, the Backtest tab) reads the entry, fail level and
+    // grade off the stamped row, so an asset-wide stamp would blur which
+    // episode went out. A new base (new pivot) is a new alert with its own date.
+    await db.breakoutSignal.update({
+      where: { id: latestRecord.id },
       data: {
-        alertSentAt: existingAlert?.alertSentAt || now,
+        alertSentAt: now,
         lastAlertPrice: result.currentPrice,
         lastAlertAt: now,
       },
