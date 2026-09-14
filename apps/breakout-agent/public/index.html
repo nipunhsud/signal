@@ -1128,6 +1128,7 @@
           { id: 'sig:setup',     label: 'Filter: Setups',     desc: 'Show pre-breakout Type 2 setups', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'setup'); this.closePalette(); this.toast('Filter → Setups', { kind: 'info' }); } },
           { id: 'sig:extension', label: 'Filter: Extensions',           desc: 'Continuation of a recent breakout', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'extension'); this.closePalette(); this.toast('Filter → Extension', { kind: 'info' }); } },
           { id: 'sig:retest',    label: 'Filter: Retests',    desc: 'Breakouts that pulled back to within 3% of the pivot', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'retest'); this.closePalette(); this.toast('Filter → Retest', { kind: 'info' }); } },
+          { id: 'sig:gapretest', label: 'Filter: Gap retests', desc: 'Gap held, pullback, first close above the prior high — tracked, not emailed', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'gapretest'); this.closePalette(); this.toast('Filter → Gap retests', { kind: 'info' }); } },
           { id: 'sig:ep',        label: 'Filter: Episodic Pivots', desc: 'Catalyst-class ⚡ EP repricings (≥5x volume, +8% day)', kind: 'filter', run: () => { this.setFilter('signalTypeFilter', 'ep'); this.closePalette(); this.toast('Filter → EP', { kind: 'info' }); } },
           { id: 'grade:S',       label: 'Filter: Grade S only', desc: '16wk+ tight blue-sky bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'S'); this.closePalette(); this.toast('Grade ≥ S', { kind: 'info' }); } },
           { id: 'grade:A+',      label: 'Filter: Grade A+ and better', desc: 'S and A+ bases', kind: 'filter', run: () => { this.setFilter('gradeFilter', 'A+'); this.closePalette(); this.toast('Grade ≥ A+', { kind: 'info' }); } },
@@ -2278,6 +2279,8 @@
                             : signal.isRetest ? '<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" title="Pulled back to or below the pivot while the base structure still holds — a second look at the same level."><span class="badge-dot"></span>Retest</span>' : '<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension</span>')
                       : signal.signalType === 'ep'
                         ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class: huge-volume repricing day, no trend requirement. Reference low = the event-day low; these move a lot both ways."><span class="badge-dot"></span>⚡ EP · catalyst</span>'
+                      : signal.signalType === 'gapretest'
+                        ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Gap retest: a 4%+ gap up on volume, a pullback that held above the gap day\'s low, then the first close above the prior day\'s high. Historically PF 3.7 with a 46% fail-level touch rate and 41% reaching +20% in 60 bars. Tracked, not emailed until it proves out."><span class="badge-dot"></span>Gap retest</span>'
                         : ''}
                   ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed"><span class="badge-dot"></span>Failed</span>' : signal.noEntry ? '<span class="badge bg-gray-500/15 text-gray-300 ring-1 ring-gray-500/30" title="Price never closed above the pivot (a gap bar set it) — no breakout to track, so it cannot fail"><span class="badge-dot"></span>Below pivot</span>' : ''}
                   ${signal.confidence >= 90 && !signal.stoppedOut ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
@@ -2291,7 +2294,12 @@
               ${(() => {
                 if (noSignal) return `<div id="profile-tiles" class="px-5 pb-3 text-xs text-gray-500">Loading…</div>`;
                 const stop = signal.stopLoss != null ? signal.stopLoss : null;
-                const buyLabel = signal.signalType === 'breakout' ? 'Pivot' :
+                // The tile says what the frozen level IS: the base pivot, or a
+                // shelf/level inside a base whose pivot sits higher (ZETA: level
+                // $31.05 under a $32.81 pivot — calling that the pivot misreads
+                // the chart).
+                const underPivot = signal.entryPrice != null && signal.basePivot > 0 && signal.entryPrice < signal.basePivot * 0.999;
+                const buyLabel = signal.signalType === 'breakout' ? (signal.shelf ? 'Shelf' : underPivot ? 'Level' : 'Pivot') :
                                  signal.signalType === 'extension' ? 'Level' :
                                  signal.signalType === 'setup' ? 'MA20' : 'Level';
                 // Both breakout and extension read the frozen entryPrice (snapshotted
@@ -2317,6 +2325,7 @@
                     <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">${buyLabel}</div>
                     <div class="font-mono text-base font-bold text-yellow-400 tabular-nums leading-tight mt-0.5">${buyVal != null ? CUR + this.safeNum(buyVal, 2) : '<span class="text-gray-600">—</span>'}</div>
                     ${pctVsBuy != null ? `<div class="text-[10px] font-mono ${pctVsBuy >= 0 ? 'text-green-400' : 'text-red-400'} tabular-nums">${pctVsBuy >= 0 ? '+' : ''}${pctVsBuy.toFixed(1)}%</div>` : ''}
+                    ${(signal.shelf || underPivot) && signal.basePivot > 0 ? `<div class="text-[10px] text-gray-500 tabular-nums" data-tip="The base pivot above this level. The screen emails the close above it.">base pivot ${CUR}${this.safeNum(signal.basePivot, 2)}</div>` : ''}
                   </div>
                   <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
                     <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium" data-tip="Fail level — 7% below the pivot. A close here means the breakout did not hold.">Fail level</div>
@@ -2382,6 +2391,7 @@
               <div class="grid grid-cols-1 gap-1.5">
                 ${row('Signal', sig)}
                 ${row('RS', rs)}
+                ${signal.trendTemplate != null || signal.pivotTightPct != null ? row('Trend', `<span class="text-xs">${signal.trendTemplate == null ? '' : signal.trendTemplate ? '<span class="text-green-400" data-tip="Minervini trend template: close above a rising 200-day, 50 > 150 > 200, 30%+ off the 52-week low, within 25% of the high. Historically 16.7% of these reach +20% in 60 bars vs 6.6% without.">template ✓</span>' : '<span class="text-gray-400" data-tip="Fails the Minervini trend template — usually the prior run is under 30% off the 52-week low. Historically 6.6% reach +20% in 60 bars.">template ✗</span>'}${signal.pivotTightPct != null ? ` <span class="text-gray-500">·</span> <span class="font-mono" data-tip="Range of the 10 bars before the breakout, % of pivot. Under 5%: 9-18% fail rate but small moves. 12%+: 48% fail rate, 32% reach +20%.">pivot ${this.safeNum(signal.pivotTightPct, 1)}%${signal.pivotTightPct < 5 ? ' tight' : signal.pivotTightPct >= 12 ? ' loose' : ''}</span>` : ''}</span>`) : ''}
                 ${row('Trend · 30d', spark || dash)}
                 ${row('Earnings', c.earnings)}
                 ${row('Levels', `<span class="font-mono text-xs tabular-nums">${c.levels}</span>`)}
@@ -3058,7 +3068,7 @@
           if (signal.support) level(signal.support, '#10b981', 'S');
           // Frozen entry — skip when it coincides with R (labels would collide)
           if (signal.entryPrice != null && (!signal.resistance || Math.abs(signal.entryPrice - signal.resistance) / signal.resistance > 0.001)) {
-            level(signal.entryPrice, '#eab308', 'pivot');
+            level(signal.entryPrice, '#eab308', signal.basePivot > 0 && signal.entryPrice < signal.basePivot * 0.999 ? 'level' : 'pivot');
           }
         } else if (signal.signalType === 'extension' && signal.entryResistance) {
           level(signal.entryResistance, '#eab308', 'Level', 2);
@@ -4147,6 +4157,7 @@
                   <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
                     ${controlPill('Emailed breakouts', 'type', 'Type1', p.type)}
                     ${controlPill('Extension', 'type', 'Type3', p.type)}
+                    ${controlPill('Gap retest', 'type', 'GR', p.type)}
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -4960,10 +4971,15 @@
         const n2 = (v) => v == null ? '—' : Number(v).toFixed(2);
         const pctHtml = (v) => v == null ? '<span class="text-gray-600">—</span>' : `<span class="font-mono tabular-nums ${v >= 0 ? 'text-green-400' : 'text-red-400'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
         const stand = { past: ['past the pivot', 'text-green-400'], fell: ['fell through the fail level', 'text-red-400'], below: ['below the pivot', 'text-gray-400'], tracking: ['tracked, no level cleared', 'text-gray-500'] };
+        // An episode is open while its last scan is within the streak gap (5
+        // days): the entry is still live and the numbers keep updating.
+        const isOpen = (ep) => ep.lastSeen && (Date.now() - new Date(ep.lastSeen).getTime()) <= 5 * 24 * 60 * 60 * 1000;
         const card = (ep) => {
           const [word, cls] = stand[ep.status] || stand.tracking;
           const what = ep.alertedAt
-            ? `<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"><span class="badge-dot"></span>emailed ${fmtD(ep.alertedAt)}</span>`
+            ? `<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"><span class="badge-dot"></span>emailed ${fmtD(ep.alertedAt)}${ep.alertedPrice ? ` at ${CUR}${n2(ep.alertedPrice)}` : ''}</span>`
+            : ep.kind === 'shelf'
+              ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" data-tip="The level cleared was a 20-day high inside the base, not the base pivot. Not emailed: the screen emails the close above the pivot."><span class="badge-dot"></span>inside ${ep.grade && ep.grade !== 'X' ? `a grade ${ep.grade} base` : 'the base'} · not emailed</span>`
             : ep.grade && ep.grade !== 'X'
               ? `<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30"><span class="badge-dot"></span>grade ${ep.grade} · not emailed</span>`
               : `<span class="badge bg-gray-600/20 text-gray-400 ring-1 ring-gray-600/40" data-tip="Cleared a 20-bar high inside a base the screen did not grade (not blue sky, deeper than 25%, or under the 200-day). Tracked on the screener, never emailed."><span class="badge-dot"></span>shelf breakout · not emailed</span>`;
@@ -4972,13 +4988,15 @@
           return `
             <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-3 py-2 text-[12px]">
               <div class="flex items-center justify-between gap-2 flex-wrap">
-                <span class="text-gray-300 font-mono tabular-nums">${fmtD(ep.firstSeen)}${ep.lastSeen && fmtD(ep.lastSeen) !== fmtD(ep.firstSeen) ? ` → ${fmtD(ep.lastSeen)}` : ''}</span>
+                <span class="text-gray-300 font-mono tabular-nums" data-tip="${isOpen(ep) ? 'Still being scanned: the entry is live and the numbers update every scan.' : 'First scan to last scan that carried this entry.'}">${isOpen(ep) ? `since ${fmtD(ep.firstSeen)} <span class="text-gray-500">· still tracking</span>` : `${fmtD(ep.firstSeen)}${ep.lastSeen && fmtD(ep.lastSeen) !== fmtD(ep.firstSeen) ? ` → ${fmtD(ep.lastSeen)}` : ''}`}</span>
                 ${what}
               </div>
-              <div class="mt-1 text-gray-400">${ep.shelf ? 'shelf' : 'pivot'} ${CUR}${n2(ep.entry ?? ep.basePivot)} · fail ${CUR}${n2(ep.fail)}${base}${shelf}${ep.xPostedAt ? ' · posted to X' : ''}</div>
+              <div class="mt-1 text-gray-400">${ep.kind === 'shelf' ? 'level' : 'pivot'} ${CUR}${n2(ep.entry ?? ep.basePivot)} · fail ${CUR}${n2(ep.fail)}${ep.kind === 'shelf' && ep.basePivot ? ` · base pivot ${CUR}${n2(ep.basePivot)}` : ''}${base}${shelf}${ep.xPostedAt ? ' · posted to X' : ''}</div>
               <div class="mt-1 flex items-center justify-between gap-2">
-                <span class="${cls}">${word}</span>
-                <span>${pctHtml(ep.pct)}${ep.maxPct != null && ep.maxPct > 0 ? ` <span class="text-gray-500">(best ${ep.maxPct >= 0 ? '+' : ''}${ep.maxPct.toFixed(1)}%)</span>` : ''}</span>
+                <span class="${cls}">${word}${ep.status === 'fell' && ep.fellAt ? ` <span class="text-gray-500">${fmtD(ep.fellAt)}</span>` : ''}</span>
+                <span>${ep.status === 'fell' && ep.cappedPct != null
+                  ? `${pctHtml(ep.cappedPct)}${ep.pct != null && ep.pct > ep.cappedPct + 0.05 ? ` <span class="text-gray-500" data-tip="Price after the fail level was hit. The ledger credits the fail level, not this.">(later ${ep.pct >= 0 ? '+' : ''}${ep.pct.toFixed(1)}%)</span>` : ''}`
+                  : `${pctHtml(ep.pct)}${ep.maxPct != null && ep.maxPct > 0 ? ` <span class="text-gray-500">(best ${ep.maxPct >= 0 ? '+' : ''}${ep.maxPct.toFixed(1)}%)</span>` : ''}`}</span>
               </div>
             </div>`;
         };
@@ -5052,6 +5070,8 @@
                 : `<span class="badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30"><span class="badge-dot"></span>Extension${signal.daysSinceBreakout !== null ? ' · ' + signal.daysSinceBreakout.toFixed(0) + 'd' : ''}</span>`)
             : signal.signalType === 'ep'
             ? '<span class="badge bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30" title="Episodic Pivot — catalyst-class repricing on huge volume; reference low = the event-day low"><span class="badge-dot"></span>⚡ EP</span>'
+            : signal.signalType === 'gapretest'
+            ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Gap retest: a 4%+ gap up on volume, a pullback that held above the gap day\'s low, then the first close above the prior day\'s high. Historically PF 3.7 with a 46% fail-level touch rate and 41% reaching +20% in 60 bars. Tracked, not emailed until it proves out."><span class="badge-dot"></span>Gap retest</span>'
             : '<span class="badge bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30"><span class="badge-dot"></span>Setup</span>';
         const price = CUR + this.safeNum(signal.currentPrice, 2);
         const levels = signal.signalType === 'breakout'

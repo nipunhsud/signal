@@ -1,6 +1,6 @@
 import "dotenv/config";
 import cron from "node-cron";
-import { BreakoutAgent, marketStatus } from "./agent.js";
+import { BreakoutAgent, marketStatus, isAlertWindow } from "./agent.js";
 import { getConfig } from "./config.js";
 
 const config = getConfig();
@@ -65,21 +65,26 @@ if (IMMEDIATE_SCAN) {
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
   // Schedule with explicit timezone enforcement (node-cron v3+)
-  for (const schedule of schedules) {
-    cron.schedule(schedule, async () => {
-      const mkt = marketStatus(new Date(), REGION);
-      if (!mkt.open) {
-        console.log(`⊘ Skip scan: Outside market hours (${mkt.label})`);
-        return;
-      }
-      try {
-        for (const m of SCAN_MODES) await scan(m);
-      } catch (err) {
-        console.error("Scheduled scans failed:", err);
-      }
-    }, { timezone });
-  }
-  console.log(`Breakout agent running. Schedule(s): ${schedules.join(" | ")} (Timezone: ${timezone})`);
+  const runScans = async () => {
+    const mkt = marketStatus(new Date(), REGION);
+    if (!mkt.open && !isAlertWindow(new Date(), REGION)) {
+      console.log(`⊘ Skip scan: Outside market hours (${mkt.label})`);
+      return;
+    }
+    try {
+      for (const m of SCAN_MODES) await scan(m);
+    } catch (err) {
+      console.error("Scheduled scans failed:", err);
+    }
+  };
+  for (const schedule of schedules) cron.schedule(schedule, runScans, { timezone });
+  // The post-close pass: one scan after the closing auction has printed, so a
+  // close that cleared its pivot emails the same day instead of the next
+  // afternoon. Runs regardless of CRON_SCHEDULE; the alert window (market
+  // hours + 45 min) admits it.
+  const postCloseCron = process.env.POST_CLOSE_CRON || (REGION === "IN" ? "45 15 * * 1-5" : "15 16 * * 1-5");
+  cron.schedule(postCloseCron, runScans, { timezone });
+  console.log(`Breakout agent running. Schedule(s): ${schedules.join(" | ")} + post-close ${postCloseCron} (Timezone: ${timezone})`);
 
   // X posting: three scheduled jobs, all on the shard-0 tier only (it reads the
   // shared DB, which holds every tier's signals) so we never fan out duplicate

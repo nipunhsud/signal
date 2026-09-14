@@ -80,3 +80,57 @@ test('a week is the seven days ending on the posted date', () => {
   assert.equal(until.getTime() - since.getTime(), 7 * 24 * 60 * 60 * 1000);
   assert.equal(weekWindow('garbage', '2026-09-13').weekEnding, '2026-09-13');
 });
+
+// ── Episodes: one card per frozen entry ─────────────────────────────────────
+import { foldEpisodes } from '../alert-ledger.js';
+const d = (s) => new Date(`${s}T15:00:00Z`);
+const scanRow = (date, o) => ({ createdAt: d(date), breakoutType: 'Type1', currentPrice: 10, entryPrice: null, stopLoss: null, basePivot: null, baseGrade: null, baseBars: null, baseDepthPct: null, volumeTag: null, alertSentAt: null, lastAlertAt: null, xPostedAt: null, resistance: null, ...o });
+
+test('a re-segmented base does not split one entry into several cards (DE)', () => {
+  const eps = foldEpisodes([
+    scanRow('2026-06-26', { entryPrice: 9.11, stopLoss: 8.47, basePivot: 9.11, baseGrade: 'A', baseBars: 30, baseDepthPct: 19, currentPrice: 10.8 }),
+    scanRow('2026-07-16', { entryPrice: 9.11, stopLoss: 8.47, basePivot: 11.0, baseGrade: 'A', baseBars: 10, baseDepthPct: 9, currentPrice: 11.3 }),
+    scanRow('2026-08-25', { entryPrice: 9.11, stopLoss: 8.47, basePivot: 12.5, baseGrade: 'A', baseBars: 10, baseDepthPct: 8, currentPrice: 12.2 }),
+  ]);
+  assert.equal(eps.length, 1);
+  assert.equal(eps[0].entry, 9.11);
+  assert.equal(eps[0].basePivot, 12.5, 'carries the latest base');
+  assert.equal(eps[0].status, 'past');
+  assert.equal(eps[0].maxPct, 33.9);
+});
+
+test('a level under the base pivot is a shelf, and the base pivot rides along (ZETA)', () => {
+  const eps = foldEpisodes([
+    scanRow('2026-09-01', { entryPrice: 31.05, stopLoss: 28.88, basePivot: 32.81, baseGrade: 'A', baseBars: 10, baseDepthPct: 9, currentPrice: 31.3 }),
+    scanRow('2026-09-11', { entryPrice: 31.05, stopLoss: 28.88, basePivot: 32.81, baseGrade: 'A', baseBars: 10, baseDepthPct: 9, currentPrice: 30.21 }),
+  ]);
+  assert.equal(eps.length, 1);
+  assert.equal(eps[0].kind, 'shelf');
+  assert.equal(eps[0].basePivot, 32.81);
+  assert.equal(eps[0].status, 'below');
+});
+
+test('fell through the fail level is credited at the fail level, with the date, whatever came after', () => {
+  const eps = foldEpisodes([
+    scanRow('2026-07-13', { entryPrice: 22.9, stopLoss: 21.3, basePivot: 22.9, currentPrice: 23.1 }),
+    scanRow('2026-07-17', { entryPrice: 22.9, stopLoss: 21.3, basePivot: 22.9, currentPrice: 21.0 }),
+    scanRow('2026-08-05', { entryPrice: 22.9, stopLoss: 21.3, basePivot: 22.9, currentPrice: 27.1, lastAlertAt: d('2026-08-05') }),
+  ]);
+  assert.equal(eps.length, 1);
+  assert.equal(eps[0].status, 'fell');
+  assert.equal(eps[0].fellAt.toISOString().slice(0, 10), '2026-07-17');
+  assert.equal(eps[0].cappedPct, -7);
+  assert.equal(eps[0].pct, 18.3);
+  assert.equal(eps[0].alertedPrice, 27.1);
+});
+
+test('a new entry starts a new card; rows without an entry group by base pivot', () => {
+  const eps = foldEpisodes([
+    scanRow('2026-05-22', { basePivot: 674.19, baseGrade: 'A', currentPrice: 620 }),
+    scanRow('2026-06-25', { basePivot: 674.19, baseGrade: 'A', currentPrice: 622 }),
+    scanRow('2026-08-21', { entryPrice: 643.99, stopLoss: 598.91, basePivot: 674.19, baseGrade: 'A', currentPrice: 647 }),
+    scanRow('2026-09-01', { entryPrice: 674.19, stopLoss: 627, basePivot: 674.19, baseGrade: 'A', currentPrice: 676 }),
+  ]);
+  assert.deepEqual(eps.map((e) => e.kind), ['pivot', 'shelf', 'tracking']); // newest first
+  assert.equal(eps[2].scans, 2);
+});

@@ -1,7 +1,7 @@
 // Simple API endpoint to fetch signals
 // Run with: node server.js
 import 'dotenv/config';
-import { gradeAlerts, summarize, weekWindow, composeReceipts } from './alert-ledger.js';
+import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { classifyShelf } from './shelf.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -825,6 +825,8 @@ app.get('/api/signals', async (req, res) => {
           bs."basePivot",
           bs."baseBars",
           bs."baseDepthPct",
+          bs."trendTemplate",
+          bs."pivotTightPct",
           bs."volumeRatio",
           bs."priorBaseDays",
           bs."extensionPriorBreakoutBarsAgo",
@@ -888,6 +890,8 @@ app.get('/api/signals', async (req, res) => {
         "basePivot",
         "baseBars",
         "baseDepthPct",
+        "trendTemplate",
+        "pivotTightPct",
         "volumeRatio",
         "priorBaseDays",
         "extensionPriorBreakoutBarsAgo",
@@ -956,6 +960,7 @@ app.get('/api/signals', async (req, res) => {
       //   Type1b = clean breakout on weak volume, signalType 'breakout' + weakVolume flag
       //   Type3  = continuation, signalType 'extension'
       const isEp = s.breakoutType === 'EP';
+      const isGr = s.breakoutType === 'GR';
       const isType1 = s.breakoutType === 'Type1';
       const isType1b = s.breakoutType === 'Type1b';
       const isType3 = s.breakoutType === 'Type3';
@@ -990,6 +995,7 @@ app.get('/api/signals', async (req, res) => {
       // off a held Donchian breakout while price sat in the buy zone of its
       // A+ base pivot). Ungraded/unqualified rows keep the legacy mapping.
       const signalType = isEp ? 'ep'
+        : isGr ? 'gapretest'
         : gradeState === 'extended' ? 'extension'
         : (gradeState === 'fresh' || gradeState === 'forming') ? 'breakout'
         : isExtension ? 'extension' : 'breakout';
@@ -1003,7 +1009,7 @@ app.get('/api/signals', async (req, res) => {
       // Shelf position (cheat / low cheat / handle) when the level the close
       // cleared sits inside a base that is still forming. Null once price is
       // above the base pivot — then the grade logic describes the row.
-      const shelf = isEp ? null : classifyShelf({
+      const shelf = isEp || isGr ? null : classifyShelf({
         level: s.entryPrice != null ? Number(s.entryPrice) : entryResistance,
         basePivot: s.basePivot, baseDepthPct: s.baseDepthPct, price: s.currentPrice,
       });
@@ -2157,61 +2163,7 @@ app.get('/api/history/:symbol', async (req, res) => {
         alertSentAt: true, lastAlertAt: true, xPostedAt: true, resistance: true,
       },
     });
-    const episodes = [];
-    const key = (r) => `${r.entryPrice ?? 'none'}|${r.basePivot ?? 'none'}`;
-    for (const r of rows) {
-      const last = episodes[episodes.length - 1];
-      if (!last || last.key !== key(r)) {
-        episodes.push({
-          key: key(r),
-          firstSeen: r.createdAt, lastSeen: r.createdAt,
-          types: new Set([r.breakoutType]),
-          grade: r.baseGrade || null, basePivot: r.basePivot, baseBars: r.baseBars, baseDepthPct: r.baseDepthPct,
-          entry: r.entryPrice, fail: r.stopLoss, volumeTag: r.volumeTag || null,
-          firstPrice: r.currentPrice, lastPrice: r.currentPrice, high: r.currentPrice, low: r.currentPrice,
-          alertedAt: null, xPostedAt: null, scans: 0,
-        });
-      }
-      const ep = episodes[episodes.length - 1];
-      ep.lastSeen = r.createdAt;
-      ep.types.add(r.breakoutType);
-      ep.lastPrice = r.currentPrice;
-      ep.high = Math.max(ep.high, r.currentPrice);
-      ep.low = Math.min(ep.low, r.currentPrice);
-      ep.scans++;
-      if (r.baseGrade && !ep.grade) ep.grade = r.baseGrade;
-      // Per-row stamp (current) or legacy asset-wide stamp: credit the alert
-      // to the episode that was live when it went out.
-      const stamp = r.lastAlertAt || r.alertSentAt;
-      if (stamp && stamp >= ep.firstSeen && stamp <= new Date(new Date(ep.lastSeen).getTime() + 24 * 60 * 60 * 1000)) {
-        ep.alertedAt = ep.alertedAt && ep.alertedAt < stamp ? ep.alertedAt : stamp;
-      }
-      if (r.xPostedAt && r.xPostedAt >= ep.firstSeen) ep.xPostedAt = ep.xPostedAt || r.xPostedAt;
-    }
-    const out = episodes
-      .filter((ep) => ep.entry != null || ep.grade || ep.alertedAt)
-      .map((ep) => {
-        const entry = ep.entry != null ? Number(ep.entry) : null;
-        const fail = ep.fail != null ? Number(ep.fail) : entry != null ? entry * 0.93 : null;
-        const pct = entry ? ((ep.lastPrice - entry) / entry) * 100 : null;
-        const fellThrough = entry != null && fail != null && ep.low <= fail;
-        const status = entry == null ? 'tracking' : fellThrough ? 'fell' : ep.lastPrice > entry ? 'past' : 'below';
-        return {
-          firstSeen: ep.firstSeen, lastSeen: ep.lastSeen, scans: ep.scans,
-          types: [...ep.types],
-          grade: ep.grade, basePivot: ep.basePivot, baseWeeks: ep.baseBars ? Math.round(ep.baseBars / 5) : null, baseDepthPct: ep.baseDepthPct,
-          volumeTag: ep.volumeTag,
-          entry, fail: fail != null ? Math.round(fail * 100) / 100 : null,
-          lastPrice: ep.lastPrice, high: ep.high, low: ep.low,
-          pct: pct != null ? Math.round(pct * 10) / 10 : null,
-          maxPct: entry ? Math.round(((ep.high - entry) / entry) * 1000) / 10 : null,
-          status,
-          alertedAt: ep.alertedAt, xPostedAt: ep.xPostedAt,
-          // Judged at the start of the episode: was the entry a shelf inside a forming base?
-          shelf: classifyShelf({ level: entry, basePivot: ep.basePivot, baseDepthPct: ep.baseDepthPct, price: ep.firstPrice }),
-        };
-      })
-      .reverse();
+    const out = foldEpisodes(rows);
     res.json({ asset: symbol, episodes: out, rows: rows.length });
   } catch (e) {
     console.error('[/api/history] failed:', e);
@@ -2679,7 +2631,7 @@ const BACKTEST_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 app.get('/api/backtest', async (req, res) => {
   const horizon = Math.min(60, Math.max(1, parseInt(req.query.horizon) || 10));
   const lookback = Math.min(180, Math.max(7, parseInt(req.query.lookback) || 90));
-  const type = req.query.type === 'Type3' ? 'Type3' : 'Type1';
+  const type = ['Type3', 'GR', 'EP'].includes(req.query.type) ? req.query.type : 'Type1';
 
   const cacheKey = `${type}:${lookback}:${horizon}`;
   const cached = backtestCache.get(cacheKey);
