@@ -2,6 +2,7 @@
 // Run with: node server.js
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts } from './alert-ledger.js';
+import { classifyShelf } from './shelf.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
 import Stripe from 'stripe';
@@ -999,6 +1000,14 @@ app.get('/api/signals', async (req, res) => {
       // Extensions show true confidence with distance penalty (shared helper).
       const displayConfidence = displayConfidenceFor(s.confidence, isExtension, pctGainFromEntry);
 
+      // Shelf position (cheat / low cheat / handle) when the level the close
+      // cleared sits inside a base that is still forming. Null once price is
+      // above the base pivot — then the grade logic describes the row.
+      const shelf = isEp ? null : classifyShelf({
+        level: s.entryPrice != null ? Number(s.entryPrice) : entryResistance,
+        basePivot: s.basePivot, baseDepthPct: s.baseDepthPct, price: s.currentPrice,
+      });
+
       const assetTypeLabel = s.assetType === 'etf' ? '📊 ETF' : '📈 STOCK';
       const etfNote = s.assetType === 'etf' && s.expenseRatio ? ` (${s.expenseRatio}% expense)` : '';
 
@@ -1019,6 +1028,7 @@ app.get('/api/signals', async (req, res) => {
         noEntry,
         alertSentAt: s.alertSentAt || null,
         alertedAt: s.episodeAlertedAt || null, // this episode was emailed (graded pivot close)
+        shelf, // { kind: 'low-cheat'|'cheat'|'handle', posPct, baseLow, basePivot, pctBelowPivot } or null
         agentDecision: s.agentDecision || '',
         createdAt: s.createdAt,
         pineScriptGreen: s.pineScriptGreen || false,
@@ -2197,6 +2207,8 @@ app.get('/api/history/:symbol', async (req, res) => {
           maxPct: entry ? Math.round(((ep.high - entry) / entry) * 1000) / 10 : null,
           status,
           alertedAt: ep.alertedAt, xPostedAt: ep.xPostedAt,
+          // Judged at the start of the episode: was the entry a shelf inside a forming base?
+          shelf: classifyShelf({ level: entry, basePivot: ep.basePivot, baseDepthPct: ep.baseDepthPct, price: ep.firstPrice }),
         };
       })
       .reverse();
