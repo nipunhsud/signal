@@ -106,7 +106,7 @@
       <div id="receipts" class="card overflow-x-auto"></div>
       <p class="mt-3 text-xs text-[color:var(--muted)]">
         Every breakout the screen emailed in the seven days, judged from the latest close. The pivot is the level the base
-        resolved through. The fail level is 7% below it. Exits at the fail level. Screen output for research, not advice.
+        resolved through, or the shelf inside the base for a cheat entry. The fail level is 7% below it. Exits at the fail level. Screen output for research, not advice.
       </p>
     </section>
 
@@ -309,7 +309,7 @@
           <tr class="border-t border-[color:var(--border)]/50">
             <td class="px-3 py-2 font-semibold tabular"><a href="/$${esc(a.asset)}" class="hover:text-[color:var(--amber-hi)]">$${esc(a.asset)}</a></td>
             <td class="px-3 py-2 text-[color:var(--muted)] tabular whitespace-nowrap">${esc(String(a.alertedAt).slice(0, 10))}</td>
-            <td class="px-3 py-2 tabular">${a.grade ? esc(a.grade) : '—'}${a.baseWeeks ? ` <span class="text-[color:var(--muted)]">· ${a.baseWeeks}wk</span>` : ''}</td>
+            <td class="px-3 py-2 tabular">${a.grade ? esc(a.grade) : '—'}${a.baseWeeks ? ` <span class="text-[color:var(--muted)]">· ${a.baseWeeks}wk</span>` : ''}${a.kind && a.kind !== 'pivot' ? ` <span class="text-[color:var(--muted)]">· ${esc(a.kind.replace('-', ' '))}</span>` : ''}</td>
             <td class="px-3 py-2 tabular text-right">${a.pivot.toFixed(2)}</td>
             <td class="px-3 py-2 tabular text-right text-[color:var(--muted)]">${a.fail.toFixed(2)}</td>
             <td class="px-3 py-2 tabular text-right">${a.current.toFixed(2)}</td>

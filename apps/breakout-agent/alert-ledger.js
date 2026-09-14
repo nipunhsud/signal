@@ -6,6 +6,7 @@
 //
 // Pure functions of rows — no I/O — so the grading and the wording are
 // testable without a database (test/ledger.test.mjs). server.js does the SQL.
+import { classifyShelf } from './shelf.js';
 
 // Judge each emailed row against the asset's latest price. Entry is the
 // frozen pivot the close cleared; the fail level is the stored stopLoss, or
@@ -21,8 +22,12 @@ export function gradeAlerts(rows) {
       const pct = ((current - entry) / entry) * 100;
       const failPct = ((fail - entry) / entry) * 100;
       const status = current <= fail ? 'fell' : current > entry ? 'past' : 'below';
+      // What kind of close was emailed: the base pivot, or a shelf inside a
+      // base that had not resolved (cheat / low cheat / handle).
+      const shelf = classifyShelf({ level: entry, basePivot: r.basePivot, baseDepthPct: r.baseDepthPct, price: r.currentPrice });
       return {
         asset: r.asset,
+        kind: shelf ? shelf.kind : 'pivot',
         alertedAt: r.lastAlertAt,
         grade: r.baseGrade || null,
         baseWeeks: r.baseBars ? Math.round(Number(r.baseBars) / 5) : null,

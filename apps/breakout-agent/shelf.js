@@ -35,3 +35,18 @@ export function classifyShelf({ level, basePivot, baseDepthPct, price }) {
     pctBelowPivot: Math.round(((pivot - px) / pivot) * 1000) / 10,
   };
 }
+
+// The cheat alert gate (Sep 2026). A shelf breakout earns an email when:
+//   the base would grade if it resolved (blue sky, <=25% deep, above the
+//   200-day: baseGrade is set), it has NOT resolved today, the close cleared
+//   the 20-bar high after a tight 5-bar shelf, on volume, with a bullish bar,
+//   and the stock is liquid. Returns the shelf classification or null.
+// SWKS 2026-09-02 fails this gate: its base was 34.6% deep, so it carried no
+// grade. A 22%-deep blue-sky base with the same bars would have emailed.
+export function cheatGate(a) {
+  if (!a || a.isGradedBreakout) return null; // the pivot close already alerts
+  if (!a.baseGrade || a.gradedBreakoutToday) return null;
+  if (!a.liquidityOk || !a.volumeOk || !a.bullishCandle || !a.cleanConsolidation) return null;
+  if (!(Number(a.close) > Number(a.resistance))) return null;
+  return classifyShelf({ level: a.resistance, basePivot: a.basePivot, baseDepthPct: a.baseDepthPct, price: a.close });
+}

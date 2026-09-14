@@ -28,3 +28,24 @@ test('a level outside the base, or a row without base metrics, is not classified
   assert.equal(classifyShelf({ level: 85, basePivot: null, baseDepthPct: 30, price: 80 }), null);
   assert.equal(classifyShelf({ level: 85, basePivot: 100, baseDepthPct: 0, price: 80 }), null);
 });
+
+import { cheatGate } from '../shelf.js';
+const bar = { isGradedBreakout: false, baseGrade: 'A', gradedBreakoutToday: false, liquidityOk: true, volumeOk: true, bullishCandle: true, cleanConsolidation: true, close: 71.67, resistance: 70.75, basePivot: 84.79, baseDepthPct: 22 };
+
+test('cheat gate: a shelf close inside a base that would grade earns an alert', () => {
+  const s = cheatGate(bar);
+  assert.equal(s?.kind, 'low-cheat'); // 25% up a 22%-deep base
+});
+
+test('cheat gate: SWKS 2026-09-02 still does not alert — its 34.6% deep base carries no grade', () => {
+  assert.equal(cheatGate({ ...bar, baseGrade: null, baseDepthPct: 34.6 }), null);
+});
+
+test('cheat gate: the pivot close, a resolved base, weak volume, a wick, or an illiquid name do not qualify', () => {
+  assert.equal(cheatGate({ ...bar, isGradedBreakout: true }), null);
+  assert.equal(cheatGate({ ...bar, gradedBreakoutToday: true }), null);
+  assert.equal(cheatGate({ ...bar, volumeOk: false }), null);
+  assert.equal(cheatGate({ ...bar, close: 70.5 }), null, 'a high through the 20-bar high with a close under it is a poke');
+  assert.equal(cheatGate({ ...bar, cleanConsolidation: false }), null, 'no tight shelf, no cheat');
+  assert.equal(cheatGate({ ...bar, liquidityOk: false }), null);
+});

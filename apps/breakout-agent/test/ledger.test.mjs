@@ -21,6 +21,12 @@ test('each alert is judged from the emailed pivot against the latest price', () 
   assert.equal(alerts[1].cappedPct, -7, 'a fall through the fail level is credited at the fail level');
   assert.equal(alerts[2].cappedPct, -3);
   assert.equal(alerts[0].baseWeeks, 8);
+  assert.equal(alerts[0].kind, 'pivot');
+});
+
+test('a shelf alert is counted with its kind', () => {
+  const [a] = gradeAlerts([row('SHELF', 70.75, 65.8, 74, { basePivot: 84.79, baseDepthPct: 22, currentPrice: 71.67 })]);
+  assert.equal(a.kind, 'low-cheat');
 });
 
 test('legacy rows without a stored fail level use 7% below the pivot', () => {

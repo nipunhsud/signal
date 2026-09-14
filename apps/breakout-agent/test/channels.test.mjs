@@ -13,11 +13,15 @@ const dash = src('../public/index.html');
 const between = (s, start, end) => { const i = s.indexOf(start); assert.ok(i >= 0, `found ${start}`); const j = s.indexOf(end, i + start.length); return s.slice(i, j < 0 ? undefined : j); };
 
 test('email: the alert gate is the graded pivot close and nothing else', () => {
-  assert.match(agent, /const shouldAlert = isGradedBreakout;/);
+  assert.match(agent, /const shouldAlert = isGradedBreakout \|\| isCheatBreakout;/);
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);
   assert.doesNotMatch(gate, /breakoutType/);
+  // The cheat kind goes through the same gate (shelf.js cheatGate), persists, and is worded as a shelf.
+  assert.match(agent, /const isCheatBreakout = shelf != null;/);
+  assert.match(between(agent, 'const isMeaningfulBreakout =', ';'), /isCheatBreakout/);
+  assert.match(agent, /closed above a shelf inside its base/);
 });
 
 test('email: the emailed row alone carries the alert stamp', () => {
@@ -31,6 +35,8 @@ test('email: the emailed row alone carries the alert stamp', () => {
 test('daily X tease reads only rows emailed today', () => {
   const tease = between(agent, 'async postXSignalTeasers', 'async postXPerformanceAudit');
   assert.match(tease, /lastAlertAt: \{ gte: startOfToday \}/);
+  assert.doesNotMatch(tease, /\["Type1", "Type1b"\]\.includes/, 'the tease is not gated on signal type');
+  assert.match(tease, /closed above a shelf today/, 'a cheat alert teases as a shelf, not a pivot');
 });
 
 test('weekly receipts, /api/alerts and the pulse page share the ledger', () => {
