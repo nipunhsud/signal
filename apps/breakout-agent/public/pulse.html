@@ -95,6 +95,21 @@
       <p class="mt-3 text-xs text-[color:var(--muted)] tabular" id="meta"></p>
     </section>
 
+    <!-- The week's screen: every breakout the screen emailed, judged today.
+         This is the list the Saturday post links to (?w=week-ending). -->
+    <section class="mb-14" aria-labelledby="receipts-h" id="receipts-section">
+      <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+        <h2 id="receipts-h" class="text-xl font-semibold">Last week's screen</h2>
+        <span class="text-xs text-[color:var(--muted)] tabular" id="receipts-nav"></span>
+      </div>
+      <p class="text-sm text-[color:var(--muted)] mb-4" id="receipts-summary"></p>
+      <div id="receipts" class="card overflow-x-auto"></div>
+      <p class="mt-3 text-xs text-[color:var(--muted)]">
+        Every breakout the screen emailed in the seven days, judged from the latest close. The pivot is the level the base
+        resolved through. The fail level is 7% below it. Exits at the fail level. Screen output for research, not advice.
+      </p>
+    </section>
+
     <!-- Market health: the regime gate — is this a tape that rewards breakouts? -->
     <section class="mb-14" aria-labelledby="health-h" id="health-section" style="display:none">
       <div class="flex items-baseline justify-between mb-4">
@@ -258,6 +273,64 @@
       }
     }
     load();
+
+    // The week's alerts. ?w=YYYY-MM-DD picks the week ending that day (the
+    // Saturday post links with the day it was posted); default is today.
+    async function loadReceipts() {
+      const params = new URLSearchParams(location.search);
+      const w = params.get('w');
+      const el = document.getElementById('receipts');
+      const sum = document.getElementById('receipts-summary');
+      const nav = document.getElementById('receipts-nav');
+      skeletons(el, 1, 160);
+      try {
+        const r = await fetch('/api/alerts' + (w ? '?w=' + encodeURIComponent(w) : ''));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        const s = d.summary || {};
+        const shift = (days) => {
+          const t = new Date(d.weekEnding + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + days);
+          return t.toISOString().slice(0, 10);
+        };
+        const today = new Date().toISOString().slice(0, 10);
+        nav.innerHTML = `<a href="/pulse?w=${shift(-7)}" class="hover:text-white">← earlier week</a> · week ending ${esc(d.weekEnding)}` +
+          (d.weekEnding < today ? ` · <a href="/pulse?w=${shift(7) > today ? today : shift(7)}" class="hover:text-white">later week →</a>` : '');
+        if (!s.count) {
+          sum.textContent = 'The screen emailed no breakouts in this window.';
+          el.innerHTML = '';
+          return;
+        }
+        // Same sentences the Saturday post carries; the page is the receipt.
+        sum.textContent = (d.text && d.text[0] ? d.text[0].split('\n').slice(0, 2).join(' ') : '');
+        const fmt = (v) => (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+        const word = { past: 'past the pivot', fell: 'fell through the fail level', below: 'below the pivot' };
+        const color = { past: 'var(--green)', fell: 'var(--red)', below: 'var(--muted)' };
+        const rows = (d.alerts || []).slice().sort((a, b) => b.pct - a.pct).map((a) => `
+          <tr class="border-t border-[color:var(--border)]/50">
+            <td class="px-3 py-2 font-semibold tabular"><a href="/$${esc(a.asset)}" class="hover:text-[color:var(--amber-hi)]">$${esc(a.asset)}</a></td>
+            <td class="px-3 py-2 text-[color:var(--muted)] tabular whitespace-nowrap">${esc(String(a.alertedAt).slice(0, 10))}</td>
+            <td class="px-3 py-2 tabular">${a.grade ? esc(a.grade) : '—'}${a.baseWeeks ? ` <span class="text-[color:var(--muted)]">· ${a.baseWeeks}wk</span>` : ''}</td>
+            <td class="px-3 py-2 tabular text-right">${a.pivot.toFixed(2)}</td>
+            <td class="px-3 py-2 tabular text-right text-[color:var(--muted)]">${a.fail.toFixed(2)}</td>
+            <td class="px-3 py-2 tabular text-right">${a.current.toFixed(2)}</td>
+            <td class="px-3 py-2 tabular text-right font-semibold" style="color:${color[a.status]}">${fmt(a.pct)}</td>
+            <td class="px-3 py-2 text-xs whitespace-nowrap" style="color:${color[a.status]}">${word[a.status]}</td>
+          </tr>`).join('');
+        el.innerHTML = `
+          <table class="w-full text-sm">
+            <thead class="text-[11px] uppercase tracking-wider text-[color:var(--muted)]">
+              <tr><th class="px-3 py-2 text-left font-medium">Ticker</th><th class="px-3 py-2 text-left font-medium">Emailed</th><th class="px-3 py-2 text-left font-medium">Grade</th>
+              <th class="px-3 py-2 text-right font-medium">Pivot</th><th class="px-3 py-2 text-right font-medium">Fail level</th><th class="px-3 py-2 text-right font-medium">Latest</th>
+              <th class="px-3 py-2 text-right font-medium">Change</th><th class="px-3 py-2 text-left font-medium">Where it stands</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      } catch (e) {
+        sum.textContent = '';
+        el.innerHTML = '<p class="p-4 text-sm text-[color:var(--muted)]">The list is not available right now.</p>';
+      }
+    }
+    loadReceipts();
 
     // Market health strip — advisory regime gauge, fails silently if absent.
     async function loadHealth() {

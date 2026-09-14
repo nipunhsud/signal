@@ -16,7 +16,7 @@ const sig = (asset, signalType, confidence, extra = {}) => ({
 export const SIGNALS = {
   highConfidence: [
     sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed' }),  // +2.9% over pivot → confirmed
-    sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power' }),    // +2.9% → power
+    sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
     sig('MSFT', 'breakout', 88, { baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
     sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),
     sig('AMD', 'setup', 91),
@@ -54,9 +54,16 @@ export function startStub(port = 0) {
     base: { status: 'forming', weeks: 7.2, depthPct: 34.3, pivot: 4.2, low: 3.01, start: '2026-07-20', end: bars.at(-1).time, count: 8 },
     lastSignal: null, liquidityOk: true,
   }));
+  // The alert ledger and per-ticker history, as the receipts page and drawer read them.
+  const episode = { firstSeen: '2026-09-08T14:00:00Z', lastSeen: '2026-09-11T20:00:00Z', scans: 4, types: ['Type1', 'Type3'], grade: 'A+', basePivot: 120, baseWeeks: 5, baseDepthPct: 12,
+    entry: 120, fail: 111.6, lastPrice: 123.45, high: 125, low: 119, pct: 2.9, maxPct: 4.2, status: 'past', alertedAt: '2026-09-08T14:05:00Z', xPostedAt: null };
+  app.get('/api/history/:s', (q, r) => r.json({ asset: q.params.s, episodes: q.params.s === 'AAPL' ? [episode] : [], rows: 4 }));
+  app.get('/api/alerts', (q, r) => r.json({ weekEnding: q.query.w || '2026-09-12', alerts: [{ asset: 'AAPL', alertedAt: '2026-09-08T14:05:00Z', grade: 'A+', baseWeeks: 5, pivot: 120, fail: 111.6, current: 123.45, pct: 2.9, cappedPct: 2.9, status: 'past' }],
+    summary: { count: 1, past: 1, fell: 0, below: 0, avgCappedPct: 2.9 }, text: ['Last week the screen produced 1 breakout. 1 is still past the pivot and 0 fell through the fail level.\nAverage +2.9%, equal weight, exits at the fail level.', ''] }));
   app.get('/api/*', (q, r) => r.json({}));
   const spa = (q, r) => r.sendFile(path.join(pub, 'index.html'));
   app.get(['/dashboard', '/dashboard/*', '/in/dashboard', '/in/dashboard/*', /^\/\$.*/, '/s/:s'], spa);
+  app.get('/pulse', (q, r) => r.sendFile(path.join(pub, 'pulse.html'))); // the receipts page, as server.js serves it
   app.use(express.static(pub));
   return new Promise((resolve) => {
     const srv = app.listen(port, () => resolve({ srv, base: `http://127.0.0.1:${srv.address().port}` }));
