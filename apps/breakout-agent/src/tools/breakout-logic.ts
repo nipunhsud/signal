@@ -77,6 +77,24 @@ export interface BreakoutAnalysis {
   // 22.8% entering on the intrabar poke; 81% of pokes are traps). This, plus
   // a non-null grade, is the alert condition.
   gradedBreakoutToday: boolean;
+  // Gap retest fired on today's bar (see MarketData.gapRetest). Its own alert
+  // kind (GR), never blended into graded-base stats.
+  gapRetestToday: boolean;
+  gapRetest: MarketData["gapRetest"] | null;
+  // Minervini trend template (X-post study, Sep 2026, 44,475 graded
+  // breakouts 1985-2026): close > 150 > 200MA, 50 > 150, 200MA rising over a
+  // month, >=30% above the 52-week low, within 25% of the 52-week high. Full
+  // template: PF 1.90 / 16.7% reach +20% in 60 bars vs 1.63 / 6.6% when it
+  // fails. The pieces that matter beyond blue sky: 200MA rising (fails: PF
+  // 1.16, -0.25% mean — now a grade gate) and the >=30% prior run (fails:
+  // 3.1% reach +20%). Label, not an alert gate.
+  trendTemplate: boolean;
+  ma200Rising: boolean;
+  pctAbove52wLow: number;
+  // Range of the 10 bars before today as % of the pivot — the VCP's final
+  // contraction. <3%: 59.9% win / 9.3% stop but 2.6% reach +20%; >=12%: 53.5%
+  // / 48.4% / 31.6%. Tight = low fail rate, small move. Label only.
+  pivotTightPct: number;
 }
 
 export interface SetupAnalysis {
@@ -258,6 +276,26 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   // clears every holder from the past year — no trapped sellers overhead.
   const isBlueSky = high52w > 0 && resistance >= high52w * 0.98;
 
+  // Trend template pieces (see interface). ma200Prev/low52w are absent on
+  // thin histories — treat as passing so short histories are not penalised.
+  const ma200Rising =
+    data.ma200Prev != null && data.ma200Prev > 0 ? ma200 > data.ma200Prev : true;
+  const pctAbove52wLow =
+    data.low52w != null && data.low52w > 0 ? (close / data.low52w - 1) * 100 : 0;
+  const trendTemplate =
+    close > ma150 &&
+    close > ma200 &&
+    ma150 > ma200 &&
+    ma50 > ma150 &&
+    ma200Rising &&
+    pctAbove52wLow >= 30 &&
+    (high52w > 0 ? close >= high52w * 0.75 : true);
+  const tightRef = data.gradedBase?.pivot || resistance;
+  const pivotTightPct =
+    highs.length >= 10 && tightRef > 0
+      ? ((Math.max(...highs.slice(-10)) - Math.min(...lows.slice(-10))) / tightRef) * 100
+      : 0;
+
   // Calculate confidence
   let confidence = 0.1; // base for weak/no signal
 
@@ -383,7 +421,9 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
         ? "confirmed"
         : "quiet";
   let baseGrade: "S" | "A+" | "A" | null = null;
-  if (gb && gb.sky && close > ma200 && gb.depthPct <= 25) {
+  // 200MA must be rising: graded breakouts under a falling 200-day ran
+  // -0.25% mean / PF 1.16 (n=690) — Minervini's template rule, confirmed.
+  if (gb && gb.sky && close > ma200 && ma200Rising && gb.depthPct <= 25) {
     baseGrade =
       gb.depthPct <= 15 && gb.bars >= 80
         ? "S"
@@ -392,6 +432,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
           : "A";
   }
   const gradedBreakoutToday = !!(gb && gb.brokeOutToday);
+  const gapRetestToday = !!(data.gapRetest && data.gapRetest.triggeredToday);
 
   return {
     resistance,
@@ -441,6 +482,12 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     baseDepthPct: gb?.depthPct ?? 0,
     baseSky: gb?.sky ?? false,
     gradedBreakoutToday,
+    gapRetestToday,
+    gapRetest: data.gapRetest ?? null,
+    trendTemplate,
+    ma200Rising,
+    pctAbove52wLow,
+    pivotTightPct,
   };
 }
 

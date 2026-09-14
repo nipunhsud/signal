@@ -122,7 +122,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minConfidence', 85); });
   await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]));
   const order = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
-  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'AMD', 'TSLA']), `grade sort: S › A+ › A › ungraded › X (${order.join(',')})`);
+  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded › X (${order.join(',')})`);
   await page.evaluate(() => dashboard.setFilter('gradeFilter', 'A+'));
   const aplus = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
   check(JSON.stringify(aplus) === JSON.stringify(['MSFT', 'AAPL']), `grade ≥ A+ keeps S and A+ only (${aplus.join(',')})`);
@@ -190,6 +190,11 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     const p2 = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     await p2.goto(`${base}/dashboard`); await settle(p2, 400);
     check((await p2.locator('#app tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
+    check((await p2.locator('#app tr:has-text("SWKS") .badge:has-text("Cheat · 52% up the base")').count()) === 1, 'a shelf breakout inside a forming base is labelled as a cheat entry');
+    await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 300);
+    const rows = await p2.locator('#app tbody tr').allInnerTexts();
+    check(rows.some((r) => r.includes('SWKS')) && !rows.some((r) => r.includes('NVDA')), 'Cheat filter keeps only shelf entries');
+    await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 200);
     await p2.goto(`${base}/pulse?w=2026-09-12`); await settle(p2, 400);
     const rtxt = await p2.locator('#receipts-section').innerText();
     check(rtxt.includes('week ending 2026-09-12') && rtxt.includes('$AAPL') && rtxt.includes('past the pivot') && rtxt.includes('produced 1 breakout'), 'pulse?w= shows the week the post names, with the same sentence');

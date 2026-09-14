@@ -19,6 +19,7 @@ export const SIGNALS = {
     sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
     sig('MSFT', 'breakout', 88, { baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
     sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),
+    sig('SWKS', 'breakout', 90, { basePivot: 84.79, baseDepthPct: 34.6, baseBars: 15, currentPrice: 74.02, entryPrice: 70.75, shelf: { kind: 'cheat', label: 'Cheat', posPct: 52, baseLow: 55.45, basePivot: 84.79, level: 70.75, pctBelowPivot: 12.7 } }), // shelf breakout inside a forming, ungraded base
     sig('AMD', 'setup', 91),
   ],
   mediumConfidence: [],

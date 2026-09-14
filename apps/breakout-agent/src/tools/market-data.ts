@@ -456,6 +456,10 @@ export interface MarketData {
   setupInflectionCount?: number; // Number of direction changes in setup consolidation
   // 52-week high
   high52w?: number;
+  // Minervini trend template inputs: 52-week low (prior-run gate, >=30%
+  // above it) and the 200MA as of 21 bars ago (the 200-day must be rising).
+  low52w?: number;
+  ma200Prev?: number;
   // Trailing returns (%): last 5 / 20 / 60 bars → 1w / 1m / 3m
   return1wPct?: number;
   return1mPct?: number;
@@ -507,6 +511,20 @@ export interface MarketData {
     status: "breakout" | "forming";
     breakoutDate?: string;
     brokeOutToday: boolean;
+  };
+  // Gap retest (DE Aug 2026 shape, full-history study Sep 2026: n=9,474,
+  // PF 3.69, 41.3% reach +20% in 60 bars, 46% stop-touch): a 4%+ gap up on
+  // 1.5x volume, then a pullback of 2%+ on closes, at least two bars after
+  // the gap, whose lows hold above the gap day's low, then the first close
+  // above the prior bar's high within 20 bars of the gap.
+  gapRetest?: {
+    gapDate: string;
+    gapPct: number;
+    gapVolumeRatio: number;
+    pullbackPct: number;
+    lowDate: string;
+    triggerDate: string;
+    triggeredToday: boolean;
   };
 }
 
@@ -1099,6 +1117,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const ma50 = calculateMA(closes, 50);
       const ma150 = calculateMA(closes, 150);
       const ma200 = calculateMA(closes, 200);
+      const ma200Prev = closes.length > 221 ? calculateMA(closes.slice(0, -21), 200) : undefined;
 
       const bars = allBars.slice(-21);
       const latest = bars[bars.length - 1];
@@ -1144,6 +1163,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
 
       // Calculate 52-week high from ~250 days of data (~1 trading year)
       const high52w = Math.max(...allBars.map((b: any) => b.high));
+      const low52w = Math.min(...allBars.map((b: any) => b.low));
 
       // X-ray base segmentation — same detector as the dashboard's base X-ray.
       // The last segment is the active base; if today's close resolved it, the
@@ -1168,12 +1188,50 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             sky: lastBase.pivot >= priorHigh * 0.98,
             status: lastBase.status,
             breakoutDate: lastBase.breakout?.date,
+            // Today's bar, OR the last completed session: if the 16:00 scan
+            // saw a pre-auction quote under the pivot and the settled close
+            // was over it, the next scan still fires. One-alert-per-base
+            // dedupe in sendAlert stops repeats.
             brokeOutToday:
-              lastBase.breakout?.date === latest.date && latest.close > lastBase.pivot,
+              (lastBase.breakout?.date === latest.date ||
+                (allBars.length >= 2 && lastBase.breakout?.date === allBars[allBars.length - 2].date)) &&
+              latest.close > lastBase.pivot,
           };
         }
       } catch (e: any) {
         console.warn(`[Xray] ${symbol}: base segmentation failed: ${e?.message}`);
+      }
+
+      // Gap retest detection (see MarketData.gapRetest). Causal: scans the last
+      // 25 bars for a gap day, then the pullback and the turn. Only the most
+      // recent gap that produced a trigger is reported.
+      let gapRetest: MarketData["gapRetest"];
+      try {
+        const nb = allBars.length;
+        for (let g = nb - 2; g >= Math.max(220, nb - 25); g--) {
+          const prev = allBars[g - 1], bar = allBars[g];
+          let av = 0; for (let k = g - 20; k < g; k++) av += allBars[k].volume || 0; av /= 20;
+          let s200 = 0; for (let k = g - 199; k <= g; k++) s200 += allBars[k].close; s200 /= 200;
+          if (!(bar.open >= prev.close * 1.04) || !(bar.close > bar.open) || !(av > 0 && bar.volume >= av * 1.5) || !(bar.close > s200)) continue;
+          let maxC = bar.close, lowIdx = -1, lowVal = Infinity, held = true;
+          for (let i = g + 1; i <= Math.min(g + 15, nb - 1); i++) {
+            if (allBars[i].low < bar.low) { held = false; break; }
+            if (allBars[i].close > maxC) { maxC = allBars[i].close; if (lowIdx >= 0 && (maxC - lowVal) / lowVal > 0.02) break; }
+            if (i >= g + 2 && allBars[i].close < lowVal && (maxC - allBars[i].close) / maxC >= 0.02) { lowVal = allBars[i].close; lowIdx = i; }
+          }
+          if (!held || lowIdx < 0) continue;
+          let t = -1;
+          for (let i = lowIdx + 1; i <= Math.min(g + 20, nb - 1); i++) { if (allBars[i].low < bar.low) break; if (allBars[i].close > allBars[i - 1].high) { t = i; break; } }
+          if (t < 0) continue;
+          gapRetest = {
+            gapDate: String(bar.date).slice(0, 10), gapPct: (bar.open / prev.close - 1) * 100, gapVolumeRatio: bar.volume / av,
+            pullbackPct: (maxC - lowVal) / maxC * 100, lowDate: String(allBars[lowIdx].date).slice(0, 10),
+            triggerDate: String(allBars[t].date).slice(0, 10), triggeredToday: t === nb - 1,
+          };
+          break;
+        }
+      } catch (e: any) {
+        console.warn(`[GapRetest] ${symbol}: ${e?.message}`);
       }
 
       // Trailing returns (moving winners screen). Undefined if too little history.
@@ -1396,6 +1454,8 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         setupInflectionCount:
           setupConsolidationResult.inflectionCount,
         high52w,
+        low52w,
+        ma200Prev,
         return1wPct,
         return1mPct,
         return3mPct,
@@ -1425,6 +1485,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         coilRatio: baseQuality.coilRatio,
         isStaircase: baseQuality.isStaircase,
         gradedBase,
+        gapRetest,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });

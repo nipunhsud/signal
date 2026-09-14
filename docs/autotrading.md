@@ -53,8 +53,10 @@ Any explicit `TRADE_*` variable overrides the profile's value, so
 
 - **Slots go to the strongest first.** Each cycle's candidates are ranked by
   the scanner's `rsRating` (6-month relative strength, 1–99), grade breaking
-  ties, oldest alert last. `TRADE_RS_MIN` adds a floor (default 0: the study
-  found the *order* matters, a floor alone does not).
+  ties, oldest alert last. `TRADE_RS_MIN` adds a floor (default 80 since the
+  Sep 2026 Minervini study: graded breakouts with RS >= 80 ran PF 2.05 and 23%
+  reached +20% in 60 bars vs PF 1.75 / 4.7% under RS 50; the order still does
+  most of the work, so 0 disables the floor).
 - **Market switch.** `TRADE_REGIME_MA=200`: no new entries while SPY's latest
   close sits below its 200-day SMA, and with `TRADE_REGIME_EXIT=true`
   (default) the after-close review flags every open position `regime` so it

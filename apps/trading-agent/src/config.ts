@@ -138,7 +138,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): TradingConfig {
       .map((g) => g.trim())
       .filter(Boolean),
     allowEtfs: (env.TRADE_ALLOW_ETFS || "true") === "true",
-    rsMin: num("TRADE_RS_MIN", 0),
+    rsMin: num("TRADE_RS_MIN", 80), // Minervini study: RS>=80 PF 2.05 / 23% reach +20% vs 1.75 / 4.7% under 50
     regimeMa: Math.floor(num("TRADE_REGIME_MA", 200)),
     regimeExit: (env.TRADE_REGIME_EXIT || "true") === "true",
     regimeSymbol: env.TRADE_REGIME_SYMBOL || "SPY",

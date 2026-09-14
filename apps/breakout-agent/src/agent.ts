@@ -3,6 +3,7 @@ import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
 import { postXThread } from "./x-post.js";
+import { classifyShelf, cheatGate } from "../shelf.js";
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 import { getOrAnalyzeTranscript } from "./tools/transcript-analysis.js";
@@ -58,6 +59,27 @@ export function marketStatus(date: Date = new Date(), region: Region = "US"): {
 
 export function isMarketOpen(date: Date = new Date(), region: Region = "US"): boolean {
   return marketStatus(date, region).open;
+}
+
+// The alert window: market hours plus a post-close grace period. The official
+// close prints in the closing auction after the bell, so a scan at 16:00:00
+// sees a pre-close quote; DE 2026-09-01 closed $676.08 over a $674.19 pivot
+// and the email went out at 16:00 the NEXT day at $698. The post-close pass
+// (POST_CLOSE_CRON, default 16:15 ET / 15:45 IST) runs inside this window and
+// alerts on the settled close the same day.
+export const POST_CLOSE_GRACE_MIN = 45;
+export function isAlertWindow(date: Date = new Date(), region: Region = "US"): boolean {
+  const st = marketStatus(date, region);
+  if (st.open) return true;
+  const h = MARKET_HOURS[region];
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: h.tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
+  const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday);
+  return isWeekday && mins > h.close && mins <= h.close + POST_CLOSE_GRACE_MIN;
 }
 
 const SECTOR_TAILWINDS: Record<string, string> = {
@@ -637,7 +659,15 @@ export class BreakoutAgent {
           ? `VCP ✓ (ATR ${breakoutAnalysis.atrPercent.toFixed(1)}%, contraction ${breakoutAnalysis.contractionRatio.toFixed(2)}, expansion ${breakoutAnalysis.expansionRatio.toFixed(1)}x)`
           : null,
         breakoutAnalysis.isBlueSky ? "Blue Sky ✓ (base at 52w high)" : null,
-        rsRating != null ? `RS: ${rsRating}` : null,
+        rsRating != null
+          ? `RS: ${rsRating}${rsRating >= 89 ? " (leader)" : rsRating >= 80 ? " (strong)" : rsRating < 50 ? " (laggard)" : ""}`
+          : null,
+        breakoutAnalysis.trendTemplate
+          ? "Trend template ✓"
+          : `Trend template ✗${!breakoutAnalysis.ma200Rising ? " (200MA falling)" : breakoutAnalysis.pctAbove52wLow < 30 ? ` (${breakoutAnalysis.pctAbove52wLow.toFixed(0)}% off the 52w low)` : ""}`,
+        breakoutAnalysis.pivotTightPct > 0
+          ? `Pivot range ${breakoutAnalysis.pivotTightPct.toFixed(1)}%${breakoutAnalysis.pivotTightPct < 5 ? " (tight)" : breakoutAnalysis.pivotTightPct >= 12 ? " (loose)" : ""}`
+          : null,
         breakoutAnalysis.upDownVolumeRatio > 0
           ? `U/D Vol: ${breakoutAnalysis.upDownVolumeRatio.toFixed(1)}x`
           : null,
@@ -686,6 +716,25 @@ export class BreakoutAgent {
         breakoutAnalysis.baseGrade !== null &&
         breakoutAnalysis.gradedBreakoutToday &&
         breakoutAnalysis.liquidityOk;
+      // Cheat entry (Sep 2026): the close cleared a tight shelf INSIDE a base
+      // that would grade (blue sky, <=25% deep, above the 200MA) but has not
+      // resolved. Minervini's early entry. Alerted, counted and labelled as
+      // its own kind (low cheat / cheat / handle), never dressed as a pivot
+      // close. Gate lives in shelf.js (pure, tested).
+      const shelf = cheatGate({
+        isGradedBreakout,
+        baseGrade: breakoutAnalysis.baseGrade,
+        gradedBreakoutToday: breakoutAnalysis.gradedBreakoutToday,
+        liquidityOk: breakoutAnalysis.liquidityOk,
+        volumeOk: breakoutAnalysis.volumeOk,
+        bullishCandle: breakoutAnalysis.bullishCandle,
+        cleanConsolidation: data.cleanConsolidation ?? false,
+        close: data.close,
+        resistance: breakoutAnalysis.resistance,
+        basePivot: breakoutAnalysis.basePivot,
+        baseDepthPct: breakoutAnalysis.baseDepthPct,
+      });
+      const isCheatBreakout = shelf != null;
       const lastRowAgeMs = latestForAsset
         ? Date.now() - new Date(latestForAsset.createdAt).getTime()
         : Infinity;
@@ -702,7 +751,14 @@ export class BreakoutAgent {
           (latestForAsset as any).baseGrade != null) &&
         latestForAsset.entryPrice != null &&
         lastRowAgeMs <= STREAK_MAX_GAP_MS &&
-        !stopBreached;
+        !stopBreached &&
+        // A shelf (cheat) entry does not freeze the pivot close that follows:
+        // when the base resolves, that is a new episode with the pivot as entry.
+        !(
+          isGradedBreakout &&
+          breakoutAnalysis.basePivot > 0 &&
+          (latestForAsset.entryPrice as number) < breakoutAnalysis.basePivot * 0.999
+        );
       // Fresh flip: entry = the X-ray base pivot when today is a graded
       // breakout (the level the whole base actually resolved through), else
       // the 20-bar Donchian resistance as before.
@@ -738,7 +794,7 @@ export class BreakoutAgent {
       // replaces the intrabar Donchian poke (57.0% win vs 22.8%; 81% of pokes
       // are traps). Type1/Type3/EP classification continues for tracking, the
       // dashboard, and streak bookkeeping — it just no longer decides emails.
-      const shouldAlert = isGradedBreakout;
+      const shouldAlert = isGradedBreakout || isCheatBreakout;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -790,7 +846,7 @@ export class BreakoutAgent {
       // MA stack still inverted) — it must still persist or sendAlert finds no
       // record. Green-cone signals failing both systems are dropped as before.
       const isMeaningfulBreakout =
-        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout;
+        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout || isCheatBreakout;
 
       if (isMeaningfulBreakout) {
         const latestBreakout = await db.breakoutSignal.findFirst({
@@ -863,6 +919,8 @@ export class BreakoutAgent {
               basePivot: breakoutAnalysis.basePivot > 0 ? breakoutAnalysis.basePivot : null,
               baseBars: breakoutAnalysis.baseBarsCount > 0 ? breakoutAnalysis.baseBarsCount : null,
               baseDepthPct: breakoutAnalysis.baseDepthPct > 0 ? breakoutAnalysis.baseDepthPct : null,
+              trendTemplate: breakoutAnalysis.trendTemplate,
+              pivotTightPct: breakoutAnalysis.pivotTightPct > 0 ? breakoutAnalysis.pivotTightPct : null,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
@@ -931,6 +989,50 @@ export class BreakoutAgent {
             },
           });
           console.log(`⚡ EP ${asset}: +${dayGainPct.toFixed(1)}% on ${volumeRatio.toFixed(1)}x vol${epAlert ? " (ALERT)" : ""}`);
+        }
+      }
+
+      // ── Gap retest (GR): the catalyst gap held and the stock turned back up ──
+      // Study (Sep 2026, docs/minervini-rules-study.md): 9,474 events 1985-2026,
+      // 56.2% win / 46.4% stop-touch / PF 3.69 / 41.3% reach +20% in 60 bars,
+      // above the pivot entry's PF in every decade. Tracked as its own kind;
+      // emails only when GAP_RETEST_ALERT=true, so the ledger can judge it first.
+      if (breakoutAnalysis.gapRetestToday && breakoutAnalysis.liquidityOk && breakoutAnalysis.gapRetest) {
+        const gr = breakoutAnalysis.gapRetest;
+        const grSince = new Date(`${gr.gapDate}T00:00:00Z`);
+        const grExisting = await db.breakoutSignal.findFirst({
+          where: { asset, breakoutType: "GR", createdAt: { gte: grSince } },
+        });
+        if (!grExisting) {
+          const grAlert = process.env.GAP_RETEST_ALERT === "true";
+          await db.breakoutSignal.create({
+            data: {
+              asset,
+              assetType: mode === "etfs" ? "etf" : "stock",
+              confidence: 0.8,
+              agentDecision: `Gap retest: gapped up ${gr.gapPct.toFixed(1)}% on ${gr.gapDate} on ${gr.gapVolumeRatio.toFixed(1)}x average volume, pulled back ${gr.pullbackPct.toFixed(1)}% without filling the gap, and today closed above the prior day's high at ${data.close.toFixed(2)}. Just under half of these touch the fail level within 20 bars; two in five reach +20% within 60.`,
+              shouldAlert: grAlert,
+              resistance: breakoutAnalysis.resistance,
+              support: breakoutAnalysis.support,
+              currentPrice: data.close,
+              entryPrice: data.close,
+              stopLoss: data.close * 0.93,
+              breakoutType: "GR",
+              volumeRatio: gr.gapVolumeRatio,
+              sector: breakoutAnalysis.sector,
+              industry: breakoutAnalysis.industry,
+              rsRating,
+              isBlueSky: breakoutAnalysis.isBlueSky,
+              liquidityOk: breakoutAnalysis.liquidityOk,
+              baseGrade: breakoutAnalysis.baseGrade,
+              basePivot: breakoutAnalysis.basePivot > 0 ? breakoutAnalysis.basePivot : null,
+              baseBars: breakoutAnalysis.baseBarsCount > 0 ? breakoutAnalysis.baseBarsCount : null,
+              baseDepthPct: breakoutAnalysis.baseDepthPct > 0 ? breakoutAnalysis.baseDepthPct : null,
+              trendTemplate: breakoutAnalysis.trendTemplate,
+              signalDate: data.timestamp,
+            },
+          });
+          console.log(`↩ GR ${asset}: gap ${gr.gapDate} +${gr.gapPct.toFixed(1)}%, pullback ${gr.pullbackPct.toFixed(1)}%, turn today${grAlert ? " (ALERT)" : ""}`);
         }
       }
 
@@ -1042,10 +1144,12 @@ export class BreakoutAgent {
       return;
     }
 
-    // ALL alerts wait for market hours (US 9:30-16:00 ET / NSE 9:15-15:30 IST,
-    // Mon-Fri). Was type-gated — a graded breakout persisted on an "unknown"-
-    // type row slipped past and could email on a weekend scan.
-    if (!isMarketOpen(new Date(), regionOf(result.asset))) {
+    // ALL alerts wait for the alert window: market hours (US 9:30-16:00 ET /
+    // NSE 9:15-15:30 IST, Mon-Fri) plus the post-close grace period, so the
+    // settled close can email the same day. Was type-gated — a graded breakout
+    // persisted on an "unknown"-type row slipped past and could email on a
+    // weekend scan.
+    if (!isAlertWindow(new Date(), regionOf(result.asset))) {
       console.log(
         `⊘ Skip ${latestRecord.breakoutType} alert ${result.asset}: Outside market hours — queued for next market open`,
       );
@@ -1078,7 +1182,13 @@ export class BreakoutAgent {
         existingAlert.alertSentAt != null &&
         Date.now() - new Date(existingAlert.alertSentAt).getTime() <
           45 * 24 * 60 * 60 * 1000;
-      if (sameBase || legacySameEpisode) {
+      // A cheat (shelf) alert and the pivot close of the same base are two
+      // events: the second is allowed. Two shelves in one base are not.
+      const prevWasShelf =
+        existingAlert.entryPrice != null && prevPivot != null && existingAlert.entryPrice < prevPivot * 0.999;
+      const nowPivot =
+        latestRecord.entryPrice != null && curPivot != null && latestRecord.entryPrice >= curPivot * 0.999;
+      if ((sameBase && !(prevWasShelf && nowPivot)) || legacySameEpisode) {
         console.log(
           `⊘ Skip ${result.asset}: base already alerted (pivot $${prevPivot?.toFixed(2) ?? "legacy"}) — tracking as extension`,
         );
@@ -1099,11 +1209,20 @@ export class BreakoutAgent {
       rec.baseGrade ? `grade ${rec.baseGrade}` : null,
       weeks ? `${weeks}-week base` : null,
     ].filter(Boolean);
+    // Shelf (cheat) entry: the emailed level sits inside a base that has not resolved.
+    const shelfNow = classifyShelf({
+      level: latestRecord.entryPrice,
+      basePivot: rec.basePivot,
+      baseDepthPct: rec.baseDepthPct,
+      price: result.currentPrice,
+    });
     const what = isEp
       ? "repriced on a catalyst"
-      : isExt
-        ? "is holding past its pivot"
-        : "closed above its pivot";
+      : shelfNow
+        ? "closed above a shelf inside its base"
+        : isExt
+          ? "is holding past its pivot"
+          : "closed above its pivot";
     const subject = `${result.asset} ${what}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
@@ -1175,10 +1294,13 @@ Worth watching: ${review.watchFor}
       rec.baseDepthPct ? `${Number(rec.baseDepthPct).toFixed(0)}% deep` : null,
       latestRecord.volumeRatio ? `volume ${latestRecord.volumeRatio.toFixed(1)}x` : null,
     ].filter(Boolean).join(" · ");
+    const levelWord = shelfNow ? "shelf" : "pivot";
     const levels = [
-      pad("Pivot", pivotVal > 0 ? fmt(pivotVal) : "n/a"),
-      pad("Close", fmt(result.currentPrice) + (pctPast != null ? `  (${pctPast >= 0 ? "+" : ""}${pctPast.toFixed(1)}% vs the pivot)` : "")),
-      pad("Fail level", failVal > 0 ? fmt(failVal) + "  (7% below the pivot)" : "n/a"),
+      pad(shelfNow ? "Shelf" : "Pivot", pivotVal > 0 ? fmt(pivotVal) : "n/a"),
+      pad("Close", fmt(result.currentPrice) + (pctPast != null ? `  (${pctPast >= 0 ? "+" : ""}${pctPast.toFixed(1)}% vs the ${levelWord})` : "")),
+      pad("Fail level", failVal > 0 ? fmt(failVal) + `  (7% below the ${levelWord})` : "n/a"),
+      shelfNow ? pad("Base pivot", `${fmt(shelfNow.basePivot)}  (${shelfNow.pctBelowPivot.toFixed(1)}% above the close, not cleared yet)`) : null,
+      shelfNow ? pad("Entry", `${shelfNow.label.toLowerCase()}, ${shelfNow.posPct}% of the way up the base`) : null,
       baseLine ? pad("Base", baseLine) : null,
       pad("Sector", `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
       pad("Confidence", `${(result.confidence * 100).toFixed(0)}%`),
@@ -1247,7 +1369,7 @@ Screen output for research, not advice.
         return (
           !postedSet.has(s.asset) &&
           regionOf(s.asset) === "US" && // X audience is US — never tease NSE/BSE names
-          ["Type1", "Type1b"].includes(s.breakoutType) &&
+          s.breakoutType !== "EP" &&
           gradeRank[r.baseGrade] != null &&
           s.entryPrice != null
         );
@@ -1263,9 +1385,11 @@ Screen output for research, not advice.
     for (const s of qualifying) {
       const r = s as any;
       const weeks = r.baseBars ? Math.round(r.baseBars / 5) : null;
-      const lead =
-        `$${s.asset} closed above its pivot today, $${(s.entryPrice as number).toFixed(2)}. ` +
-        `Grade ${r.baseGrade} base${weeks ? `, ${weeks} weeks long` : ""}.`;
+      const shelfT = classifyShelf({ level: s.entryPrice, basePivot: r.basePivot, baseDepthPct: r.baseDepthPct, price: s.currentPrice });
+      const lead = shelfT
+        ? `$${s.asset} closed above a shelf today, $${(s.entryPrice as number).toFixed(2)}, ${shelfT.posPct}% of the way up a grade ${r.baseGrade} base that has not resolved.`
+        : `$${s.asset} closed above its pivot today, $${(s.entryPrice as number).toFixed(2)}. ` +
+          `Grade ${r.baseGrade} base${weeks ? `, ${weeks} weeks long` : ""}.`;
       const reply = `Why it graded ${r.baseGrade}, and the rest of today's screen: ${dqLink(s.asset)}`;
       const posted = await postXThread([lead, reply]);
       if (posted) {

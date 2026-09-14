@@ -6,6 +6,7 @@
 //
 // Pure functions of rows — no I/O — so the grading and the wording are
 // testable without a database (test/ledger.test.mjs). server.js does the SQL.
+import { classifyShelf } from './shelf.js';
 
 // Judge each emailed row against the asset's latest price. Entry is the
 // frozen pivot the close cleared; the fail level is the stored stopLoss, or
@@ -21,8 +22,12 @@ export function gradeAlerts(rows) {
       const pct = ((current - entry) / entry) * 100;
       const failPct = ((fail - entry) / entry) * 100;
       const status = current <= fail ? 'fell' : current > entry ? 'past' : 'below';
+      // What kind of close was emailed: the base pivot, or a shelf inside a
+      // base that had not resolved (cheat / low cheat / handle).
+      const shelf = classifyShelf({ level: entry, basePivot: r.basePivot, baseDepthPct: r.baseDepthPct, price: r.currentPrice });
       return {
         asset: r.asset,
+        kind: shelf ? shelf.kind : 'pivot',
         alertedAt: r.lastAlertAt,
         grade: r.baseGrade || null,
         baseWeeks: r.baseBars ? Math.round(Number(r.baseBars) / 5) : null,
@@ -80,6 +85,90 @@ export function composeReceipts(ledger, weekEnding) {
   ].filter((l) => l !== null).join('\n');
   const reply = `Every one of them, with the levels: https://dataquant.ai/pulse?w=${weekEnding}`;
   return [main, reply];
+}
+
+// Fold a ticker's scan rows (oldest first) into episodes: one per frozen
+// entry, carrying the base as the screen last saw it, whether/when it was
+// emailed, whether it fell through its fail level, and the credited result.
+// Pure; server.js supplies the rows. Tested in test/ledger.test.mjs.
+export function foldEpisodes(rows) {
+  const episodes = [];
+  // One episode = one frozen entry. The base detector re-segments as price
+  // moves (DE: four cards for one $9.11 trade; ZETA: two for one $31.05
+  // shelf), so the base pivot is NOT part of the key — the latest base is
+  // carried on the episode instead. Rows with no entry group by base pivot.
+  const key = (r) => (r.entryPrice != null ? `e:${Number(r.entryPrice).toFixed(2)}` : `p:${r.basePivot ?? 'none'}`);
+  for (const r of rows) {
+    const last = episodes[episodes.length - 1];
+    if (!last || last.key !== key(r)) {
+      episodes.push({
+        key: key(r),
+        firstSeen: r.createdAt, lastSeen: r.createdAt,
+        types: new Set([r.breakoutType]),
+        grade: r.baseGrade || null, basePivot: r.basePivot, baseBars: r.baseBars, baseDepthPct: r.baseDepthPct,
+        entry: r.entryPrice, fail: r.stopLoss, volumeTag: r.volumeTag || null,
+        firstPrice: r.currentPrice, lastPrice: r.currentPrice, high: r.currentPrice, low: r.currentPrice,
+        alertedAt: null, alertedPrice: null, xPostedAt: null, scans: 0, fellAt: null,
+      });
+    }
+    const ep = episodes[episodes.length - 1];
+    ep.lastSeen = r.createdAt;
+    ep.types.add(r.breakoutType);
+    ep.lastPrice = r.currentPrice;
+    ep.high = Math.max(ep.high, r.currentPrice);
+    ep.low = Math.min(ep.low, r.currentPrice);
+    ep.scans++;
+    // The base as the screen last saw it during this episode.
+    if (r.basePivot != null) { ep.basePivot = r.basePivot; ep.baseBars = r.baseBars; ep.baseDepthPct = r.baseDepthPct; }
+    if (r.baseGrade) ep.grade = r.baseGrade;
+    if (r.stopLoss != null && ep.fail == null) ep.fail = r.stopLoss;
+    const failNow = ep.fail != null ? Number(ep.fail) : ep.entry != null ? Number(ep.entry) * 0.93 : null;
+    if (ep.fellAt == null && failNow != null && r.currentPrice <= failNow) ep.fellAt = r.createdAt;
+    // Per-row stamp (current) or legacy asset-wide stamp: credit the alert
+    // to the episode that was live when it went out.
+    const stamp = r.lastAlertAt || r.alertSentAt;
+    if (stamp && stamp >= ep.firstSeen && stamp <= new Date(new Date(ep.lastSeen).getTime() + 24 * 60 * 60 * 1000)) {
+      if (!ep.alertedAt || stamp < ep.alertedAt) { ep.alertedAt = stamp; ep.alertedPrice = r.currentPrice; }
+    }
+    if (r.xPostedAt && r.xPostedAt >= ep.firstSeen) ep.xPostedAt = ep.xPostedAt || r.xPostedAt;
+  }
+  const out = episodes
+    .filter((ep) => ep.entry != null || ep.grade || ep.alertedAt)
+    .map((ep) => {
+      const entry = ep.entry != null ? Number(ep.entry) : null;
+      const fail = ep.fail != null ? Number(ep.fail) : entry != null ? entry * 0.93 : null;
+      const pct = entry ? ((ep.lastPrice - entry) / entry) * 100 : null;
+      const fellThrough = entry != null && fail != null && ep.low <= fail;
+      const status = entry == null ? 'tracking' : fellThrough ? 'fell' : ep.lastPrice > entry ? 'past' : 'below';
+      // What the ledger credits: an episode that fell through its fail level
+      // ended there, whatever price did afterwards.
+      const failPct = entry && fail != null ? ((fail - entry) / entry) * 100 : null;
+      const cappedPct = pct == null ? null : fellThrough && failPct != null ? Math.min(pct, failPct) : pct;
+      const basePivotNum = ep.basePivot != null ? Number(ep.basePivot) : null;
+      const kind = entry == null ? 'tracking'
+        : basePivotNum != null && entry < basePivotNum * 0.999 ? 'shelf'
+        : 'pivot';
+      return {
+        kind,
+        fellAt: ep.fellAt,
+        cappedPct: cappedPct != null ? Math.round(cappedPct * 10) / 10 : null,
+        alertedPrice: ep.alertedPrice,
+        firstSeen: ep.firstSeen, lastSeen: ep.lastSeen, scans: ep.scans,
+        types: [...ep.types],
+        grade: ep.grade, basePivot: ep.basePivot, baseWeeks: ep.baseBars ? Math.round(ep.baseBars / 5) : null, baseDepthPct: ep.baseDepthPct,
+        volumeTag: ep.volumeTag,
+        entry, fail: fail != null ? Math.round(fail * 100) / 100 : null,
+        lastPrice: ep.lastPrice, high: ep.high, low: ep.low,
+        pct: pct != null ? Math.round(pct * 10) / 10 : null,
+        maxPct: entry ? Math.round(((ep.high - entry) / entry) * 1000) / 10 : null,
+        status,
+        alertedAt: ep.alertedAt, xPostedAt: ep.xPostedAt,
+        // Judged at the start of the episode: was the entry a shelf inside a forming base?
+        shelf: classifyShelf({ level: entry, basePivot: ep.basePivot, baseDepthPct: ep.baseDepthPct, price: ep.firstPrice }),
+      };
+    })
+    .reverse();
+  return out;
 }
 
 const round2 = (v) => Math.round(v * 100) / 100;
