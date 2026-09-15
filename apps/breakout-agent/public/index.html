@@ -102,6 +102,23 @@
       /* Asset cell = card header: full-width, emphasized, no label */
       table.signals-responsive td.card-header { background: rgba(31,41,55,0.6); border-bottom: 1px solid #374151; }
     }
+    /* Chart page. The stage fills what the phone gives it: in landscape on a
+       short screen the toolbar goes to one compact row and the chart takes the
+       rest of the viewport instead of a fixed 400px that forces a scroll. */
+    #chart-page-container { height: max(60vh, 400px); min-height: 50vh; }
+    @media (max-width: 640px) {
+      #chart-page-container { height: 62vh; min-height: 280px; }
+    }
+    @media (orientation: landscape) and (max-height: 560px) {
+      #top-nav { height: 40px; }
+      .chart-page { padding: 6px 10px !important; }
+      .chart-page-head { margin-bottom: 4px !important; }
+      .chart-page-head h1 { font-size: 16px; }
+      .chart-page-head .chart-tools { gap: 4px; }
+      .chart-page-head .chart-tools button { padding: 2px 7px; font-size: 11px; }
+      #chart-page-container { height: calc(100dvh - 132px) !important; min-height: 180px !important; }
+      .chart-caption, .chart-legend-row { display: none; }
+    }
     @keyframes pulse-alert {
       0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); }
       50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
@@ -388,6 +405,16 @@
     </script>
     <div id="top-nav-tabs" role="tablist" class="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto nav-scroll"></div>
     <div class="ml-auto flex items-center gap-2 sm:gap-4 flex-shrink-0">
+      <!-- Universal ticker search: any symbol, flagged or not, opens its chart. -->
+      <div class="relative flex-shrink-0">
+        <input id="nav-ticker-search" placeholder="Ticker" aria-label="Open any ticker"
+          autocomplete="off" spellcheck="false" enterkeyhint="go"
+          oninput="dashboard.chartSearchInput('nav')"
+          onkeydown="dashboard.chartSearchKey(event, 'nav')"
+          onblur="setTimeout(() => dashboard.closeChartSearch('nav'), 150)"
+          class="w-20 sm:w-32 bg-gray-900 text-gray-200 text-xs font-mono uppercase rounded-md px-2.5 py-1 ring-1 ring-gray-800 focus:ring-blue-500 outline-none placeholder:normal-case placeholder:font-sans placeholder:text-gray-600" />
+        <div id="nav-search-dd" class="absolute right-0 top-full mt-1 z-40 w-64 hidden bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl overflow-hidden"></div>
+      </div>
       <div id="top-nav-status" class="text-[11px] text-gray-500 hidden md:block whitespace-nowrap"></div>
       <button onclick="dashboard.openPalette()" class="text-[11px] text-gray-500 hover:text-gray-300 transition inline-flex items-center gap-1.5" title="Command palette (Cmd+K)">
         <span class="sf-kbd" style="font-size:9px;">⌘K</span>
@@ -579,6 +606,9 @@
         this.chartMA200 = true;
         this._basesCache = null;    // { asset, data } — /api/bases result (null data = unavailable)
         this._historyCache = null;  // { asset, data } — /api/history result (every previous breakout for the ticker)
+        this._showDrawTools = false;  // phones: drawing tools fold behind one Draw pill
+        window.addEventListener('resize', () => this._onViewportChange());
+        window.addEventListener('orientationchange', () => this._onViewportChange());
         this._showAllBases = false; // Base X-ray card-list expander
         // Admin (Clerk private metadata admin:"true") — gates the "Tweet" button.
         this.isAdmin = false;
@@ -1410,7 +1440,7 @@
           // "/" focuses search — same idiom as gh, gmail, slack
           if (e.key === '/') {
             e.preventDefault();
-            const s = document.getElementById('search-input');
+            const s = document.getElementById('search-input') || document.getElementById('nav-ticker-search');
             if (s) { s.focus(); s.select(); }
             return;
           }
@@ -1598,22 +1628,32 @@
         return this._csIndex;
       }
 
-      chartSearchInput() {
-        const q = (document.getElementById('chart-ticker-search')?.value || '').trim().toUpperCase();
-        if (!q) { this.closeChartSearch(); return; }
+      // scope: 'chart' (the chart page box) or 'nav' (the top-bar box). Same
+      // index, same dropdown, both open the chart for any symbol.
+      _searchIds(scope) {
+        return scope === 'nav'
+          ? { input: 'nav-ticker-search', dd: 'nav-search-dd' }
+          : { input: 'chart-ticker-search', dd: 'chart-search-dd' };
+      }
+
+      chartSearchInput(scope = 'chart') {
+        const ids = this._searchIds(scope);
+        const q = (document.getElementById(ids.input)?.value || '').trim().toUpperCase();
+        if (!q) { this.closeChartSearch(scope); return; }
         const idx = this._chartSearchIndex();
         const starts = idx.filter((x) => x.asset.startsWith(q));
         const contains = idx.filter((x) => !x.asset.startsWith(q) && x.asset.includes(q));
         const hits = [...starts, ...contains].slice(0, 7);
         const exact = hits.some((h) => h.asset === q);
-        this._csState = { q, hits, active: 0, showRaw: !exact && /^[A-Z][A-Z0-9.\-^]{0,11}$/.test(q) };
+        this._csState = { q, hits, active: 0, scope, showRaw: !exact && /^[A-Z][A-Z0-9.\-^]{0,11}$/.test(q) };
         this._renderChartSearchDd();
       }
 
       _renderChartSearchDd() {
-        const dd = document.getElementById('chart-search-dd');
         const st = this._csState;
-        if (!dd || !st || (!st.hits.length && !st.showRaw)) { this.closeChartSearch(); return; }
+        const scope = st?.scope || 'chart';
+        const dd = document.getElementById(this._searchIds(scope).dd);
+        if (!dd || !st || (!st.hits.length && !st.showRaw)) { this.closeChartSearch(scope); return; }
         const badge = (t) => t === 'breakout' ? '<span class="text-[9px] font-bold text-green-400">BREAKOUT</span>'
           : t === 'setup' ? '<span class="text-[9px] font-bold text-blue-400">SETUP</span>'
           : t === 'extension' ? '<span class="text-[9px] font-bold text-yellow-400">EXT</span>'
@@ -1633,30 +1673,39 @@
         dd.classList.remove('hidden');
       }
 
-      chartSearchKey(e) {
+      chartSearchKey(e, scope = 'chart') {
         const st = this._csState;
-        if (e.key === 'Escape') { e.stopPropagation(); this.closeChartSearch(); e.target.blur(); return; }
-        if (!st) { if (e.key === 'Enter') e.preventDefault(); return; }
+        if (e.key === 'Escape') { e.stopPropagation(); this.closeChartSearch(scope); e.target.blur(); return; }
+        if (!st) {
+          if (e.key === 'Enter') {
+            // Typed fast and hit Enter before the index rendered: open it anyway.
+            e.preventDefault();
+            const raw = (e.target?.value || '').trim().toUpperCase();
+            if (/^[A-Z][A-Z0-9.\-^]{0,11}$/.test(raw)) this.selectChartSearch(raw, scope);
+          }
+          return;
+        }
         const total = st.hits.length + (st.showRaw ? 1 : 0);
         if (e.key === 'ArrowDown') { e.preventDefault(); st.active = (st.active + 1) % total; this._renderChartSearchDd(); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); st.active = (st.active - 1 + total) % total; this._renderChartSearchDd(); }
         else if (e.key === 'Enter') {
           e.preventDefault();
           const sym = st.active < st.hits.length ? st.hits[st.active].asset : st.q;
-          this.selectChartSearch(sym);
+          this.selectChartSearch(sym, scope);
         }
       }
 
-      selectChartSearch(sym) {
-        this.closeChartSearch();
-        const el = document.getElementById('chart-ticker-search');
-        if (el) el.value = '';
+      selectChartSearch(sym, scope = 'chart') {
+        this.closeChartSearch(scope);
+        const el = document.getElementById(this._searchIds(scope).input);
+        if (el) { el.value = ''; el.blur(); }
         this.openChartView(sym.toUpperCase());
       }
 
-      closeChartSearch() {
+      closeChartSearch(scope) {
+        const scopes = scope ? [scope] : ['chart', 'nav'];
         this._csState = null;
-        document.getElementById('chart-search-dd')?.classList.add('hidden');
+        for (const sc of scopes) document.getElementById(this._searchIds(sc).dd)?.classList.add('hidden');
       }
 
       // Admin: pause/resume all FMP fetching (agents flip to Yahoo-only data on
@@ -2941,6 +2990,33 @@
                 ignoreEvent: true,
               });
             }
+            if (d.depthTag && h >= 14) {
+              // Depth bracket on the right edge: pivot to low, the % at the middle.
+              const bx = x + w + 4;
+              const lc = d.labelColor || '#9ca3af';
+              figures.push({
+                type: 'line',
+                attrs: { coordinates: [{ x: bx, y }, { x: bx, y: y + h }] },
+                styles: { style: 'dashed', color: lc, size: 1, dashedValue: [2, 3] },
+                ignoreEvent: true,
+              });
+              figures.push({ type: 'line', attrs: { coordinates: [{ x: bx - 3, y }, { x: bx + 3, y }] }, styles: { color: lc, size: 1 }, ignoreEvent: true });
+              figures.push({ type: 'line', attrs: { coordinates: [{ x: bx - 3, y: y + h }, { x: bx + 3, y: y + h }] }, styles: { color: lc, size: 1 }, ignoreEvent: true });
+              figures.push({
+                type: 'text',
+                attrs: { x: bx + 5, y: y + h / 2, text: '↕ ' + d.depthTag, align: 'left', baseline: 'middle' },
+                styles: { color: lc, size: 9, family: 'ui-monospace, monospace', backgroundColor: 'rgba(17,24,39,0.75)', paddingLeft: 2, paddingRight: 2, paddingTop: 1, paddingBottom: 1 },
+                ignoreEvent: true,
+              });
+            }
+            if (d.lowTag) {
+              figures.push({
+                type: 'text',
+                attrs: { x: x + 3, y: y + h - 3, text: d.lowTag, align: 'left', baseline: 'bottom' },
+                styles: { color: d.labelColor || '#9ca3af', size: 9, family: 'ui-monospace, monospace', backgroundColor: 'rgba(17,24,39,0.6)', paddingLeft: 2, paddingRight: 2, paddingTop: 1, paddingBottom: 1 },
+                ignoreEvent: true,
+              });
+            }
             if (d.pivotTag) {
               // Short dashed amber tail off the box's top-right + price label —
               // the "live pivot" marker on the forming base.
@@ -3098,6 +3174,7 @@
               { timestamp: ts(startBar.time), value: signal.resistance },
               { timestamp: ts(endBar.time), value: signal.support },
             ],
+            extendData: { label: nBase + ' bars · ' + (((signal.resistance - signal.support) / signal.resistance) * 100).toFixed(1) + '% deep', depthTag: (((signal.resistance - signal.support) / signal.resistance) * 100).toFixed(1) + '%' },
           });
         }
 
@@ -3232,8 +3309,8 @@
       chartLegend() {
         const item = (glyph, glyphCls, label, tip) =>
           `<span class="inline-flex items-center gap-1 cursor-help" data-tip="${tip}"><span class="${glyphCls}">${glyph}</span><span>${label}</span></span>`;
-        return `<div class="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-gray-500 font-mono select-none">
-          ${item('▦', 'text-gray-400', 'base', 'Dashed box: a detected consolidation base — the quiet range price built before a move. Amber = still forming.')}
+        return `<div class="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[10px] text-gray-500 font-mono select-none chart-legend-row">
+          ${item('▦', 'text-gray-400', 'base · ↕ depth', 'Dashed box: a detected consolidation base — the quiet range price built before a move. Amber = still forming. The bracket on its right edge spans pivot to low; the % is how deep the base is (the screen grades up to 25%).')}
           ${item('╌╌', 'text-yellow-500', 'pivot / fail', 'Dashed lines: yellow = pivot (the breakout level), red = fail level or resistance R, green = support S, blue = 20-day MA on setups.')}
           ${item('✗', 'text-red-400', 'failed poke', 'Price wicked up to the pivot but closed well below it — sellers defended the level. 2+ inside a base means supply overhead.')}
           ${item('▲', 'text-yellow-500', 'breakout bar', 'The session that cleared the pivot and fired the signal.')}
@@ -3262,9 +3339,9 @@
           : 'bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60';
 
         document.getElementById('app').innerHTML = `
-          <div class="flex-1 overflow-auto p-4 md:p-8 bg-gray-900">
+          <div class="flex-1 overflow-auto p-4 md:p-8 bg-gray-900 chart-page">
             <div class="max-w-7xl mx-auto">
-              <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+              <div class="mb-4 flex items-center justify-between flex-wrap gap-3 chart-page-head">
                 <div class="flex items-center gap-3 flex-wrap min-w-0">
                   <button onclick="dashboard.backFromChart()" class="px-3 py-1.5 rounded-md text-sm font-semibold bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition" title="Back (Esc)">← ${viewDef(this._chartReturnView)?.label || 'Signals'}</button>
                   <h1 class="text-2xl font-bold font-mono tracking-tight text-white">${this.chartAsset}</h1>
@@ -3285,7 +3362,7 @@
                     <div id="chart-search-dd" class="absolute left-0 top-full mt-1 z-40 w-64 hidden bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl overflow-hidden"></div>
                   </div>
                 </div>
-                <div class="flex items-center gap-1.5 flex-wrap">
+                <div class="flex items-center gap-1.5 flex-wrap chart-tools">
                   ${['3m', '6m', '1y', '2y'].map(r => `<button onclick="dashboard.setChartRange('${r}')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartRange === r)}">${r.toUpperCase()}</button>`).join('')}
                   <span class="w-px h-4 bg-gray-700 mx-1"></span>
                   <button onclick="dashboard.setChartTf('d')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartTf === 'd')}">D</button>
@@ -3294,16 +3371,19 @@
                   <button onclick="dashboard.toggleChartMA(50)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA50)}">MA50</button>
                   <button onclick="dashboard.toggleChartMA(200)" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(this.chartMA200)}">MA200</button>
                   <span class="w-px h-4 bg-gray-700 mx-1"></span>
-                  <button onclick="dashboard.startDrawing('segment')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Trendline: click two points on the chart">Trendline</button>
-                  <button onclick="dashboard.startDrawing('rayLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Ray: click two points, extends right">Ray</button>
-                  <button onclick="dashboard.startDrawing('horizontalStraightLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Horizontal level: click once">Level</button>
-                  <button onclick="dashboard.clearDrawings()" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Remove every line you drew on this ticker">Clear</button>
+                  <button onclick="dashboard.toggleDrawTools()" class="sm:hidden px-2.5 py-1 rounded text-xs font-semibold transition ${pill(!!this._showDrawTools)}" title="Drawing tools">Draw</button>
+                  <span id="chart-draw-tools" class="${this._showDrawTools ? 'inline-flex' : 'hidden'} sm:inline-flex items-center gap-1.5 flex-wrap">
+                    <button onclick="dashboard.startDrawing('segment')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Trendline: click two points on the chart">Trendline</button>
+                    <button onclick="dashboard.startDrawing('rayLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Ray: click two points, extends right">Ray</button>
+                    <button onclick="dashboard.startDrawing('horizontalStraightLine')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Horizontal level: click once">Level</button>
+                    <button onclick="dashboard.clearDrawings()" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Remove every line you drew on this ticker">Clear</button>
+                  </span>
                   <span class="w-px h-4 bg-gray-700 mx-1"></span>
                   <button onclick="dashboard.shareChart()" class="px-2.5 py-1 rounded text-xs font-semibold transition bg-sky-600/20 text-sky-300 ring-1 ring-sky-500/40 hover:bg-sky-600/30" title="${this.isAdmin ? 'Post this chart to X with the levels and your lines' : 'Save the chart as an image and open a post on X'}">Share to X</button>
                 </div>
               </div>
-              <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60" style="height:max(60vh,400px);min-height:50vh;"></div>
-              <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}<span id="next-earnings" class="text-purple-300"></span></span><span>space next · ← → nav · esc back</span></div>
+              <div id="chart-page-container" class="w-full rounded-lg overflow-hidden bg-gray-900 ring-1 ring-gray-700/60"></div>
+              <div class="mt-2 text-[11px] text-gray-500 font-mono flex justify-between flex-wrap gap-2 chart-caption"><span>${this.chartTf === 'w' ? 'Weekly' : 'Daily'} · ${this.chartRange.toUpperCase()}${sig ? ' · signal levels overlaid' : ''}${this.chartTf === 'w' ? '' : ' · base boxes from 2y detection'}<span id="next-earnings" class="text-purple-300"></span></span><span>space next · ← → nav · esc back</span></div>
               ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
               <div class="mt-6">
@@ -3559,11 +3639,29 @@
               { timestamp: ts(b.start), value: b.pivot },
               { timestamp: ts(b.end), value: b.low },
             ],
+            // Label carries length and depth; the bracket on the right edge
+            // spans pivot to low so the depth reads off the chart directly.
             extendData: forming
-              ? { label: b.weeks + ' wks', color: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.5)', labelColor: '#f59e0b', pivotTag: 'pivot ' + CUR + b.pivot }
-              : { label: b.weeks + ' wks' },
+              ? { label: b.weeks + ' wks · ' + b.depthPct + '% deep', depthTag: b.depthPct + '%', lowTag: 'low ' + CUR + b.low, color: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.5)', labelColor: '#f59e0b', pivotTag: 'pivot ' + CUR + b.pivot }
+              : { label: b.weeks + ' wks · ' + b.depthPct + '% deep', depthTag: b.depthPct + '%' },
           });
         });
+      }
+
+      toggleDrawTools() {
+        this._showDrawTools = !this._showDrawTools;
+        const el = document.getElementById('chart-draw-tools');
+        if (el) { el.classList.toggle('hidden', !this._showDrawTools); el.classList.toggle('inline-flex', this._showDrawTools); }
+      }
+
+      // Rotating a phone or resizing the window: the canvases must re-measure
+      // their containers or the chart keeps its old size and clips.
+      _onViewportChange() {
+        clearTimeout(this._vpTimer);
+        this._vpTimer = setTimeout(() => {
+          try { this._pageKline?.resize?.(); } catch (e) {}
+          try { this._drawerKline?.resize?.(); } catch (e) {}
+        }, 120);
       }
 
       zoomToBase(idx) {
