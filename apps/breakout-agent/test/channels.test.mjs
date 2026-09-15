@@ -13,7 +13,9 @@ const dash = src('../public/index.html');
 const between = (s, start, end) => { const i = s.indexOf(start); assert.ok(i >= 0, `found ${start}`); const j = s.indexOf(end, i + start.length); return s.slice(i, j < 0 ? undefined : j); };
 
 test('email: the alert gate is the graded pivot close and nothing else', () => {
-  assert.match(agent, /const shouldAlert = isGradedBreakout \|\| isCheatBreakout;/);
+  assert.match(agent, /const shouldAlert = \(isGradedBreakout \|\| isCheatBreakout\) && qualityOk;/);
+  // Quality floor: RS 70+ or confidence 80%+ (Sep 2026).
+  assert.match(agent, /const qualityOk = \(rsRating != null && rsRating >= 70\) \|\| confidence >= 0\.8;/);
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);

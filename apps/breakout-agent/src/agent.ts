@@ -794,7 +794,12 @@ export class BreakoutAgent {
       // replaces the intrabar Donchian poke (57.0% win vs 22.8%; 81% of pokes
       // are traps). Type1/Type3/EP classification continues for tracking, the
       // dashboard, and streak bookkeeping — it just no longer decides emails.
-      const shouldAlert = isGradedBreakout || isCheatBreakout;
+      // Quality floor on top of the setup gates (Sep 2026): an email needs
+      // relative strength 70+ (outperforming 70% of the scanned market) or
+      // confidence 80%+. A graded close in a laggard with a weak read stays on
+      // the dashboard, tracked, and out of the inbox.
+      const qualityOk = (rsRating != null && rsRating >= 70) || confidence >= 0.8;
+      const shouldAlert = (isGradedBreakout || isCheatBreakout) && qualityOk;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {

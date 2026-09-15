@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { classifyShelf } from './shelf.js';
+import { runChat } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
 import Stripe from 'stripe';
@@ -210,8 +211,21 @@ function serveLanding(req, res) {
     .replaceAll('__CLERK_PUBLISHABLE_KEY__', pk);
   res.type('html').send(html);
 }
-app.get('/', serveLanding);
+// chat.dataquant.ai: the chat over the alert pool. Same app, same paywall;
+// Caddy points the host here and "/" becomes the chat instead of the landing.
+// Also reachable as /chat on the main host.
+const CHAT_HOSTS = new Set(['chat.dataquant.ai', 'chat.localhost']);
+const isChatHost = (req) => CHAT_HOSTS.has(String(req.hostname || '').toLowerCase());
+function serveChat(req, res) {
+  const pk = process.env.CLERK_PUBLISHABLE_KEY || '';
+  const html = fs
+    .readFileSync(path.join(__dirname, 'public', 'chat.html'), 'utf8')
+    .replaceAll('__CLERK_PUBLISHABLE_KEY__', pk);
+  res.type('html').send(html);
+}
+app.get('/', (req, res, next) => (isChatHost(req) ? paywall(req, res, () => serveChat(req, res)) : serveLanding(req, res)));
 app.get('/landing.html', serveLanding);
+app.get('/chat', paywall, serveChat);
 
 // Dashboard SPA shell. Same key injection as the landing so the ⋯ menu's
 // Sign out can lazy-load the Clerk browser SDK; nothing else needs it.
@@ -2148,23 +2162,27 @@ app.get('/api/alerts', async (req, res) => {
 
 // Everything the screen recorded for one ticker, folded into episodes: a
 // frozen pivot/entry and its fail level, first seen to last seen, whether it
-// was emailed and when, and how it went. The drawer and the chart page show
-// this so a reader can go back to any previous breakout.
+// was emailed and when, and how it went. The drawer, the chart page and the
+// chat's get_signal_history tool all read this.
+async function signalHistory(symbol) {
+  const rows = await db.breakoutSignal.findMany({
+    where: { asset: symbol, createdAt: { gte: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000) } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      createdAt: true, breakoutType: true, currentPrice: true, entryPrice: true, stopLoss: true,
+      basePivot: true, baseGrade: true, baseBars: true, baseDepthPct: true, volumeTag: true,
+      alertSentAt: true, lastAlertAt: true, xPostedAt: true, resistance: true,
+    },
+  });
+  const out = foldEpisodes(rows);
+  return { asset: symbol, episodes: out, rows: rows.length };
+}
+
 app.get('/api/history/:symbol', async (req, res) => {
   const symbol = String(req.params.symbol || '').toUpperCase();
   if (!symbol) return res.status(400).json({ error: 'symbol required' });
   try {
-    const rows = await db.breakoutSignal.findMany({
-      where: { asset: symbol, createdAt: { gte: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000) } },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        createdAt: true, breakoutType: true, currentPrice: true, entryPrice: true, stopLoss: true,
-        basePivot: true, baseGrade: true, baseBars: true, baseDepthPct: true, volumeTag: true,
-        alertSentAt: true, lastAlertAt: true, xPostedAt: true, resistance: true,
-      },
-    });
-    const out = foldEpisodes(rows);
-    res.json({ asset: symbol, episodes: out, rows: rows.length });
+    res.json(await signalHistory(symbol));
   } catch (e) {
     console.error('[/api/history] failed:', e);
     res.status(500).json({ error: e.message });
@@ -2233,6 +2251,62 @@ app.get('/api/sector-strength', async (req, res) => {
 // MCP endpoint: DataQuant's free data layer for AI agents — market health,
 // sector strength, base X-ray, learn content. Stateless streamable HTTP; no
 // auth (free tools only; signals are NOT exposed here).
+// Paywall for JSON routes: 401/402 instead of redirects.
+async function paywallApi(req, res, next) {
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: 'sign in required' });
+  if (!STRIPE_ENABLED) return next();
+  const user = await ensureUser(userId);
+  if (['trialing', 'active'].includes(user.subscriptionStatus)) return next();
+  return res.status(402).json({ error: 'subscription required' });
+}
+
+// The pool the chat sidebar shows: emailed breakouts over the window.
+app.get('/api/chat/pool', paywallApi, async (req, res) => {
+  try {
+    const days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 14));
+    const region = req.query.region === 'in' ? 'in' : 'us';
+    const until = new Date();
+    const since = new Date(until.getTime() - days * 24 * 60 * 60 * 1000);
+    const ledger = await alertLedger({ since, until, region });
+    res.json({ days, region, since, until, ...ledger });
+  } catch (e) {
+    console.error('[/api/chat/pool] failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Streamed chat: body { messages: [{role, content}], region? }. Answers over
+// the same read-only tools the MCP serves, plus the alert pool, in-process.
+const chatDeps = () => ({ computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases, alertLedger, signalHistory });
+app.post('/api/chat', paywallApi, async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'chat is not configured on this server' });
+  const raw = Array.isArray(req.body?.messages) ? req.body.messages : [];
+  const messages = raw
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-24)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
+  if (!messages.length || messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'a user message is required' });
+  const region = req.body?.region === 'in' ? 'in' : 'us';
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  const send = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
+  try {
+    await runChat({ messages, deps: chatDeps(), send, region, signal: ac.signal });
+  } catch (e) {
+    if (!ac.signal.aborted) {
+      console.error('[/api/chat] failed:', e);
+      send('error', { message: e?.status === 429 ? 'The screen is busy, try again in a moment.' : 'The answer did not come through. Try again.' });
+    }
+  } finally {
+    res.end();
+  }
+});
+
 app.post('/mcp', async (req, res) => {
   try {
     await handleMcpRequest(req, res, { computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases });

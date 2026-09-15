@@ -14,9 +14,9 @@
     "test:nav": "node test/nav/nav.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "@anthropic-ai/sdk": "^0.40.0",
+    "@anthropic-ai/sdk": "^0.126.0",
     "@clerk/express": "^2.1.35",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@prisma/client": "^5.0.0",
     "@resvg/resvg-js": "^2.6.2",
     "axios": "^1.6.0",

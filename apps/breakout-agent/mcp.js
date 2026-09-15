@@ -47,9 +47,38 @@ export function loadLearn() {
   return articles;
 }
 
-// deps: { computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases }
-export function buildMcpServer(deps) {
+// deps: { computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases,
+//         alertLedger?, signalHistory? }
+// opts.subscriber: also register the subscriber-only tools (the alert pool and
+// per-ticker alert history). The public /mcp endpoint never sets it; the chat
+// at chat.dataquant.ai does, in-process, behind the paywall. Every tool is
+// read-only.
+export function buildMcpServer(deps, opts = {}) {
   const server = new McpServer({ name: 'dataquant', version: '1.0.0' });
+
+  if (opts.subscriber) {
+    server.tool(
+      'get_recent_alerts',
+      'The alert pool: every breakout the screen emailed in a window (default the last 14 days), judged from the latest close. Each row: ticker, when it was emailed, base grade (S/A+/A), kind (pivot close, or a cheat/low-cheat/handle shelf inside a forming base), pivot, fail level (7% under), latest price, % change, and where it stands (past the pivot, below it, or fell through the fail level). Use this first to see what is in the pool before comparing or filtering.',
+      {
+        days: z.number().int().min(1).max(60).optional().describe('Window length in days ending today (default 14)'),
+        region: z.enum(['us', 'in']).optional().describe('Market: us (default) or in (India)'),
+      },
+      async ({ days, region }) => {
+        const until = new Date();
+        const since = new Date(until.getTime() - (days || 14) * 24 * 60 * 60 * 1000);
+        const ledger = await deps.alertLedger({ since, until, region: region === 'in' ? 'in' : 'us' });
+        return asText({ since: since.toISOString().slice(0, 10), until: until.toISOString().slice(0, 10), summary: ledger.summary, alerts: ledger.alerts });
+      },
+    );
+
+    server.tool(
+      'get_signal_history',
+      'Everything the screen recorded for one ticker over two years, folded into episodes: first and last seen, base grade, pivot, entry and fail level, whether it was emailed and when, the kind of entry (pivot or shelf), latest price, best and current % from entry, and how it went (past the pivot, below, fell through the fail level). Use it to see how a name behaved on earlier breakouts.',
+      { symbol: z.string().min(1).max(12).regex(/^[A-Za-z.\-^]+$/).describe('Ticker symbol') },
+      async ({ symbol }) => asText(await deps.signalHistory(symbol.toUpperCase())),
+    );
+  }
 
   server.tool(
     'get_market_health',
