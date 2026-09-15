@@ -116,7 +116,7 @@
       .chart-page-head h1 { font-size: 16px; }
       .chart-page-head .chart-tools { gap: 4px; }
       .chart-page-head .chart-tools button { padding: 2px 7px; font-size: 11px; }
-      #chart-page-container { height: calc(100dvh - 132px) !important; min-height: 180px !important; }
+      #chart-page-container { height: calc(100dvh - 132px); min-height: 180px !important; } /* first paint; _fitChartStage() measures the real headroom */
       .chart-caption, .chart-legend-row { display: none; }
     }
     @keyframes pulse-alert {
@@ -3394,6 +3394,7 @@
             </div>
           </div>
         `;
+        this._fitChartStage();
         this._buildPageChart(sig);
         this._renderBaseXray(); // paints immediately when this asset's bases are cached
         this.loadSignalHistory(this.chartAsset, 'chart-history');
@@ -3656,9 +3657,22 @@
 
       // Rotating a phone or resizing the window: the canvases must re-measure
       // their containers or the chart keeps its old size and clips.
+      // Landscape on a short screen: the header's row count depends on the
+      // font metrics of the device, so measure where the stage starts and give
+      // it the rest of the viewport rather than trusting a CSS constant.
+      _fitChartStage() {
+        const el = document.getElementById('chart-page-container');
+        if (!el) return;
+        const short = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
+        if (!short) { el.style.height = ''; return; }
+        const top = el.getBoundingClientRect().top;
+        el.style.height = Math.max(160, Math.floor(window.innerHeight - top - 8)) + 'px';
+      }
+
       _onViewportChange() {
         clearTimeout(this._vpTimer);
         this._vpTimer = setTimeout(() => {
+          this._fitChartStage();
           try { this._pageKline?.resize?.(); } catch (e) {}
           try { this._drawerKline?.resize?.(); } catch (e) {}
         }, 120);
