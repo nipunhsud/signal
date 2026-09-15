@@ -3395,6 +3395,14 @@
           </div>
         `;
         this._fitChartStage();
+        // The head re-wraps as fonts load, the stepper fills in and the width
+        // changes; every re-wrap moves the stage's top, so re-fit on each.
+        this._headRO?.disconnect();
+        const head = document.querySelector('.chart-page-head');
+        if (head && window.ResizeObserver) {
+          this._headRO = new ResizeObserver(() => this._onViewportChange());
+          this._headRO.observe(head);
+        }
         this._buildPageChart(sig);
         this._renderBaseXray(); // paints immediately when this asset's bases are cached
         this.loadSignalHistory(this.chartAsset, 'chart-history');
