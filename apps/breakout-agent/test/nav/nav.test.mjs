@@ -173,7 +173,8 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   // Full chart: drawing tools and Share to X are in the toolbar
   await page.evaluate(() => dashboard.openChartView('NVDA')); await settle(page, 600);
   const bar = await page.locator('#app').innerText();
-  check(['Trendline', 'Ray', 'Level', 'Clear', 'Share to X'].every((l) => bar.includes(l)), 'chart toolbar has drawing tools and Share to X');
+  const tools = vp.width > 640 ? ['Trendline', 'Ray', 'Level', 'Clear', 'Share to X'] : ['Draw', 'Share to X']; // phones fold the drawing tools behind Draw
+  check(tools.every((l) => bar.includes(l)), `chart toolbar has ${tools.join(', ')}`);
   const share = await page.evaluate(() => dashboard._chartShareText());
   check(share[0].startsWith('$NVDA, daily.') && share[0].includes('Grade A base') && share[1].includes('dataquant.ai/$nvda'), `share text composes in the product voice (${share[0]})`);
   await page.evaluate(() => dashboard.closeDrawer());
@@ -195,10 +196,35 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     const rows = await p2.locator('#app tbody tr').allInnerTexts();
     check(rows.some((r) => r.includes('SWKS')) && !rows.some((r) => r.includes('NVDA')), 'Cheat filter keeps only shelf entries');
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 200);
+    // Universal ticker search in the top bar: any symbol opens its chart.
+    await p2.goto(`${base}/dashboard`); await settle(p2, 300);
+    await p2.fill('#nav-ticker-search', 'swks'); await settle(p2, 150);
+    check((await p2.locator('#nav-search-dd button').count()) >= 1, 'nav search suggests as you type');
+    await p2.press('#nav-ticker-search', 'Enter'); await settle(p2, 300);
+    check((await p2.evaluate(() => dashboard.view)) === 'chart' && (await p2.evaluate(() => dashboard.chartAsset)) === 'SWKS' && (await p2.inputValue('#nav-ticker-search')) === '', 'Enter in the nav search opens the chart and clears the box');
+    await p2.fill('#nav-ticker-search', 'zzzq'); await settle(p2, 150);
+    await p2.press('#nav-ticker-search', 'Enter'); await settle(p2, 300);
+    check((await p2.evaluate(() => dashboard.chartAsset)) === 'ZZZQ', 'an unknown symbol still opens (any-ticker chart)');
+    // Depth on the base box: label and bracket carry the % the screen grades on.
+    const ov = await p2.evaluate(() => { const out = []; dashboard._applyBaseOverlays({ createOverlay: (o) => out.push(o) }, [{ start: '2026-05-27', end: '2026-09-04', pivot: 84.79, low: 55.43, weeks: 14.2, depthPct: 34.6, status: 'forming' }]); return out; });
+    check(ov.length === 1 && ov[0].extendData.label === '14.2 wks · 34.6% deep' && ov[0].extendData.depthTag === '34.6%' && ov[0].extendData.lowTag.includes('55.43'), 'base box is labelled with its depth and low');
     await p2.goto(`${base}/pulse?w=2026-09-12`); await settle(p2, 400);
     const rtxt = await p2.locator('#receipts-section').innerText();
     check(rtxt.includes('week ending 2026-09-12') && rtxt.includes('$AAPL') && rtxt.includes('past the pivot') && rtxt.includes('produced 1 breakout'), 'pulse?w= shows the week the post names, with the same sentence');
     await p2.close();
+  }
+  console.log('--- landscape phone');
+  {
+    const p3 = await browser.newPage({ viewport: { width: 740, height: 360 } });
+    await p3.goto(`${base}/dashboard/chart/NVDA`); await settle(p3, 600);
+    const box = await p3.locator('#chart-page-container').boundingBox();
+    check(box && box.height >= 180 && box.y + box.height <= 360, `chart fits the landscape viewport (top ${Math.round(box?.y ?? -1)}, height ${Math.round(box?.height ?? -1)})`);
+    check(await p3.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no horizontal scroll in landscape');
+    await p3.setViewportSize({ width: 390, height: 760 }); await settle(p3, 300);
+    check((await p3.locator('#chart-draw-tools').isHidden()) && (await p3.locator('button:has-text("Draw")').isVisible()), 'portrait phone folds drawing tools behind Draw');
+    await p3.click('button:has-text("Draw")'); await settle(p3, 100);
+    check(await p3.locator('#chart-draw-tools').isVisible(), 'Draw reveals the tools');
+    await p3.close();
   }
   console.log('--- discovery');
   const get = async (p) => { const r = await fetch(base + p); return { status: r.status, text: await r.text() }; };
