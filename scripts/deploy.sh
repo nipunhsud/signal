@@ -26,4 +26,10 @@ df -h / | tail -1
 # stale one makes `migrate deploy` miss new migrations (silent schema drift).
 $DC build --no-cache migrations dashboard agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2
 $DC up -d
+# Caddy reads its Caddyfile from a bind mount, and `up -d` does not recreate
+# a container whose image and env are unchanged — so a Caddyfile edit (a new
+# host like chat.dataquant.ai) never took effect until someone restarted
+# Caddy by hand, and the new host answered TLS with an internal error (no
+# certificate). Reload the config every deploy; fall back to a restart.
+$DC exec -T caddy caddy reload --config /etc/caddy/Caddyfile || $DC restart caddy
 $DC ps
