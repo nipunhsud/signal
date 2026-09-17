@@ -1,3 +1,4 @@
+import { fmpUsageLine, flushFmpUsage } from "./tools/market-data.js";
 import "dotenv/config";
 import cron from "node-cron";
 import { BreakoutAgent, marketStatus, isAlertWindow } from "./agent.js";
@@ -76,6 +77,10 @@ if (IMMEDIATE_SCAN) {
     } catch (err) {
       console.error("Scheduled scans failed:", err);
     }
+    // What this pass cost on FMP's historical endpoint, by kind — the number
+    // to compare with FMP's bandwidth dashboard.
+    console.log(`[FMP bandwidth] today so far: ${fmpUsageLine()}`);
+    await flushFmpUsage(process.env.HOSTNAME || `agent-${REGION}`);
   };
   for (const schedule of schedules) cron.schedule(schedule, runScans, { timezone });
   // The post-close pass: one scan after the closing auction has printed, so a

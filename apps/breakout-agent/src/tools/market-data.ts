@@ -65,7 +65,17 @@ function writeDiskEod(symbol: string, today: string, bars: any[]): void {
 const BAR_WINDOW = 250; // what indicators consume (~1 trading year → 52w high)
 const DB_BAR_TAKE = 1500; // history kept hot for repair + future research reads
 
-type EodBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
+type EodBar = { date: string; open: number; high: number; low: number; close: number; volume: number; vwap?: number | null };
+
+// FMP's stable historical endpoint takes symbol, from and to — there is NO
+// `limit`; an unbounded or limit-only request returns up to 5,000 records
+// (~20 years, ~600 KB). Every call here names its window in calendar days.
+export function windowFrom(today: string, calendarDays: number): { from: string; to: string } {
+  const t = new Date(`${today}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - calendarDays);
+  return { from: t.toISOString().slice(0, 10), to: today };
+}
+const SEED_CALENDAR_DAYS = 380; // ~250 trading sessions for the indicators
 
 // Legacy disk-cache read that ignores the date stamp — stale bars are a fine
 // DB seed because the delta fetch immediately tops them up.
@@ -78,10 +88,51 @@ function readDiskEodAnyDate(symbol: string): EodBar[] | null {
   return null;
 }
 
+// FMP bandwidth meter. FMP bills the historical-price endpoint by bytes and
+// the Sep 2026 bill was 17 GB/week — far above the ~500 B/symbol/day the
+// store should cost. Every EOD call records what it asked for and what came
+// back, per kind (seed / delta / repair); the scan runner flushes the totals
+// to a RuntimeFlag row per day and container so /api/admin/status can show
+// who is spending. Bytes are the decoded JSON length (FMP compresses on the
+// wire; the ratio is what it is, the comparison across kinds is what matters).
+export type FmpUsage = Record<string, { calls: number; bytes: number; rows: number; maxRows: number }>;
+const fmpUsage: FmpUsage = {};
+export function recordFmp(kind: string, bytes: number, rows: number): void {
+  const u = fmpUsage[kind] || (fmpUsage[kind] = { calls: 0, bytes: 0, rows: 0, maxRows: 0 });
+  u.calls++; u.bytes += bytes; u.rows += rows; u.maxRows = Math.max(u.maxRows, rows);
+}
+export function getFmpUsage(): FmpUsage { return JSON.parse(JSON.stringify(fmpUsage)); }
+export function fmpUsageLine(u: FmpUsage = fmpUsage): string {
+  const mb = (b: number) => (b / 1048576).toFixed(2) + " MB";
+  const parts = Object.entries(u).map(([k, v]) => `${k} ${v.calls} calls ${mb(v.bytes)} (max ${v.maxRows} rows)`);
+  return parts.length ? parts.join(" · ") : "no FMP history calls";
+}
+// Persist today's totals for this container: key fmp_usage:<ET day>:<host>.
+export async function flushFmpUsage(label: string): Promise<void> {
+  const key = `fmp_usage:${etDay(Date.now())}:${label}`;
+  try {
+    await db.runtimeFlag.upsert({
+      where: { key },
+      create: { key, value: JSON.stringify(fmpUsage) },
+      update: { value: JSON.stringify(fmpUsage) },
+    });
+  } catch (e: any) {
+    console.warn("[FMP] usage flush failed:", e?.message);
+  }
+}
+
+// A delta asks for exactly the closed sessions since the last stored bar:
+// `from` AND `to`. A from-only request leaves the upper bound to FMP's
+// defaults, which is the one shape that can silently return a long range.
+export function deltaParams(lastDate: string, today: string): { from: string; to: string } {
+  return { from: lastDate, to: today };
+}
+
 async function fetchFmpEodRange(
   symbol: string,
   apiKey: string,
   params: Record<string, string | number>,
+  kind: "seed" | "delta" | "repair" = "seed",
 ): Promise<EodBar[]> {
   const data = await globalRateLimiter.execute(async () => {
     const res = await axios.get(
@@ -91,6 +142,11 @@ async function fetchFmpEodRange(
     return res.data;
   });
   const rows = Array.isArray(data) ? data : data?.historical;
+  const nRows = Array.isArray(rows) ? rows.length : 0;
+  recordFmp(`eod-${kind}`, Buffer.byteLength(JSON.stringify(data ?? "")), nRows);
+  if (kind === "delta" && nRows > 15) {
+    console.warn(`[FMP] ${symbol}: delta ${JSON.stringify(params)} returned ${nRows} rows — expected a few`);
+  }
   if (!rows || rows.length === 0) return [];
   return rows.reverse().map((d: any) => ({
     date: d.date,
@@ -99,6 +155,7 @@ async function fetchFmpEodRange(
     low: d.low,
     close: d.close,
     volume: d.volume || 0,
+    vwap: Number.isFinite(d.vwap) ? d.vwap : null,
   }));
 }
 
@@ -110,7 +167,7 @@ async function loadStoredBars(symbol: string): Promise<EodBar[]> {
   });
   return rows
     .reverse()
-    .map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
+    .map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume, vwap: r.vwap ?? null }));
 }
 
 // Persist finalized bars only — a bar dated today may still be mid-session.
@@ -142,7 +199,7 @@ async function getDailyBarsViaDb(symbol: string, apiKey: string, today: string):
       stored = diskSeed.filter((b) => b.date < today);
     }
     if (stored.length === 0) {
-      const full = await fetchFmpEodRange(symbol, apiKey, { limit: BAR_WINDOW });
+      const full = await fetchFmpEodRange(symbol, apiKey, windowFrom(today, SEED_CALENDAR_DAYS), "seed");
       if (!full.length) throw new Error(`No data found for ${symbol}`);
       await persistBars(symbol, full, today);
       return full.slice(-BAR_WINDOW);
@@ -152,14 +209,14 @@ async function getDailyBarsViaDb(symbol: string, apiKey: string, today: string):
   const last = stored[stored.length - 1];
   if (last.date >= today) return stored.slice(-BAR_WINDOW);
 
-  const delta = await fetchFmpEodRange(symbol, apiKey, { from: last.date });
+  const delta = await fetchFmpEodRange(symbol, apiKey, deltaParams(last.date, today), "delta");
   if (delta.length) {
     const overlap = delta.find((b) => b.date === last.date);
     if (overlap && last.close > 0 && Math.abs(overlap.close - last.close) / last.close > 0.002) {
       console.log(
         `[Bars] ${symbol}: adjusted history changed on ${last.date} (${last.close} -> ${overlap.close}) — refetching full range`,
       );
-      const full = await fetchFmpEodRange(symbol, apiKey, { from: stored[0].date });
+      const full = await fetchFmpEodRange(symbol, apiKey, { from: stored[0].date, to: today }, "repair");
       if (full.length) {
         await replaceBars(symbol, full, today);
         return full.slice(-BAR_WINDOW);

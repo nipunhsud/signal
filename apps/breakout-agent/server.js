@@ -611,7 +611,19 @@ app.get('/api/admin/status', async (req, res) => {
   // DailyBar rollout and grow by ~1 bar/symbol/day thereafter.
   let dailyBars = null;
   try { dailyBars = await db.dailyBar.count(); } catch {}
-  res.json({ isAdmin: await isAdmin(req), fmpDisabled: await fmpOff(), dailyBars });
+  // FMP history bandwidth today, by caller and kind (decoded bytes).
+  const today = etParts().date;
+  const agents = {};
+  try {
+    const rows = await db.runtimeFlag.findMany({ where: { key: { startsWith: `fmp_usage:${today}:` } } });
+    for (const r of rows) { try { agents[r.key.slice(`fmp_usage:${today}:`.length)] = JSON.parse(r.value); } catch {} }
+  } catch {}
+  const sum = (kinds) => Object.values(kinds || {}).reduce((s, v) => s + (v.bytes || 0), 0);
+  const totalBytes = sum(fmpUsage.date === today ? fmpUsage.kinds : {}) + Object.values(agents).reduce((s, k) => s + sum(k), 0);
+  res.json({
+    isAdmin: await isAdmin(req), fmpDisabled: await fmpOff(), dailyBars,
+    fmpUsage: { date: today, totalMB: Math.round((totalBytes / 1048576) * 100) / 100, dashboard: fmpUsage.date === today ? fmpUsage.kinds : {}, agents },
+  });
 });
 
 // No requireAuth() here — that middleware redirects unauthenticated requests to
@@ -1763,18 +1775,54 @@ async function fetchYahooCandles(symbol) {
   return bars;
 }
 
+// FMP bandwidth meter for the dashboard's own history calls (the agents keep
+// theirs in market-data.ts and flush to RuntimeFlag). /api/admin/status shows
+// both, per kind, so a 17 GB week can be traced to the call that made it.
+const fmpUsage = { date: null, kinds: {} };
+function recordFmp(kind, bytes, rows) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (fmpUsage.date !== today) { fmpUsage.date = today; fmpUsage.kinds = {}; }
+  const u = fmpUsage.kinds[kind] || (fmpUsage.kinds[kind] = { calls: 0, bytes: 0, rows: 0, maxRows: 0 });
+  u.calls++; u.bytes += bytes; u.rows += rows; u.maxRows = Math.max(u.maxRows, rows);
+}
+async function meteredFmpJson(kind, url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`FMP ${resp.status}`);
+  const text = await resp.text();
+  const data = JSON.parse(text);
+  const rows = Array.isArray(data) ? data : (data?.historical || data?.results || []);
+  recordFmp(kind, Buffer.byteLength(text), Array.isArray(rows) ? rows.length : 0);
+  return data;
+}
+
+// The agents' bar store (DailyBar, ~1500 closed sessions per scanned symbol)
+// is the second source for charts and closes: free, local, and current to
+// yesterday. FMP is only the third, for symbols the screen never scanned.
+async function loadDbCandles(symbol, take = 740) {
+  const rows = await db.dailyBar.findMany({ where: { symbol }, orderBy: { date: 'desc' }, take });
+  return rows.reverse().map((r) => ({ time: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume, vwap: r.vwap ?? null }));
+}
+
 async function fetchFmpCandles(symbol) {
   const apiKey = process.env.FMP_API_KEY;
   if (!apiKey) throw new Error('FMP_API_KEY not set');
   if (await fmpOff()) throw new Error('FMP disabled by admin flag');
-  const resp = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=500&apikey=${apiKey}`);
-  if (!resp.ok) throw new Error(`FMP ${resp.status}`);
-  const data = await resp.json();
+  // FMP's stable endpoint has no `limit` (a limit-only request returned the
+  // whole multi-year history); ask for the 2y window the chart shows.
+  const w = fmpWindow(740);
+  const data = await meteredFmpJson('candles-2y', `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&from=${w.from}&to=${w.to}&apikey=${apiKey}`);
   const rows = Array.isArray(data) ? data : (data.historical || data.results || []);
   return rows
     .reverse()
-    .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }))
+    .map(b => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume, vwap: Number.isFinite(b.vwap) ? b.vwap : null }))
     .filter(b => b.time && b.open && b.high && b.low && b.close);
+}
+
+// Calendar-day window ending today, for FMP's from/to.
+function fmpWindow(calendarDays) {
+  const to = new Date().toISOString().slice(0, 10);
+  const f = new Date(); f.setUTCDate(f.getUTCDate() - calendarDays);
+  return { from: f.toISOString().slice(0, 10), to };
 }
 
 // Aggregate daily bars into calendar weeks (Monday-anchored). Assumes input
@@ -1828,9 +1876,17 @@ async function getDailyCandles(symbol) {
   try {
     bars = await fetchYahooCandles(symbol);
   } catch (yErr) {
-    console.warn(`[candles] Yahoo failed for ${symbol}: ${yErr.message}; falling back to FMP`);
+    // Yahoo down or rate-limiting this host: the bar store first, FMP last.
     try {
-      bars = await fetchFmpCandles(symbol);
+      const dbBars = await loadDbCandles(symbol);
+      if (dbBars.length >= 30) {
+        console.warn(`[candles] Yahoo failed for ${symbol}: ${yErr.message}; served ${dbBars.length} bars from the store`);
+        bars = dbBars;
+      }
+    } catch (dErr) { console.warn(`[candles] store read failed for ${symbol}: ${dErr.message}`); }
+    if (!bars) console.warn(`[candles] Yahoo failed for ${symbol}: ${yErr.message}; not in the store; falling back to FMP`);
+    try {
+      if (!bars) bars = await fetchFmpCandles(symbol);
     } catch (fErr) {
       if (cached) return cached.bars; // stale beats a broken chart
       throw new Error(`candles unavailable: ${fErr.message}`);
@@ -2435,12 +2491,20 @@ async function getHistoricalCloses(symbol, minBars = 40) {
   } catch { /* fall through to FMP */ }
 
   if (!closes || closes.length < 2) {
+    // The bar store before FMP (see loadDbCandles).
+    try {
+      const dbBars = await loadDbCandles(symbol, Math.max(minBars, 60));
+      if (dbBars.length >= Math.min(minBars, 2)) closes = dbBars.map((b) => ({ date: b.time, close: Number(b.close) })).filter((b) => Number.isFinite(b.close));
+    } catch { /* fall through to FMP */ }
+  }
+
+  if (!closes || closes.length < 2) {
     const apiKey = process.env.FMP_API_KEY;
     if (apiKey && !(await fmpOff())) {
       try {
-        const r = await fetch(`https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&limit=${minBars}&apikey=${apiKey}`);
-        if (r.ok) {
-          const data = await r.json();
+        {
+          const w = fmpWindow(Math.ceil(minBars * 1.5) + 10); // trading days → calendar days, with holidays
+          const data = await meteredFmpJson(`closes-${minBars}`, `https://financialmodelingprep.com/stable/historical-price-eod/full?symbol=${encodeURIComponent(symbol)}&from=${w.from}&to=${w.to}&apikey=${apiKey}`);
           const bars = Array.isArray(data) ? data : (data.historical || data.results || []);
           // Newest-first from FMP → reverse to oldest-first for date-ordered lookup.
           closes = bars
