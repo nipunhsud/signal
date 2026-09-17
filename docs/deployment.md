@@ -6,6 +6,15 @@ current setup.
 
 ---
 
+## Hosts
+
+- `dataquant.ai`, `www.dataquant.ai` — landing, dashboard, pulse, learn, MCP.
+- `chat.dataquant.ai` — the chat over the alert pool (`public/chat.html`,
+  `POST /api/chat`). Same container, same Clerk paywall; `server.js` routes on
+  the host. Needs a DNS A record for `chat` pointing at the droplet (Caddy
+  fetches the certificate on first request) and `ANTHROPIC_API_KEY` in the
+  root `.env`; without the key the page loads but `/api/chat` answers 503.
+
 ## DigitalOcean Droplet (current production)
 
 The whole stack — Postgres, migration runner, dashboard, and the 5 scanner

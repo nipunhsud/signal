@@ -1,3 +1,8 @@
 dataquant.ai, www.dataquant.ai {
 	reverse_proxy dashboard:3000
 }
+
+# The chat over the alert pool. Same container; server.js routes on the host.
+chat.dataquant.ai {
+	reverse_proxy dashboard:3000
+}

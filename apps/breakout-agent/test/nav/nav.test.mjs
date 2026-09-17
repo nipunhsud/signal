@@ -213,6 +213,23 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     check(rtxt.includes('week ending 2026-09-12') && rtxt.includes('$AAPL') && rtxt.includes('past the pivot') && rtxt.includes('produced 1 breakout'), 'pulse?w= shows the week the post names, with the same sentence');
     await p2.close();
   }
+  console.log('--- chat');
+  {
+    const p4 = await browser.newPage({ viewport: { width: 1400, height: 800 } });
+    await p4.goto(`${base}/chat`); await settle(p4, 500);
+    check((await p4.locator('#pool-list label').count()) === 2, 'chat sidebar lists the pool');
+    await p4.click('#pool-filters [data-f="kind:shelf"]'); await settle(p4, 100);
+    check((await p4.locator('#pool-list label').count()) === 1 && (await p4.locator('#pool-list').innerText()).includes('SWKS'), 'cheat filter keeps the shelf entry');
+    await p4.click('#pool-filters [data-f="kind:shelf"]'); await settle(p4, 100);
+    await p4.locator('#pool-list label:has-text("AAPL") input').check(); await settle(p4, 100);
+    check((await p4.locator('#sel-count').innerText()) === '1 selected', 'selecting a name counts it');
+    await p4.fill('#input', 'compare these'); await p4.press('#input', 'Enter'); await settle(p4, 800);
+    const thread = await p4.locator('#thread').innerText();
+    check(thread.includes('(AAPL)') && thread.includes('read the alert pool') && thread.includes('grade A+ base'), 'the question carries the selection, the lookup shows, the answer streams in');
+    check((await p4.locator('#thread table').count()) === 1, 'a markdown table renders as a table');
+    check(await p4.evaluate(() => ui.history.length === 2 && ui.history[0].content.startsWith('Selected from the pool: AAPL.')), 'the transcript carries the selection for the server');
+    await p4.close();
+  }
   console.log('--- landscape phone');
   {
     const p3 = await browser.newPage({ viewport: { width: 740, height: 360 } });

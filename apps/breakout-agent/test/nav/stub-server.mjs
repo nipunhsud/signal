@@ -61,6 +61,20 @@ export function startStub(port = 0) {
   app.get('/api/history/:s', (q, r) => r.json({ asset: q.params.s, episodes: q.params.s === 'AAPL' ? [episode] : [], rows: 4 }));
   app.get('/api/alerts', (q, r) => r.json({ weekEnding: q.query.w || '2026-09-12', alerts: [{ asset: 'AAPL', alertedAt: '2026-09-08T14:05:00Z', grade: 'A+', baseWeeks: 5, pivot: 120, fail: 111.6, current: 123.45, pct: 2.9, cappedPct: 2.9, status: 'past' }],
     summary: { count: 1, past: 1, fell: 0, below: 0, avgCappedPct: 2.9 }, text: ['Last week the screen produced 1 breakout. 1 is still past the pivot and 0 fell through the fail level.\nAverage +2.9%, equal weight, exits at the fail level.', ''] }));
+  // The chat over the pool: page, pool, and a canned streamed answer.
+  app.get('/chat', (q, r) => r.sendFile(path.join(pub, 'chat.html')));
+  app.get('/api/chat/pool', (q, r) => r.json({ days: 14, region: 'us', alerts: [
+    { asset: 'AAPL', alertedAt: '2026-09-08T14:05:00Z', grade: 'A+', kind: 'pivot', baseWeeks: 5, pivot: 120, fail: 111.6, current: 123.45, pct: 2.9, cappedPct: 2.9, status: 'past' },
+    { asset: 'SWKS', alertedAt: '2026-09-10T20:05:00Z', grade: 'A', kind: 'cheat', baseWeeks: 3, pivot: 70.75, fail: 65.8, current: 69.1, pct: -2.3, cappedPct: -2.3, status: 'below' },
+  ], summary: { count: 2, past: 1, fell: 0, below: 1, avgCappedPct: 0.3 } }));
+  app.post('/api/chat', express.json(), (q, r) => {
+    r.setHeader('Content-Type', 'text/event-stream');
+    const send = (e, d) => r.write(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
+    send('tool', { name: 'get_recent_alerts', input: { days: 14 } });
+    send('text', { delta: 'AAPL closed 2.9% past its pivot from a grade A+ base, 5 weeks long. ' });
+    send('text', { delta: 'SWKS sits 2.3% under its shelf.\n\n| Ticker | Grade | vs pivot |\n|---|---|---|\n| AAPL | A+ | +2.9% |\n| SWKS | A | -2.3% |' });
+    send('done', {}); r.end();
+  });
   app.get('/api/*', (q, r) => r.json({}));
   const spa = (q, r) => r.sendFile(path.join(pub, 'index.html'));
   app.get(['/dashboard', '/dashboard/*', '/in/dashboard', '/in/dashboard/*', /^\/\$.*/, '/s/:s'], spa);
