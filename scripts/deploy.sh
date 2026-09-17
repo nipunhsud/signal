@@ -6,13 +6,20 @@ set -euo pipefail
 # drift), and brings everything up. migrations service re-runs prisma migrate
 # deploy on its own — no manual step. Run from the repo root on the droplet.
 
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
 # `docker compose` (v2 plugin, what get.docker.com installs) vs legacy
 # `docker-compose` (hyphen). Use whichever exists.
 DC="docker compose"; command -v docker-compose >/dev/null 2>&1 && DC="docker-compose"
 
-git pull origin main
+# The pull may replace this very file. bash reads a script as it runs, so
+# the rest of THIS run would still be the old copy (the Sep 17 Caddy recreate
+# step was pulled but never executed). Pull, then re-exec the fresh script.
+if [ -z "${DEPLOY_REEXEC:-}" ]; then
+  git pull origin main
+  DEPLOY_REEXEC=1 exec "$SELF" "$@"
+fi
 
 # Reclaim disk BEFORE building: every deploy is a --no-cache rebuild of 8
 # images, and the orphaned layers from prior deploys pile up until the disk
