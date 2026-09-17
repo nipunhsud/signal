@@ -227,7 +227,21 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     const thread = await p4.locator('#thread').innerText();
     check(thread.includes('(AAPL)') && thread.includes('read the alert pool') && thread.includes('grade A+ base'), 'the question carries the selection, the lookup shows, the answer streams in');
     check((await p4.locator('#thread table').count()) === 1, 'a markdown table renders as a table');
-    check(await p4.evaluate(() => ui.history.length === 2 && ui.history[0].content.startsWith('Selected from the pool: AAPL.')), 'the transcript carries the selection for the server');
+    check(await p4.evaluate(() => ui.history.length === 2 && ui.history[0].content.startsWith('Selected: AAPL.')), 'the transcript carries the selection for the server');
+    // The same chat as a side panel in the dashboard.
+    await p4.goto(`${base}/dashboard`); await settle(p4, 400);
+    check(((await p4.locator('#chat-panel').boundingBox())?.width ?? 0) <= 2, 'panel starts closed');
+    await p4.click('#chat-toggle'); await settle(p4, 500);
+    check(((await p4.locator('#chat-panel').boundingBox())?.width || 0) > 300 && (await p4.locator('#chat-panel #pool-list label').count()) === 2, 'Ask opens the panel with the pool loaded');
+    await p4.keyboard.press('Escape'); await settle(p4, 300);
+    check(((await p4.locator('#chat-panel').boundingBox())?.width ?? 0) <= 2, 'esc closes the panel');
+    await p4.locator('#app tr:has-text("AAPL") button:has-text("ask")').first().click(); await settle(p4, 400);
+    check(((await p4.locator('#chat-panel').boundingBox())?.width || 0) > 300 && (await p4.locator('#chat-panel #sel-count').innerText()) === '1 selected', 'ask on a row opens the panel with that name selected');
+    await p4.evaluate(() => dashboard.askChat('ZZZQ')); await settle(p4, 200);
+    check((await p4.locator('#chat-panel #pool-list').innerText()).includes('ZZZQ') && (await p4.locator('#chat-panel #sel-count').innerText()) === '2 selected', 'a name outside the pool can be asked about');
+    await p4.reload(); await settle(p4, 500);
+    check(((await p4.locator('#chat-panel').boundingBox())?.width || 0) > 300, 'the panel stays open across reloads');
+    await p4.evaluate(() => dashboard.closeChat());
     await p4.close();
   }
   console.log('--- landscape phone');

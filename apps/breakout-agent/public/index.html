@@ -119,6 +119,10 @@
       #chart-page-container { height: calc(100dvh - 132px); min-height: 180px !important; } /* first paint; _fitChartStage() measures the real headroom */
       .chart-caption, .chart-legend-row { display: none; }
     }
+    /* Ask panel: a side column on desktop, a full overlay on phones. */
+    @media (max-width: 860px) {
+      #chat-panel.open { position: fixed; inset: 48px 0 0 0; width: 100% !important; z-index: 35; }
+    }
     @keyframes pulse-alert {
       0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); }
       50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
@@ -416,6 +420,10 @@
         <div id="nav-search-dd" class="absolute right-0 top-full mt-1 z-40 w-64 hidden bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl overflow-hidden"></div>
       </div>
       <div id="top-nav-status" class="text-[11px] text-gray-500 hidden md:block whitespace-nowrap"></div>
+      <button id="chat-toggle" onclick="dashboard.toggleChat()" class="text-[11px] px-2 py-1 rounded-md ring-1 ring-gray-800 text-gray-300 hover:text-white hover:bg-gray-800 transition hidden sm:inline-flex items-center gap-1.5" title="Ask the screen about the alert pool (a)">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" stroke-linejoin="round"/></svg>
+        <span class="hidden sm:inline">Ask</span>
+      </button>
       <button onclick="dashboard.openPalette()" class="text-[11px] text-gray-500 hover:text-gray-300 transition inline-flex items-center gap-1.5" title="Command palette (Cmd+K)">
         <span class="sf-kbd" style="font-size:9px;">⌘K</span>
         <span class="hidden sm:inline">Jump</span>
@@ -427,6 +435,7 @@
         </button>
         <div id="top-nav-menu" role="menu" hidden class="absolute right-0 top-9 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-1.5 z-40 text-sm">
           <div class="nav-menu-heading">Explore</div>
+          <button type="button" role="menuitem" class="nav-menu-item" onclick="dashboard.toggleNavMenu(event); dashboard.toggleChat()">Ask the screen <small>chat</small></button>
           <a href="/pulse" role="menuitem" class="nav-menu-item">Market Pulse <small>public</small></a>
           <a href="/learn" role="menuitem" class="nav-menu-item">Learn <small>guides</small></a>
           <a href="/" role="menuitem" class="nav-menu-item">Home page</a>
@@ -443,15 +452,29 @@
             <span><span class="sf-kbd">1</span>–<span class="sf-kbd">5</span></span><span>Screen-type filter</span>
             <span><span class="sf-kbd">space</span> <span class="sf-kbd">←</span><span class="sf-kbd">→</span></span><span>Step through tickers</span>
             <span><span class="sf-kbd">c</span></span><span>Full chart of the open ticker</span>
+            <span><span class="sf-kbd">a</span></span><span>Ask the screen (chat panel)</span>
             <span><span class="sf-kbd">esc</span></span><span>Back / close</span>
           </div>
         </div>
       </div>
     </div>
   </nav>
+  <script src="/chat-widget.js"></script>
   <div id="container" class="flex flex-1 min-h-0 bg-gray-900">
     <div id="app" class="flex-1 overflow-auto" data-keep-scroll="app"></div>
     <div id="drawer" class="relative bg-gray-800 border-l border-gray-700 shadow-lg" style="width: 0px; overflow: hidden; transition: width 0.2s ease;"></div>
+    <!-- Ask the screen: the chat over the alert pool, as a side panel. Same
+         widget as chat.dataquant.ai; the ticker you are looking at is one
+         "ask" away instead of another tab. -->
+    <aside id="chat-panel" class="relative bg-gray-900 border-l border-gray-800 shadow-lg flex flex-col" style="width: 0px; overflow: hidden; transition: width 0.2s ease;" aria-label="Ask the screen">
+      <div class="h-10 flex-shrink-0 flex items-center gap-2 px-3 border-b border-gray-800">
+        <span class="text-sm font-semibold">Ask the screen</span>
+        <span class="text-[11px] text-gray-500 hidden sm:inline">the alert pool, in conversation</span>
+        <a href="/chat" class="ml-auto text-[11px] text-gray-500 hover:text-gray-300" title="Open as a full page">full page ⤢</a>
+        <button onclick="dashboard.closeChat()" class="w-7 h-7 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 inline-flex items-center justify-center" title="Close (esc)">×</button>
+      </div>
+      <div id="chat-mount" class="flex-1 min-h-0 flex flex-col"></div>
+    </aside>
   </div>
   <div id="toast-stack" aria-live="polite" role="status"></div>
   <div id="sf-tooltip" role="tooltip"></div>
@@ -614,6 +637,11 @@
         this.isAdmin = false;
         fetch('/api/admin/status').then(r => r.json()).then(d => { this.isAdmin = !!d.isAdmin; this.fmpDisabled = !!d.fmpDisabled; }).catch(() => {});
         this.drawerWidth = localStorage.getItem('drawerWidth') ? parseInt(localStorage.getItem('drawerWidth')) : 384;
+        // Ask panel: open state survives reloads; ?chat=1 opens it on arrival.
+        this._chat = null;
+        this.chatOpen = false;
+        const wantChat = new URLSearchParams(location.search).get('chat') === '1' || (() => { try { return localStorage.getItem('chatOpen') === '1'; } catch { return false; } })();
+        if (wantChat) setTimeout(() => this.openChat(), 0);
         this._isResizing = false;
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
         // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
@@ -1434,6 +1462,10 @@
               this.backFromChart();
               return;
             }
+            if (this.chatOpen) {
+              this.closeChat();
+              return;
+            }
             return;
           }
 
@@ -1445,6 +1477,14 @@
             e.preventDefault();
             const s = document.getElementById('search-input') || document.getElementById('nav-ticker-search');
             if (s) { s.focus(); s.select(); }
+            return;
+          }
+
+          // "a" asks the screen: the chat panel, with the open ticker selected
+          if (e.key === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            if (this.chatOpen) this.closeChat();
+            else this.askChat(this.selectedAsset?.asset || (this.view === 'chart' ? this.chartAsset : null));
             return;
           }
 
@@ -2458,6 +2498,7 @@
                   <span>6 months · Daily</span>
                   <span class="inline-flex items-center gap-3">
                     ${this.isAdmin && (signal.signalType === 'breakout' || signal.signalType === 'extension') ? `<button onclick="dashboard.tweetBreakout('${assetEscaped}', event)" title="Tweet this breakout to X (admin)" class="text-xs px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium">🐦 Tweet</button>` : ''}
+                    <button onclick="dashboard.askChat('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition" title="Ask the screen about this name">Ask</button>
                     <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
                   </span>
                 </div>
@@ -3352,6 +3393,7 @@
                   <a href="${this.getTradingViewUrl(this.chartAsset)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 hover:text-blue-300 transition" title="Open on TradingView">TradingView ↗</a>
                   <span id="chart-stepper" class="contents">${this.chartStepperHtml()}</span>
                   <button id="chart-details-btn" onclick="dashboard.toggleChartDrawer()" class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition ${this.selectedAsset ? 'bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40' : 'bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60'}" title="Signal details, levels, earnings and shortlist in the side panel">Details</button>
+                  <button onclick="dashboard.askChat(dashboard.chartAsset)" class="px-2.5 py-1.5 rounded-md text-xs font-semibold transition bg-gray-800 text-gray-400 ring-1 ring-gray-700/60 hover:bg-gray-700/60" title="Ask the screen about this name (a)">Ask</button>
                   <!-- Any-ticker search: works for symbols the agent never flagged
                        (chart/bases are Yahoo-backed) — those just render without
                        signal levels. Datalist suggests known signals + shortlist. -->
@@ -3658,6 +3700,38 @@
               : { label: b.weeks + ' wks · ' + b.depthPct + '% deep', depthTag: b.depthPct + '%' },
           });
         });
+      }
+
+      // ── Ask the screen (chat side panel) ──
+      openChat() {
+        const el = document.getElementById('chat-panel');
+        if (!el) return;
+        if (!this._chat && window.DQChat) {
+          this._chat = DQChat.mount(document.getElementById('chat-mount'), { region: REGION, compact: true, onEscape: () => this.closeChat() });
+        }
+        this.chatOpen = true;
+        el.classList.add('open');
+        el.style.width = Math.min(440, window.innerWidth) + 'px';
+        document.getElementById('chat-toggle')?.classList.add('bg-blue-500/20', 'text-blue-300');
+        try { localStorage.setItem('chatOpen', '1'); } catch {}
+        this._onViewportChange();
+      }
+      closeChat() {
+        const el = document.getElementById('chat-panel');
+        if (!el) return;
+        this.chatOpen = false;
+        el.classList.remove('open');
+        el.style.width = '0px';
+        document.getElementById('chat-toggle')?.classList.remove('bg-blue-500/20', 'text-blue-300');
+        try { localStorage.setItem('chatOpen', '0'); } catch {}
+        this._onViewportChange();
+      }
+      toggleChat() { if (this.chatOpen) this.closeChat(); else { this.openChat(); this._chat?.focus(); } }
+      // From a row, the ticker drawer or the chart: open the panel with this
+      // name selected, so the next question is about it.
+      askChat(asset) {
+        this.openChat();
+        if (this._chat && asset) { this._chat.select(asset); this._chat.focus(); }
       }
 
       toggleDrawTools() {
@@ -4503,6 +4577,7 @@
                             <span class="text-blue-400 hover:text-blue-300 font-mono font-bold cursor-pointer inline-flex items-center gap-2" onclick="dashboard.openDrawer(dashboard.signals.find(s => s.asset === '${item.asset}') || {asset: '${item.asset}'})">
                               ${item.asset}
                               <a href="${this.getTradingViewUrl(item.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm" title="Open on TradingView" onclick="event.stopPropagation();">↗</a>
+                              <button onclick="event.stopPropagation(); dashboard.askChat('${item.asset}')" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${item.asset}">ask</button>
                             </span>
                           </td>
                           <td data-label="Added" class="px-3 py-2.5 whitespace-nowrap text-xs text-gray-400">
@@ -5286,6 +5361,7 @@
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
+                                <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>
                                 <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">
                                   ✕
                                 </button>
