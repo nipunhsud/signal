@@ -59,3 +59,48 @@ test('the chat module loads and names the model and the voice rules', async () =
   assert.match(src, /subscriber: true/, 'the chat opens the subscriber tool set');
   assert.doesNotMatch(src, /updateMany|\.create\(\{|\.delete\(/, 'the chat never writes');
 });
+
+import express from 'express';
+import { handleChatRequest } from '../chat.js';
+
+// Spin the real handler on a real socket and read the stream back.
+async function postChat(run, body = { messages: [{ role: 'user', content: 'hi' }] }) {
+  const app = express();
+  app.use(express.json());
+  app.post('/api/chat', (req, res) => handleChatRequest(req, res, { deps, run }));
+  const srv = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
+  try {
+    const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const text = await r.text();
+    return { status: r.status, text };
+  } finally { srv.close(); }
+}
+
+test('the model call is not cancelled when the request body finishes (Node 16+ emits req close early)', async () => {
+  process.env.ANTHROPIC_API_KEY ||= 'test';
+  let abortedDuringRun = null;
+  const run = async ({ send, signal }) => {
+    await new Promise((r) => setTimeout(r, 60)); // the body has long been consumed by now
+    abortedDuringRun = signal.aborted;
+    if (signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    send('text', { delta: 'AAPL closed 2.9% past its pivot.' });
+    send('done', {});
+  };
+  const { status, text } = await postChat(run);
+  assert.equal(status, 200);
+  assert.equal(abortedDuringRun, false, 'signal must stay live while the client is still connected');
+  assert.match(text, /^event: text\ndata: \{"delta":"AAPL closed 2\.9% past its pivot\."\}\n\n/m);
+  assert.match(text, /event: done/);
+});
+
+test('a failure inside the run reaches the page as an error event, not an empty stream', async () => {
+  process.env.ANTHROPIC_API_KEY ||= 'test';
+  const { text } = await postChat(async () => { throw Object.assign(new Error('boom'), { status: 500 }); });
+  assert.match(text, /event: error\ndata: \{"message":"The answer did not come through\. Try again\."\}/);
+});
+
+test('the transcript is validated: only user/assistant strings, last one a user turn', async () => {
+  process.env.ANTHROPIC_API_KEY ||= 'test';
+  const { status } = await postChat(async () => {}, { messages: [{ role: 'assistant', content: 'x' }] });
+  assert.equal(status, 400);
+});

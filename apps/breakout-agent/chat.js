@@ -94,3 +94,38 @@ export async function runChat({ messages, deps, send, region = 'us', signal }) {
     await tools.close();
   }
 }
+
+// Express handler for POST /api/chat. Streams server-sent events.
+//
+// Cancellation keys off the RESPONSE closing, never the request: on Node 16+
+// an IncomingMessage emits 'close' as soon as its body has been consumed, so
+// `req.on('close', abort)` cancelled every model call the instant it began and
+// the page received an empty stream ("The screen had nothing to add.").
+export async function handleChatRequest(req, res, { deps, run = runChat } = {}) {
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'chat is not configured on this server' });
+  const raw = Array.isArray(req.body?.messages) ? req.body.messages : [];
+  const messages = raw
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-24)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
+  if (!messages.length || messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'a user message is required' });
+  const region = req.body?.region === 'in' ? 'in' : 'us';
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  const send = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+  const ac = new AbortController();
+  // The client went away before we finished: stop paying for the answer.
+  res.on('close', () => { if (!res.writableFinished) ac.abort(); });
+  try {
+    await run({ messages, deps, send, region, signal: ac.signal });
+  } catch (e) {
+    if (!ac.signal.aborted) {
+      console.error('[/api/chat] failed:', e);
+      send('error', { message: e?.status === 429 ? 'The screen is busy, try again in a moment.' : 'The answer did not come through. Try again.' });
+    }
+  } finally {
+    res.end();
+  }
+}
