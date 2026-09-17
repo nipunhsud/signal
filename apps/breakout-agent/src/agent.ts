@@ -795,10 +795,13 @@ export class BreakoutAgent {
       // are traps). Type1/Type3/EP classification continues for tracking, the
       // dashboard, and streak bookkeeping — it just no longer decides emails.
       // Quality floor on top of the setup gates (Sep 2026): an email needs
-      // relative strength 70+ (outperforming 70% of the scanned market) or
-      // confidence 80%+. A graded close in a laggard with a weak read stays on
-      // the dashboard, tracked, and out of the inbox.
-      const qualityOk = (rsRating != null && rsRating >= 70) || confidence >= 0.8;
+      // BOTH a relative-strength rank of 89 or better (the name outperforms
+      // 89% of the scanned market — Minervini's "90% of my trades start at
+      // RS 89+", and the band where the Minervini study's profit factor
+      // stepped up to 2.20) AND confidence 80%+. Type 1 confidence is floored
+      // at 80% upstream, so RS is the condition that decides; a name with no
+      // RS rank yet does not email. Everything else stays on the dashboard.
+      const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0.8;
       const shouldAlert = (isGradedBreakout || isCheatBreakout) && qualityOk;
 
       // Debug logging for breakout classification

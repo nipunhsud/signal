@@ -14,8 +14,9 @@ const between = (s, start, end) => { const i = s.indexOf(start); assert.ok(i >= 
 
 test('email: the alert gate is the graded pivot close and nothing else', () => {
   assert.match(agent, /const shouldAlert = \(isGradedBreakout \|\| isCheatBreakout\) && qualityOk;/);
-  // Quality floor: RS 70+ or confidence 80%+ (Sep 2026).
-  assert.match(agent, /const qualityOk = \(rsRating != null && rsRating >= 70\) \|\| confidence >= 0\.8;/);
+  // Quality floor: RS 89+ AND confidence 80%+ (Sep 2026). Both, not either —
+  // Type 1 confidence is floored at 80% upstream, so an OR let everything through.
+  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0\.8;/);
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);
