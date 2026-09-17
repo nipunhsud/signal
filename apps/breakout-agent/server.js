@@ -3,7 +3,7 @@
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { classifyShelf } from './shelf.js';
-import { runChat } from './chat.js';
+import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
 import Stripe from 'stripe';
@@ -2335,33 +2335,7 @@ app.get('/api/chat/pool', paywallApi, async (req, res) => {
 // Streamed chat: body { messages: [{role, content}], region? }. Answers over
 // the same read-only tools the MCP serves, plus the alert pool, in-process.
 const chatDeps = () => ({ computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases, alertLedger, signalHistory });
-app.post('/api/chat', paywallApi, async (req, res) => {
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'chat is not configured on this server' });
-  const raw = Array.isArray(req.body?.messages) ? req.body.messages : [];
-  const messages = raw
-    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .slice(-24)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
-  if (!messages.length || messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'a user message is required' });
-  const region = req.body?.region === 'in' ? 'in' : 'us';
-  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders?.();
-  const send = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
-  const ac = new AbortController();
-  req.on('close', () => ac.abort());
-  try {
-    await runChat({ messages, deps: chatDeps(), send, region, signal: ac.signal });
-  } catch (e) {
-    if (!ac.signal.aborted) {
-      console.error('[/api/chat] failed:', e);
-      send('error', { message: e?.status === 429 ? 'The screen is busy, try again in a moment.' : 'The answer did not come through. Try again.' });
-    }
-  } finally {
-    res.end();
-  }
-});
+app.post('/api/chat', paywallApi, (req, res) => handleChatRequest(req, res, { deps: chatDeps() }));
 
 app.post('/mcp', async (req, res) => {
   try {
