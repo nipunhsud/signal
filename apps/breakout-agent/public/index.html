@@ -950,6 +950,8 @@
             has: (this.beatRaise?.stocks || []).some(s => (s.asset||'').toUpperCase() === a) },
           { key: 'unusual-volume', short: 'V', label: 'Unusual Vol',  cls: 'bg-orange-500/15 text-orange-300 ring-orange-500/30',
             has: (this.unusualVolume?.stocks || []).some(s => (s.asset||'').toUpperCase() === a) },
+          { key: 'sectors',        short: 'L', label: 'Sector top name', cls: 'bg-yellow-500/15 text-yellow-300 ring-yellow-500/30',
+            has: (this.sectorStrength?.sectors || []).some(sec => (sec.topAssets || []).some(t => String(t).toUpperCase() === a)) },
         ];
         return defs.filter(d => d.has);
       }
@@ -1342,6 +1344,7 @@
         this.fetchWinners();
         this.fetchBeatRaise();
         this.fetchUnusualVolume();
+        this.fetchSectorStrength();
         // Land on the view the URL names (/dashboard/winners, /dashboard/chart/NVDA …)
         // and follow the browser's back/forward buttons from then on.
         const initialRoute = this.routeFromLocation();
@@ -5014,7 +5017,7 @@
                           <td data-label="3M" class="px-3 py-2.5 whitespace-nowrap text-right">${pct(s.median3mPct)}</td>
                           <td data-label="Leaders" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums ${s.leadersPct >= 25 ? 'text-green-400' : 'text-gray-300'}">${s.leaders ?? '—'}${s.leadersPct != null ? ' · ' + s.leadersPct + '%' : ''}</td>
                           <td data-label="Top names" class="px-3 py-2.5 whitespace-nowrap">
-                            ${(s.topAssets || []).map(t => `<button onclick="dashboard.openAsset('${String(t).replace(/'/g, "\\'")}'); event.stopPropagation();" class="font-mono text-[11px] px-1.5 py-0.5 mr-1 rounded bg-gray-700/60 text-blue-300 ring-1 ring-gray-600/40 hover:bg-gray-700 transition">${t}</button>`).join('')}
+                            ${(s.topAssets || []).map(t => `<button onclick="dashboard.openAsset('${String(t).replace(/'/g, "\\'")}'); event.stopPropagation();" class="font-mono text-[11px] px-1.5 py-0.5 mr-1 rounded bg-gray-700/60 text-blue-300 ring-1 ring-gray-600/40 hover:bg-gray-700 transition">${t}</button>${this.crossRefPills(t, 'sectors')}`).join('')}
                           </td>
                         </tr>
                       `).join('')}
