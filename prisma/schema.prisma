@@ -386,6 +386,7 @@ model DailyBar {
   low    Float
   close  Float
   volume Float
+  vwap   Float? // FMP's volume-weighted average price for the session (null from Yahoo)
 
   @@id([symbol, date])
 }
