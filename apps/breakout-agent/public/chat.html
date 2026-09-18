@@ -37,9 +37,12 @@
   <script>
     // The page is the widget in "page" mode; `ui` stays global for the tests
     // and the header controls.
+    const CLERK_PUBLISHABLE_KEY = '__CLERK_PUBLISHABLE_KEY__'.startsWith('__') ? '' : '__CLERK_PUBLISHABLE_KEY__';
     window.ui = DQChat.mount(document.getElementById('chat-root'), {
       region: location.pathname.startsWith('/in') ? 'in' : 'us',
       compact: false,
+      clerkKey: CLERK_PUBLISHABLE_KEY,
+      refreshAuth: () => DQChat.refreshSession(CLERK_PUBLISHABLE_KEY),
     });
     document.getElementById('region').value = ui.region;
   </script>

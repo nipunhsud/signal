@@ -68,6 +68,9 @@ export function startStub(port = 0) {
     { asset: 'SWKS', alertedAt: '2026-09-10T20:05:00Z', grade: 'A', kind: 'cheat', baseWeeks: 3, pivot: 70.75, fail: 65.8, current: 69.1, pct: -2.3, cappedPct: -2.3, status: 'below' },
   ], summary: { count: 2, past: 1, fell: 0, below: 1, avgCappedPct: 0.3 } }));
   app.post('/api/chat', express.json(), (q, r) => {
+    // An expired session: 401 until the widget refreshes and retries.
+    const last = (q.body?.messages || []).at(-1)?.content || '';
+    if (last.includes('expire-me') && !q.get('x-auth-retry')) return r.status(401).json({ error: 'sign in required' });
     r.setHeader('Content-Type', 'text/event-stream');
     const send = (e, d) => r.write(`event: ${e}\ndata: ${JSON.stringify(d)}\n\n`);
     send('tool', { name: 'get_recent_alerts', input: { days: 14 } });

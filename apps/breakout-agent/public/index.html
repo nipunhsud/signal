@@ -642,6 +642,10 @@
         this.chatOpen = false;
         const wantChat = new URLSearchParams(location.search).get('chat') === '1' || (() => { try { return localStorage.getItem('chatOpen') === '1'; } catch { return false; } })();
         if (wantChat) setTimeout(() => this.openChat(), 0);
+        // Clerk's session cookie is a short-lived token. Page loads refresh it
+        // through the server handshake; fetches (chat, shortlist) do not, and
+        // a minute after load they came back 401. The SDK keeps it fresh.
+        if (CLERK_PUBLISHABLE_KEY) setTimeout(() => this.loadClerk().catch(() => {}), 1500);
         this._isResizing = false;
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
         // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
@@ -3707,7 +3711,12 @@
         const el = document.getElementById('chat-panel');
         if (!el) return;
         if (!this._chat && window.DQChat) {
-          this._chat = DQChat.mount(document.getElementById('chat-mount'), { region: REGION, compact: true, onEscape: () => this.closeChat() });
+          this._chat = DQChat.mount(document.getElementById('chat-mount'), {
+            region: REGION, compact: true,
+            onEscape: () => this.closeChat(),
+            onOpenTicker: (t) => this.openAsset(t),
+            refreshAuth: () => this.loadClerk().then((c) => c.session?.getToken()),
+          });
         }
         this.chatOpen = true;
         el.classList.add('open');
