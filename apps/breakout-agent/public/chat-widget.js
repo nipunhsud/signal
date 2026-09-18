@@ -67,6 +67,38 @@
     .dqc.compact .dqc-pool.collapsed #pool-list, .dqc.compact .dqc-pool.collapsed #pool-filters, .dqc.compact .dqc-pool.collapsed .dqc-pool-foot { display: none; }
   `;
 
+  // Clerk's session cookie is a short-lived token; page loads refresh it via
+  // the server handshake, fetches do not. Load Clerk's browser SDK once in the
+  // background (it keeps the cookie fresh) and expose a refresh for the 401
+  // retry. Without this every question a minute after load came back 401 and
+  // the page bounced to the landing.
+  let clerkLoading = null;
+  function loadClerk(key) {
+    if (window.Clerk?.loaded) return Promise.resolve(window.Clerk);
+    if (clerkLoading) return clerkLoading;
+    if (!key) return Promise.reject(new Error('Clerk key not configured'));
+    const frontendApi = atob(key.split('_').slice(2).join('_') || '').replace(/\$+$/, '');
+    clerkLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
+      script.async = true;
+      script.crossOrigin = 'anonymous';
+      script.dataset.clerkPublishableKey = key;
+      script.onload = () => window.Clerk.load().then(() => resolve(window.Clerk), reject);
+      script.onerror = () => reject(new Error('Clerk SDK failed to load'));
+      document.head.appendChild(script);
+    }).catch((e) => { clerkLoading = null; throw e; });
+    return clerkLoading;
+  }
+  async function refreshSession(key) {
+    const clerk = await loadClerk(key);
+    // getToken() mints a fresh session JWT and rewrites the __session cookie.
+    await clerk.session?.getToken();
+  }
+
+  const timeHHMM = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const STORE_KEY = (region) => `dqchat:${region}`;
+
   function mount(root, opts = {}) {
     if (!document.getElementById('dqc-style')) { const st = document.createElement('style'); st.id = 'dqc-style'; st.textContent = CSS; document.head.appendChild(st); }
     const compact = !!opts.compact;
@@ -110,8 +142,12 @@
                 <textarea id="input" rows="1" placeholder="Ask about the pool, or pick names and compare them…"
                   class="flex-1 resize-none bg-gray-800 text-gray-100 text-sm rounded-lg px-3 py-2.5 ring-1 ring-gray-700 focus:ring-blue-500 outline-none placeholder:text-gray-500"></textarea>
                 <button id="send" class="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold disabled:opacity-50">Ask</button>
+                <button id="stop" hidden class="px-3 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 text-sm font-semibold" title="Stop the answer">Stop</button>
               </div>
-              <div class="mt-1.5 text-[11px] text-gray-500 flex justify-between gap-2"><span><span class="kbd">Enter</span> ask · <span class="kbd">Shift+Enter</span> newline</span><span>Screen output for research, not advice.</span></div>
+              <div class="mt-1.5 text-[11px] text-gray-500 flex justify-between gap-2 flex-wrap">
+                <span><span class="kbd">Enter</span> ask · <span class="kbd">Shift+Enter</span> newline · <button id="new-conv" class="underline decoration-dotted hover:text-gray-300">new conversation</button></span>
+                <span>Screen output for research, not advice.</span>
+              </div>
             </div>
           </div>
         </main>
@@ -171,7 +207,7 @@
         el.innerHTML = extraHtml + rows.map((a) => `
           <label class="pool-row ${this.selected.has(a.asset) ? 'selected' : ''} flex items-center gap-2.5 px-3 py-2 border-b border-gray-800/70 cursor-pointer hover:bg-gray-800/60">
             <input type="checkbox" ${this.selected.has(a.asset) ? 'checked' : ''} data-asset="${esc(a.asset)}" class="accent-blue-500">
-            <span class="mono font-semibold w-16">${esc(a.asset)}</span>
+            <a href="/$${esc(a.asset)}" data-ticker="${esc(a.asset)}" class="mono font-semibold w-16 hover:text-blue-300" onclick="event.stopPropagation()">${esc(a.asset)}</a>
             <span class="text-[11px] text-gray-400 w-20">${a.grade ? esc(a.grade) : '—'}${a.kind && a.kind !== 'pivot' ? ' · ' + esc(a.kind.replace('-', ' ')) : ''}</span>
             <span class="mono text-xs ml-auto" style="color:${color[a.status] || '#9ca3af'}">${fmtPct(a.pct)}</span>
             <a href="/$${esc(a.asset)}" target="_blank" class="text-gray-600 hover:text-blue-300 text-xs" title="Open on the screener">↗</a>
@@ -189,6 +225,69 @@
       autosize(t) { t.style.height = 'auto'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; },
       focus() { $('input')?.focus(); },
       ask(text) { const t = $('input'); t.value = text; this.send(); },
+      // Known tickers (pool + selection) and $CASHTAGS in an answer open the
+      // ticker: the drawer inside the dashboard, the screener page elsewhere.
+      linkTickers(html) {
+        const known = new Set([...this.pool.map((a) => a.asset), ...this.selected]);
+        const re = /(^|[^\w$])(\$?)([A-Z][A-Z0-9.\-]{0,9})(?=$|[^\w])/g;
+        // Only text between tags is touched, so attributes and tag names stay intact.
+        return html.split(/(<[^>]+>)/).map((seg) => seg.startsWith('<') ? seg : seg.replace(re, (m, pre, dollar, t) => {
+          if (!dollar && !known.has(t)) return m;
+          return `${pre}<a href="/$${t}" data-ticker="${t}" class="text-blue-300 hover:text-blue-200 underline decoration-dotted">${dollar}${t}</a>`;
+        })).join('');
+      },
+      render(text) { return this.linkTickers(md(text)); },
+      placeholder() {
+        const t = $('input'); if (!t) return;
+        const sel = [...this.selected];
+        t.placeholder = sel.length ? `Ask about ${sel.slice(0, 3).join(', ')}${sel.length > 3 ? ` and ${sel.length - 3} more` : ''}…` : 'Ask about the pool, or pick names and compare them…';
+      },
+      followUps() {
+        const sel = [...this.selected];
+        const qs = sel.length
+          ? [`Which of ${sel.length > 1 ? 'these' : 'its bases'} is closest to the pivot right now?`, `How did ${sel[0]} behave on its earlier breakouts?`, 'Is the tape supportive for these this week?']
+          : ['Which of these rests on the most evidence?', 'Which names are within 5% of the pivot?', 'What does the base X-ray say about the best one?'];
+        const wrap = document.createElement('div');
+        wrap.className = 'max-w-3xl mx-auto flex flex-wrap gap-2 follow-ups';
+        wrap.innerHTML = qs.map((q) => `<button class="chip hover:text-white" data-ask="${esc(q)}">${esc(q)}</button>`).join('');
+        wrap.addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b) { wrap.remove(); ui.ask(b.dataset.ask); } });
+        $('thread').appendChild(wrap);
+      },
+      persist() {
+        try { sessionStorage.setItem(STORE_KEY(this.region), JSON.stringify({ history: this.history.slice(-24), selected: [...this.selected] })); } catch {}
+      },
+      restore() {
+        let saved = null;
+        try { saved = JSON.parse(sessionStorage.getItem(STORE_KEY(this.region)) || 'null'); } catch {}
+        if (!saved || !Array.isArray(saved.history) || !saved.history.length) return false;
+        this.history = saved.history;
+        (saved.selected || []).forEach((a) => this.selected.add(a));
+        $('welcome')?.remove();
+        for (const m of this.history) {
+          if (m.role === 'user') this.bubble('user', esc(m.content.replace(/^Selected: [^\n]*\n\n/, '')));
+          else this.bubble('assistant', this.render(m.content));
+        }
+        this.scroll();
+        return true;
+      },
+      newConversation() {
+        this.history = [];
+        try { sessionStorage.removeItem(STORE_KEY(this.region)); } catch {}
+        const th = $('thread');
+        th.innerHTML = '';
+        th.appendChild(welcomeEl());
+        wireSuggestions();
+      },
+      // POST with one retry after a session refresh: an expired Clerk cookie
+      // answers 401 even though the user is signed in.
+      async post(body, signal) {
+        const req = (retry) => fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(retry ? { 'X-Auth-Retry': '1' } : {}) }, body: JSON.stringify(body), signal });
+        let r = await req(false);
+        if (r.status === 401 && opts.refreshAuth) {
+          try { await opts.refreshAuth(); r = await req(true); } catch {}
+        }
+        return r;
+      },
       bubble(role, html, extraCls = '') {
         const wrap = document.createElement('div');
         wrap.className = 'max-w-3xl mx-auto ' + (role === 'user' ? 'flex justify-end' : '');
@@ -208,16 +307,21 @@
         $('welcome')?.remove();
         const sel = [...this.selected];
         const content = sel.length ? `Selected: ${sel.join(', ')}.\n\n${q}` : q;
+        root.querySelectorAll('.follow-ups').forEach((el) => el.remove());
         this.bubble('user', esc(sel.length ? `${q}\n\n(${sel.join(', ')})` : q));
         this.history.push({ role: 'user', content });
-        this.busy = true; $('send').disabled = true;
+        this.persist();
+        this.busy = true; $('send').disabled = true; $('stop').hidden = false;
         const tools = document.createElement('div'); tools.className = 'max-w-3xl mx-auto space-y-0.5';
+        tools.innerHTML = '<div class="tool" data-status>thinking…</div>';
         $('thread').appendChild(tools);
         const out = this.bubble('assistant', '', 'typing');
         let text = '';
         this.scroll();
+        const ac = new AbortController();
+        this._abort = ac;
         try {
-          const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: this.history, region: this.region }) });
+          const r = await this.post({ messages: this.history, region: this.region }, ac.signal);
           if (r.status === 401) { location.href = '/?ref=chat&next=' + encodeURIComponent(location.pathname); return; }
           if (r.status === 402) { location.href = '/upgrade'; return; }
           if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'HTTP ' + r.status); }
@@ -233,26 +337,50 @@
               const dataLine = (chunk.match(/^data: (.*)$/m) || [])[1];
               if (!ev || !dataLine) continue;
               const data = JSON.parse(dataLine);
-              if (ev === 'text') { text += data.delta; out.innerHTML = md(text); this.scroll(); }
-              else if (ev === 'tool') { const sym = data.input && (data.input.symbol || ''); tools.insertAdjacentHTML('beforeend', `<div class="tool">${esc(TOOL_WORDS[data.name] || data.name)}${sym ? ' · ' + esc(String(sym).toUpperCase()) : ''}</div>`); this.scroll(); }
-              else if (ev === 'error') { text += (text ? '\n\n' : '') + data.message; out.innerHTML = md(text); }
+              if (ev === 'text') { tools.querySelector('[data-status]')?.remove(); text += data.delta; out.innerHTML = this.render(text); this.scroll(); }
+              else if (ev === 'tool') { tools.querySelector('[data-status]')?.remove(); const sym = data.input && (data.input.symbol || ''); tools.insertAdjacentHTML('beforeend', `<div class="tool">${esc(TOOL_WORDS[data.name] || data.name)}${sym ? ' · ' + esc(String(sym).toUpperCase()) : ''}</div>`); this.scroll(); }
+              else if (ev === 'error') { tools.querySelector('[data-status]')?.remove(); text += (text ? '\n\n' : '') + data.message; out.innerHTML = this.render(text); }
             }
           }
-          if (!text.trim()) { text = 'The screen had nothing to add.'; out.innerHTML = md(text); }
+          if (!text.trim()) { text = 'No answer came back. Ask again.'; out.innerHTML = this.render(text); }
           this.history.push({ role: 'assistant', content: text });
+          this.persist();
+          out.insertAdjacentHTML('beforeend', `<div class="mt-1.5 text-[10px] text-gray-600 flex gap-3"><span>${timeHHMM()}</span><button class="hover:text-gray-300" data-copy>copy</button></div>`);
+          out.querySelector('[data-copy]')?.addEventListener('click', () => { try { navigator.clipboard.writeText(text); } catch {} });
+          this.followUps();
         } catch (e) {
-          out.innerHTML = md(text + (text ? '\n\n' : '') + (e.message || 'The answer did not come through.'));
+          tools.querySelector('[data-status]')?.remove();
+          const msg = e.name === 'AbortError' ? 'Stopped.' : (e.message || 'The answer did not come through.');
+          out.innerHTML = this.render(text + (text ? '\n\n' : '') + msg);
+          if (text.trim()) { this.history.push({ role: 'assistant', content: text }); this.persist(); }
+          else this.history.pop(); // the question went nowhere; let them ask again
         } finally {
           out.classList.remove('typing');
-          this.busy = false; $('send').disabled = false;
+          this.busy = false; $('send').disabled = false; $('stop').hidden = true; this._abort = null;
           this.scroll();
         }
       },
+      stop() { this._abort?.abort(); },
     };
 
     // Wiring (no inline handlers, so the widget works wherever it is mounted).
-    $('suggestions').innerHTML = SUGGESTIONS.map((s) => `<button class="chip hover:text-white" data-ask="${esc(s)}">${esc(s)}</button>`).join('');
-    $('suggestions').addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b) ui.ask(b.dataset.ask); });
+    const welcomeHtml = $('welcome').outerHTML;
+    const welcomeEl = () => { const d = document.createElement('div'); d.innerHTML = welcomeHtml; return d.firstElementChild; };
+    const wireSuggestions = () => {
+      const sg = $('suggestions'); if (!sg) return;
+      sg.innerHTML = SUGGESTIONS.map((s) => `<button class="chip hover:text-white" data-ask="${esc(s)}">${esc(s)}</button>`).join('');
+      sg.addEventListener('click', (e) => { const b = e.target.closest('[data-ask]'); if (b) ui.ask(b.dataset.ask); });
+    };
+    wireSuggestions();
+    $('new-conv').addEventListener('click', () => ui.newConversation());
+    $('stop').addEventListener('click', () => ui.stop());
+    // A ticker in an answer or the pool: the drawer inside the dashboard, the
+    // screener page elsewhere.
+    root.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-ticker]');
+      if (!a) return;
+      if (opts.onOpenTicker) { e.preventDefault(); opts.onOpenTicker(a.dataset.ticker); }
+    });
     $('pool-filters').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) ui.toggleFilter(b); });
     $('pool-list').addEventListener('change', (e) => { const cb = e.target; if (cb && cb.dataset && cb.dataset.asset) ui.select(cb.dataset.asset, cb.checked); });
     $('days').addEventListener('change', (e) => ui.setDays(e.target.value));
@@ -264,9 +392,13 @@
       else if (e.key === 'Escape') { e.stopPropagation(); e.target.blur(); if (opts.onEscape) opts.onEscape(); }
     });
     $('input').addEventListener('input', (e) => ui.autosize(e.target));
+    const origRender = ui.renderPool.bind(ui);
+    ui.renderPool = function () { origRender(); this.placeholder(); };
+    ui.restore();
     ui.loadPool();
+    if (opts.clerkKey) loadClerk(opts.clerkKey).catch(() => {}); // keep the session cookie fresh
     return ui;
   }
 
-  window.DQChat = { mount, md };
+  window.DQChat = { mount, md, loadClerk, refreshSession };
 })();

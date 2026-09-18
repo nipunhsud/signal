@@ -228,6 +228,19 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     check(thread.includes('(AAPL)') && thread.includes('read the alert pool') && thread.includes('grade A+ base'), 'the question carries the selection, the lookup shows, the answer streams in');
     check((await p4.locator('#thread table').count()) === 1, 'a markdown table renders as a table');
     check(await p4.evaluate(() => ui.history.length === 2 && ui.history[0].content.startsWith('Selected: AAPL.')), 'the transcript carries the selection for the server');
+    // Follow-ups after an expired session: refresh, retry, never bounce to the landing.
+    await p4.evaluate(() => { window.__refreshed = 0; ui.opts = ui.opts || {}; });
+    await p4.evaluate(() => { const m = DQChat.mount; window.__origMount = m; });
+    await p4.goto(`${base}/chat`); await settle(p4, 400);
+    await p4.evaluate(() => { window.ui = DQChat.mount(document.getElementById('chat-root'), { region: 'us', compact: false, refreshAuth: async () => { window.__refreshed = (window.__refreshed || 0) + 1; } }); });
+    await settle(p4, 300);
+    check((await p4.locator('#thread .msg').count()) >= 2, 'the transcript is restored from the session after a reload');
+    await p4.fill('#input', 'expire-me follow up'); await p4.press('#input', 'Enter'); await settle(p4, 800);
+    check((await p4.evaluate(() => window.__refreshed)) === 1 && p4.url().endsWith('/chat') && (await p4.locator('#thread').innerText()).includes('grade A+ base'), 'a 401 refreshes the session and retries instead of bouncing to the landing');
+    check((await p4.locator('#thread a[data-ticker="AAPL"]').count()) >= 1, 'tickers in answers are links');
+    check((await p4.locator('#thread .follow-ups button').count()) === 3, 'follow-up questions are offered after an answer');
+    await p4.click('#new-conv'); await settle(p4, 200);
+    check((await p4.locator('#welcome').count()) === 1 && (await p4.evaluate(() => ui.history.length)) === 0, 'new conversation clears the thread');
     // The same chat as a side panel in the dashboard.
     await p4.goto(`${base}/dashboard`); await settle(p4, 400);
     check(((await p4.locator('#chat-panel').boundingBox())?.width ?? 0) <= 2, 'panel starts closed');
