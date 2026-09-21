@@ -255,6 +255,11 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     await p4.reload(); await settle(p4, 500);
     check(((await p4.locator('#chat-panel').boundingBox())?.width || 0) > 300, 'the panel stays open across reloads');
     await p4.evaluate(() => dashboard.closeChat());
+    // Admin: FMP data usage by day.
+    await p4.evaluate(() => { dashboard.isAdmin = true; dashboard.render(); }); await settle(p4, 300);
+    await p4.click('#app button:has-text("Data usage")'); await settle(p4, 400);
+    const ut = await p4.locator('#usage-overlay').innerText();
+    check(ut.includes('812 MB') && ut.includes('2026-09-19') && ut.includes('410 MB') && ut.includes('eod-seed 404 MB'), 'usage overlay shows the 30-day total and each day by kind');
     await p4.close();
   }
   console.log('--- landscape phone');

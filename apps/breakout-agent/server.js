@@ -593,6 +593,49 @@ setTimeout(backfillRecentRs, 20 * 1000); // after boot, once DB is warm
 // it only ever touches null ratings / Unclassified sectors in a 7-day window.
 setInterval(backfillRecentRs, 30 * 60 * 1000);
 
+// FMP history bandwidth by day: what the agents flushed (fmp_usage:<day>:<container>)
+// plus the dashboard's own in-memory meter for today. Decoded bytes per kind.
+app.get('/api/admin/fmp-usage', async (req, res) => {
+  if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
+  const days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 14));
+  try {
+    const rows = await db.runtimeFlag.findMany({ where: { key: { startsWith: 'fmp_usage:' } } });
+    const byDate = {};
+    const add = (date, container, kinds) => {
+      const d = byDate[date] || (byDate[date] = { date, bytes: 0, calls: 0, byKind: {}, byContainer: {} });
+      const c = d.byContainer[container] || (d.byContainer[container] = { bytes: 0, calls: 0, byKind: {} });
+      for (const [kind, v] of Object.entries(kinds || {})) {
+        const b = Number(v.bytes) || 0, n = Number(v.calls) || 0, mr = Number(v.maxRows) || 0;
+        d.bytes += b; d.calls += n; c.bytes += b; c.calls += n;
+        for (const tgt of [d.byKind, c.byKind]) {
+          const k = tgt[kind] || (tgt[kind] = { bytes: 0, calls: 0, maxRows: 0 });
+          k.bytes += b; k.calls += n; k.maxRows = Math.max(k.maxRows, mr);
+        }
+      }
+    };
+    for (const r of rows) {
+      const m = /^fmp_usage:(\d{4}-\d{2}-\d{2}):(.+)$/.exec(r.key);
+      if (!m) continue;
+      try { add(m[1], m[2], JSON.parse(r.value)); } catch {}
+    }
+    if (fmpUsage.date && Object.keys(fmpUsage.kinds).length) add(fmpUsage.date, 'dashboard', fmpUsage.kinds);
+    const mb = (b) => Math.round((b / 1048576) * 100) / 100;
+    const list = Object.values(byDate).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, days).map((d) => ({
+      date: d.date, totalMB: mb(d.bytes), calls: d.calls,
+      byKind: Object.fromEntries(Object.entries(d.byKind).map(([k, v]) => [k, { mb: mb(v.bytes), calls: v.calls, maxRows: v.maxRows }])),
+      byContainer: Object.fromEntries(Object.entries(d.byContainer).map(([k, v]) => [k, { mb: mb(v.bytes), calls: v.calls, byKind: Object.fromEntries(Object.entries(v.byKind).map(([kk, vv]) => [kk, { mb: mb(vv.bytes), calls: vv.calls, maxRows: vv.maxRows }])) }])),
+    }));
+    // Rolling 30-day total, the number FMP bills against (Premium 50 GB, Starter 20 GB).
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const last30MB = mb(Object.values(byDate).filter((d) => d.date >= cutoff).reduce((s, d) => s + d.bytes, 0));
+    let dailyBars = null; try { dailyBars = await db.dailyBar.count(); } catch {}
+    res.json({ days: list, last30MB, meteredSince: rows.length ? Object.keys(byDate).sort()[0] : null, dailyBars });
+  } catch (e) {
+    console.error('[/api/admin/fmp-usage] failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/fmp-toggle', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
   const disabled = !!req.body?.disabled;

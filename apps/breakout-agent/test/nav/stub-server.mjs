@@ -39,6 +39,11 @@ export function startStub(port = 0) {
   app.get('/api/backtest', (q, r) => r.json({ summary: { totalSignals: 0 }, recent: [] }));
   app.get('/api/market-health', (q, r) => r.json({}));
   app.get('/api/admin/status', (q, r) => r.json({ isAdmin: false }));
+  app.get('/api/admin/fmp-usage', (q, r) => r.json({ last30MB: 812.4, meteredSince: '2026-09-18', dailyBars: 4727902, days: [
+    { date: '2026-09-19', totalMB: 410.2, calls: 12034, byKind: { 'eod-delta': { mb: 6.1, calls: 11800, maxRows: 3 }, 'eod-seed': { mb: 404.1, calls: 234, maxRows: 262 } },
+      byContainer: { 'agent-tier-1': { mb: 82, calls: 2400, byKind: { 'eod-delta': { mb: 1.2, calls: 2360, maxRows: 3 }, 'eod-seed': { mb: 80.8, calls: 40, maxRows: 262 } } } } },
+    { date: '2026-09-18', totalMB: 402.2, calls: 11890, byKind: { 'eod-delta': { mb: 6, calls: 11700, maxRows: 3 } }, byContainer: {} },
+  ] }));
   // Two years of bars so the chart, base X-ray and profile have something to chew on.
   const bars = []; let px = 8; const d0 = new Date('2024-09-09');
   for (let i = 0; i < 500; i++) { const d = new Date(d0); d.setDate(d0.getDate() + Math.floor(i * 7 / 5)); px = Math.max(1, px * (1 + (Math.sin(i / 9) * 0.01 - 0.002)));

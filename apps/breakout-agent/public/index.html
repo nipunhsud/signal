@@ -1819,6 +1819,71 @@
         document.body.appendChild(ov);
       }
 
+      // Admin: FMP history bandwidth by day — the number FMP bills against.
+      usagePill() {
+        if (!this.isAdmin) return '';
+        return `<button onclick="dashboard.toggleUsage()" class="badge bg-gray-700/40 text-gray-500 ring-1 ring-gray-600/40 cursor-pointer hover:text-gray-300 transition" title="Admin: FMP historical-price bandwidth by day, per container and call kind">Data usage</button>`;
+      }
+
+      async toggleUsage() {
+        document.getElementById('usage-overlay')?.remove();
+        if (this._usageOpen) { this._usageOpen = false; return; }
+        this._usageOpen = true;
+        const ov = document.createElement('div');
+        ov.id = 'usage-overlay';
+        ov.className = 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4';
+        ov.addEventListener('click', (ev) => { if (ev.target === ov) { ov.remove(); this._usageOpen = false; } });
+        ov.innerHTML = `<div class="bg-gray-800 ring-1 ring-gray-600/80 rounded-lg shadow-xl w-full max-w-3xl p-5 max-h-[85vh] overflow-y-auto" onclick="event.stopPropagation()"><div class="text-sm text-gray-400">Loading usage…</div></div>`;
+        document.body.appendChild(ov);
+        let d = null;
+        try { const r = await fetch('/api/admin/fmp-usage?days=14'); if (!r.ok) throw new Error('HTTP ' + r.status); d = await r.json(); } catch (e) { ov.firstElementChild.innerHTML = `<div class="text-sm text-red-400">Could not load usage: ${e.message}</div>`; return; }
+        const mb = (v) => v >= 1024 ? (v / 1024).toFixed(2) + ' GB' : Number(v).toFixed(v >= 100 ? 0 : 1) + ' MB';
+        const pct = (v, cap) => Math.min(100, (v / cap) * 100);
+        const kindsHtml = (byKind) => Object.entries(byKind || {}).sort((a, b) => b[1].mb - a[1].mb).map(([k, v]) =>
+          `<span class="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-300 ring-1 ring-gray-600/40" title="${v.calls} calls · largest response ${v.maxRows} rows">${k} ${mb(v.mb)}</span>`).join(' ');
+        const dayRow = (day, i) => `
+          <tr class="border-t border-gray-700/50 hover:bg-gray-700/30 cursor-pointer" onclick="const n=this.nextElementSibling; n.hidden=!n.hidden;">
+            <td class="px-2 py-1.5 font-mono text-xs text-gray-300">${day.date}</td>
+            <td class="px-2 py-1.5 font-mono text-xs text-right ${day.totalMB >= 1000 ? 'text-red-400' : day.totalMB >= 300 ? 'text-amber-300' : 'text-green-400'}">${mb(day.totalMB)}</td>
+            <td class="px-2 py-1.5 font-mono text-xs text-right text-gray-400">${day.calls.toLocaleString()}</td>
+            <td class="px-2 py-1.5">${kindsHtml(day.byKind)}</td>
+          </tr>
+          <tr hidden><td colspan="4" class="px-2 pb-2">
+            <div class="grid gap-1">${Object.entries(day.byContainer).sort((a, b) => b[1].mb - a[1].mb).map(([c, v]) => `
+              <div class="flex items-center gap-2 text-[11px]"><span class="font-mono text-gray-400 w-40 truncate" title="${c}">${c}</span><span class="font-mono text-gray-300 w-20 text-right">${mb(v.mb)}</span><span class="font-mono text-gray-500 w-16 text-right">${v.calls.toLocaleString()} calls</span><span class="flex-1">${kindsHtml(v.byKind)}</span></div>`).join('')}</div>
+          </td></tr>`;
+        const days = d.days || [];
+        ov.firstElementChild.innerHTML = `
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="font-bold text-white">FMP data usage — admin only</div>
+              <div class="text-[12px] text-gray-500 mt-0.5">Historical-price bytes as decoded from FMP's responses, by day, container and call kind (eod-seed / eod-delta / eod-repair from the scanners; candles / closes fallbacks from the dashboard). Metered since ${d.meteredSince || 'today'}. Bar store: ${(d.dailyBars || 0).toLocaleString()} rows.</div>
+            </div>
+            <button onclick="dashboard.toggleUsage()" class="text-gray-500 hover:text-white transition ml-3">✕</button>
+          </div>
+          <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="bg-gray-900/60 ring-1 ring-gray-700/60 rounded p-3">
+              <div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Last 30 days</div>
+              <div class="text-xl font-bold font-mono mt-0.5">${mb(d.last30MB || 0)}</div>
+              <div class="mt-2 text-[11px] text-gray-500">Premium allows 50 GB</div>
+              <div class="h-1.5 rounded bg-gray-700 mt-1"><div class="h-1.5 rounded bg-blue-500" style="width:${pct(d.last30MB || 0, 51200)}%"></div></div>
+              <div class="mt-2 text-[11px] text-gray-500">Starter allows 20 GB</div>
+              <div class="h-1.5 rounded bg-gray-700 mt-1"><div class="h-1.5 rounded ${(d.last30MB || 0) > 20480 ? 'bg-red-500' : 'bg-emerald-500'}" style="width:${pct(d.last30MB || 0, 20480)}%"></div></div>
+            </div>
+            <div class="bg-gray-900/60 ring-1 ring-gray-700/60 rounded p-3">
+              <div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Busiest metered day</div>
+              ${days.length ? (() => { const top = [...days].sort((a, b) => b.totalMB - a.totalMB)[0]; return `<div class="text-xl font-bold font-mono mt-0.5">${mb(top.totalMB)}</div><div class="text-[11px] text-gray-500 mt-1">${top.date} · ${top.calls.toLocaleString()} calls</div>`; })() : '<div class="text-sm text-gray-500 mt-1">No trading day metered yet.</div>'}
+              <div class="text-[11px] text-gray-500 mt-2">A trading day under ~500 MB keeps the month under 20 GB.</div>
+            </div>
+          </div>
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-left">
+              <thead><tr class="text-[10px] uppercase tracking-wider text-gray-500"><th class="px-2 py-1 font-semibold">Day</th><th class="px-2 py-1 font-semibold text-right">Bytes</th><th class="px-2 py-1 font-semibold text-right">Calls</th><th class="px-2 py-1 font-semibold">By kind · click a row for containers</th></tr></thead>
+              <tbody>${days.length ? days.map(dayRow).join('') : '<tr><td colspan="4" class="px-2 py-3 text-sm text-gray-500">Nothing metered yet. Agents flush after every scan pass; the dashboard meters its own fallbacks.</td></tr>'}</tbody>
+            </table>
+          </div>`;
+      }
+
       fmpTogglePill() {
         if (!this.isAdmin) return '';
         return this.fmpDisabled
@@ -5417,6 +5482,7 @@
                     <h1 class="text-2xl font-bold tracking-tight">Screener</h1>
                     ${this.marketHealthPill()}
                     ${this.fmpTogglePill()}
+                    ${this.usagePill()}
                     ${this.rulebookPill()}
                   </div>
                   <p class="text-gray-500 text-sm">${filtered.length} of ${validSignals.length} pass the current filters · screener output for research, not investment advice</p>
