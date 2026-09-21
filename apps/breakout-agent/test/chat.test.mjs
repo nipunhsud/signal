@@ -113,3 +113,22 @@ test("the prompt carries the measured regime claim, not the gauge implication", 
   const mcp = (await import('node:fs')).readFileSync(new URL('../mcp.js', import.meta.url), 'utf8');
   assert.match(mcp, /does NOT predict breakout outcomes/, 'the market-health tool states the caveat');
 });
+
+test("what the reader has open reaches the run, and an oversized context is dropped", async () => {
+  process.env.ANTHROPIC_API_KEY ||= 'test';
+  let seen = 'unset';
+  const run = async ({ context, send }) => { seen = context; send('done', {}); };
+  await postChat(run, { messages: [{ role: 'user', content: 'what is this base doing' }], context: { view: 'chart', asset: 'MXL' } });
+  assert.deepEqual(seen, { view: 'chart', asset: 'MXL' });
+  await postChat(run, { messages: [{ role: 'user', content: 'x' }], context: { asset: 'MXL', pad: 'y'.repeat(7000) } });
+  assert.equal(seen, null, 'over the cap it is dropped, never truncated into nonsense');
+  await postChat(run, { messages: [{ role: 'user', content: 'x' }], context: 'not-an-object' });
+  assert.equal(seen, null);
+});
+
+test("the prompt says a ticker on screen need not be in the pool, and the context sits after the cached block", async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
+  assert.match(src, /often NOT in the alert pool/);
+  assert.match(src, /drawnByReader/);
+  assert.ok(src.indexOf("cache_control: { type: 'ephemeral' }") < src.indexOf('...(onScreen ?'), 'the volatile context follows the cached prefix');
+});

@@ -55,11 +55,18 @@ async function openTools(deps) {
 // messages: Anthropic.MessageParam[] built by the page (user/assistant text
 // turns only; tool turns from earlier requests are not replayed — each answer
 // re-fetches what it needs, which keeps the transcript small and current).
-export async function runChat({ messages, deps, send, region = 'us', signal }) {
+export async function runChat({ messages, deps, send, region = 'us', context = null, signal }) {
   const anthropic = new Anthropic();
   const tools = await openTools(deps);
   const today = new Date().toISOString().slice(0, 10);
   const system = SYSTEM.replace('{{today}}', today) + (region === 'in' ? '\nThe subscriber is looking at the Indian market (NSE/BSE, prices in rupees); pass region "in" to the tools.' : '');
+  // What the reader has open, as its own system block AFTER the cached one, so
+  // the stable prefix keeps its cache while this changes every question.
+  const onScreen = context && context.asset
+    ? `What the subscriber has open in the product right now:\n${JSON.stringify(context)}\n\n`
+      + `Treat that ticker as the subject when the question says "this", "it", or names nothing. A ticker on screen is often NOT in the alert pool: that only means the screen has not emailed it, and it is never the whole answer. The base X-ray and the alert history work for any symbol, so read the bases you were given or call the X-ray, say what the structure is, and mention that it has not been emailed as one clause rather than as the answer. `
+      + `Lines under drawnByReader are the reader's own, with each end as a date and a price. Say where price sits against them and what they mark. Do not grade whether a line is correctly drawn.`
+    : null;
   const history = [...messages];
   let rounds = 0;
   try {
@@ -67,7 +74,10 @@ export async function runChat({ messages, deps, send, region = 'us', signal }) {
       const stream = anthropic.messages.stream({
         model: MODEL,
         max_tokens: 16000,
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        system: [
+          { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+          ...(onScreen ? [{ type: 'text', text: onScreen }] : []),
+        ],
         tools: tools.defs,
         thinking: { type: 'adaptive' },
         output_config: { effort: 'medium' },
@@ -112,6 +122,16 @@ export async function handleChatRequest(req, res, { deps, run = runChat } = {}) 
     .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
   if (!messages.length || messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'a user message is required' });
   const region = req.body?.region === 'in' ? 'in' : 'us';
+  // The page's view context. Capped and round-tripped through JSON so a
+  // malformed page cannot inflate the prompt.
+  let context = null;
+  try {
+    const raw = req.body?.context;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const json = JSON.stringify(raw);
+      if (json.length <= 6000) context = JSON.parse(json);
+    }
+  } catch {}
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('X-Accel-Buffering', 'no');
@@ -121,7 +141,7 @@ export async function handleChatRequest(req, res, { deps, run = runChat } = {}) 
   // The client went away before we finished: stop paying for the answer.
   res.on('close', () => { if (!res.writableFinished) ac.abort(); });
   try {
-    await run({ messages, deps, send, region, signal: ac.signal });
+    await run({ messages, deps, send, region, context, signal: ac.signal });
   } catch (e) {
     if (!ac.signal.aborted) {
       console.error('[/api/chat] failed:', e);

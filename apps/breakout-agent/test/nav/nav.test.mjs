@@ -173,8 +173,10 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   // Full chart: drawing tools and Share to X are in the toolbar
   await page.evaluate(() => dashboard.openChartView('NVDA')); await settle(page, 600);
   const bar = await page.locator('#app').innerText();
-  const tools = vp.width > 640 ? ['Trendline', 'Ray', 'Level', 'Clear', 'Share to X'] : ['Draw', 'Share to X']; // phones fold the drawing tools behind Draw
+  const tools = vp.width > 640 ? ['Trendline', 'Ray', 'Level', 'Clear', 'Save', 'Share to X'] : ['Draw', 'Save', 'Share to X']; // phones fold the drawing tools behind Draw
   check(tools.every((l) => bar.includes(l)), `chart toolbar has ${tools.join(', ')}`);
+  const cctx = await page.evaluate(() => dashboard.chatContext());
+  check(cctx.view === 'chart' && cctx.asset === 'NVDA' && cctx.chart?.timeframe === 'daily' && Array.isArray(cctx.bases), 'the chat is handed the open chart as context');
   const share = await page.evaluate(() => dashboard._chartShareText());
   check(share[0].startsWith('$NVDA, daily.') && share[0].includes('Grade A base') && share[1].includes('dataquant.ai/$nvda'), `share text composes in the product voice (${share[0]})`);
   await page.evaluate(() => dashboard.closeDrawer());
