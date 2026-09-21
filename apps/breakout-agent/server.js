@@ -629,13 +629,27 @@ app.get('/api/admin/fmp-usage', async (req, res) => {
     // Rolling 30-day total, the number FMP bills against (Premium 50 GB, Starter 20 GB).
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const last30MB = mb(Object.values(byDate).filter((d) => d.date >= cutoff).reduce((s, d) => s + d.bytes, 0));
-    let dailyBars = null; try { dailyBars = await db.dailyBar.count(); } catch {}
+    const dailyBars = await countDailyBars();
     res.json({ days: list, last30MB, meteredSince: rows.length ? Object.keys(byDate).sort()[0] : null, dailyBars });
   } catch (e) {
     console.error('[/api/admin/fmp-usage] failed:', e);
     res.status(500).json({ error: e.message });
   }
 });
+
+// COUNT(*) over the bar store is a sequential scan of millions of rows and
+// it is only a display number, so it is cached rather than paid for on every
+// dashboard load.
+let dailyBarCount = { value: null, expiresAt: 0 };
+async function countDailyBars() {
+  if (dailyBarCount.expiresAt > Date.now()) return dailyBarCount.value;
+  try {
+    dailyBarCount = { value: await db.dailyBar.count(), expiresAt: Date.now() + 30 * 60 * 1000 };
+  } catch {
+    dailyBarCount = { value: dailyBarCount.value, expiresAt: Date.now() + 60 * 1000 };
+  }
+  return dailyBarCount.value;
+}
 
 app.post('/api/admin/fmp-toggle', async (req, res) => {
   if (!(await isAdmin(req))) return res.status(403).json({ error: 'Admin only — sign in as an admin user' });
@@ -653,8 +667,7 @@ app.post('/api/admin/fmp-toggle', async (req, res) => {
 app.get('/api/admin/status', async (req, res) => {
   // dailyBars: rows in the owned EOD archive — watch it fill after the
   // DailyBar rollout and grow by ~1 bar/symbol/day thereafter.
-  let dailyBars = null;
-  try { dailyBars = await db.dailyBar.count(); } catch {}
+  const dailyBars = await countDailyBars();
   // FMP history bandwidth today, by caller and kind (decoded bytes).
   const today = etParts().date;
   const agents = {};
@@ -834,15 +847,49 @@ function regionSql(region, col = Prisma.raw('bs.asset')) {
     : Prisma.sql`AND ${col} NOT LIKE '%.NS' AND ${col} NOT LIKE '%.BO'`;
 }
 
+// The dashboard's hot path: every open tab refetches this every 5 seconds.
+// When the query slowed down (see the CTE note in computeSignals) each tab
+// piled up concurrent requests, every one holding a Prisma connection until
+// the pool (9) drained and the API answered 500 for everything, the cheap
+// queries included. A short cache plus single-flight keeps at most one query
+// per key in flight and lets a burst of tabs share its result.
+const signalsCache = new Map(); // key -> { data, expiresAt }
+const signalsInFlight = new Map(); // key -> Promise<payload>
+const SIGNALS_TTL_MS = 20 * 1000;
+
 app.get('/api/signals', async (req, res) => {
-  console.log('[/api/signals] Handler called with query:', req.query);
   const region = regionOf(req);
   const assetTypeFilter = req.query.type || 'all'; // 'stocks', 'etfs', or 'all'
   // Lookback window (days). Default 3 (=72h, survives the Fri→Mon gap); the
   // breakout view's slider widens it to surface older alerts. Clamp 1–90.
   const daysBack = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 3));
-
+  const key = `${region}:${assetTypeFilter}:${daysBack}`;
+  const hit = signalsCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return res.json(hit.data);
   try {
+    let pending = signalsInFlight.get(key);
+    if (!pending) {
+      const started = Date.now();
+      pending = computeSignals(region, assetTypeFilter, daysBack)
+        .then((data) => {
+          signalsCache.set(key, { data, expiresAt: Date.now() + SIGNALS_TTL_MS });
+          const ms = Date.now() - started;
+          if (ms > 3000) console.warn(`[/api/signals] ${key} took ${ms}ms`);
+          return data;
+        })
+        .finally(() => signalsInFlight.delete(key));
+      signalsInFlight.set(key, pending);
+    }
+    res.json(await pending);
+  } catch (error) {
+    console.error('[/api/signals] failed:', error.message);
+    if (hit) return res.json(hit.data); // a stale screener beats an empty one
+    res.status(500).json({ error: error.message });
+  }
+});
+
+async function computeSignals(region, assetTypeFilter, daysBack) {
+  {
     // Get removed assets
     const removedAssets = await db.removedAsset.findMany({
       select: { asset: true }
@@ -851,14 +898,35 @@ app.get('/api/signals', async (req, res) => {
 
     // Type 1: Breakout signals (+ Type 3 Extensions)
     const breakoutSignals = await db.$queryRaw`
-      WITH first_green AS (
-        SELECT DISTINCT ON (asset)
-          asset,
-          "createdAt" AS "firstGreenAt",
-          resistance AS "entryResistance"
-        FROM "BreakoutSignal"
-        WHERE "pineScriptGreen" = true
-        ORDER BY asset, "createdAt" ASC
+      WITH win_assets AS (
+        -- The assets in the lookback window. Everything below is scoped to
+        -- them. first_green used to DISTINCT ON over every pineScriptGreen row
+        -- ever written and the episode-alert lookup ran as a correlated
+        -- subquery per row, so both scanned the whole table; as BreakoutSignal
+        -- grew the query crossed 40 seconds and drained the connection pool.
+        SELECT DISTINCT bs.asset
+        FROM "BreakoutSignal" bs
+        WHERE bs.confidence >= 0.80
+          AND bs."createdAt" > NOW() - make_interval(days => ${daysBack}::int)
+          ${regionSql(region)}
+      ),
+      first_green AS (
+        SELECT DISTINCT ON (fg.asset)
+          fg.asset,
+          fg."createdAt" AS "firstGreenAt",
+          fg.resistance AS "entryResistance"
+        FROM "BreakoutSignal" fg
+        JOIN win_assets w ON w.asset = fg.asset
+        WHERE fg."pineScriptGreen" = true
+        ORDER BY fg.asset, fg."createdAt" ASC
+      ),
+      episode_alerts AS (
+        -- One grouped pass over the emailed rows of those assets.
+        SELECT ea.asset, ea."entryPrice", ea."basePivot", MAX(ea."lastAlertAt") AS "alertedAt"
+        FROM "BreakoutSignal" ea
+        JOIN win_assets w ON w.asset = ea.asset
+        WHERE ea."lastAlertAt" IS NOT NULL
+        GROUP BY ea.asset, ea."entryPrice", ea."basePivot"
       ),
       ranked AS (
         SELECT
@@ -916,9 +984,9 @@ app.get('/api/signals', async (req, res) => {
           -- row is tracking, not a trade: it must not read as "stopped out".
           MAX(bs."currentPrice") OVER (PARTITION BY bs.asset, bs."entryPrice") AS "streakHigh",
           -- When this episode (same frozen entry or base pivot) was emailed, if ever.
-          (SELECT MAX(x."lastAlertAt") FROM "BreakoutSignal" x
-            WHERE x.asset = bs.asset AND x."lastAlertAt" IS NOT NULL
-              AND (x."entryPrice" = bs."entryPrice" OR x."basePivot" = bs."basePivot")) AS "episodeAlertedAt",
+          (SELECT MAX(ea."alertedAt") FROM episode_alerts ea
+            WHERE ea.asset = bs.asset
+              AND (ea."entryPrice" = bs."entryPrice" OR ea."basePivot" = bs."basePivot")) AS "episodeAlertedAt",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
         FROM "BreakoutSignal" bs
         LEFT JOIN first_green fg ON fg.asset = bs.asset
@@ -1326,7 +1394,7 @@ app.get('/api/signals', async (req, res) => {
       };
     }
 
-    res.json({
+    return {
       highConfidence,
       mediumConfidence,
       tracking,
@@ -1340,11 +1408,9 @@ app.get('/api/signals', async (req, res) => {
         setupCount,
         breadth,
       },
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    };
   }
-});
+}
 
 app.post('/api/scan', async (req, res) => {
   try {
@@ -2368,9 +2434,17 @@ async function computeSectorStrength(region) {
   }
 }
 
+// The dashboard prefetches sector strength on every page load, and the
+// roll-up reads the whole fresh universe. Cache it like market health.
+const sectorStrengthCache = new Map(); // region -> { data, expiresAt }
 app.get('/api/sector-strength', async (req, res) => {
   try {
-    res.json(await computeSectorStrength(req.query.region === 'in' ? 'IN' : 'US'));
+    const region = req.query.region === 'in' ? 'IN' : 'US';
+    const hit = sectorStrengthCache.get(region);
+    if (hit && hit.expiresAt > Date.now()) return res.json(hit.data);
+    const data = await computeSectorStrength(region);
+    sectorStrengthCache.set(region, { data, expiresAt: Date.now() + 15 * 60 * 1000 });
+    res.json(data);
   } catch (err) {
     console.error('[/api/sector-strength]', err.message);
     res.status(500).json({ error: err.message });

@@ -1892,6 +1892,11 @@
       }
 
       async fetchSignals() {
+        // The 5-second refresh must never pile up: a slow scan used to leave
+        // several requests in flight at once, which is what drained the
+        // server's connection pool.
+        if (this._fetchingSignals) return;
+        this._fetchingSignals = true;
         try {
           const url = `/api/signals?type=${this.assetTypeFilter}&days=${this.lookbackDays}&${REGION_Q}`;
           const res = await fetch(url);
@@ -1914,6 +1919,8 @@
           this.fetchMarketHealth();
         } catch (error) {
           console.error('Failed to fetch signals:', error);
+        } finally {
+          this._fetchingSignals = false;
         }
       }
 
