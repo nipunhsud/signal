@@ -82,7 +82,7 @@ export function buildMcpServer(deps, opts = {}) {
 
   server.tool(
     'get_market_health',
-    'DataQuant\'s market regime gauge (0-100): does the current tape reward breakouts? Components: benchmark trend vs 50/200-day averages (SPY+QQQ for US, NIFTY for India), O\'Neil distribution days over 25 sessions, and breadth of the scanned universe (1-month and 1-week). Regimes: >=70 risk-on, 45-69 caution, <45 risk-off.',
+    'DataQuant\'s market regime gauge (0-100): does the current tape reward breakouts? Components: benchmark trend vs 50/200-day averages (SPY+QQQ for US, NIFTY for India), O\'Neil distribution days over 25 sessions, and breadth of the scanned universe (1-month and 1-week). Regimes: >=70 risk-on, 45-69 caution, <45 risk-off. Measured caveat (44,142 graded breakouts, 1985-2026): the composite score does NOT predict breakout outcomes - risk-on profit factor 1.80, caution 1.80, risk-off 2.00, bands unordered. Only the trend component separates: benchmark under both its 50- and 200-day with the 50-day falling ran 1.27 with a 40% fail-level touch rate. Distribution days and breadth do not. Read the trend state, not the score.',
     { region: z.enum(['us', 'in']).optional().describe('Market: us (default) or in (India)') },
     async ({ region }) => asText(await deps.computeMarketHealth(region === 'in' ? 'IN' : 'US')),
   );
