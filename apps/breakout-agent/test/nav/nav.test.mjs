@@ -190,6 +190,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   {
     const p2 = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     await p2.goto(`${base}/dashboard`); await settle(p2, 400);
+    check((await p2.locator('#app tr:has-text("NVDA") .badge:has-text("activity 5")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("Health Care #2")').count()) === 1, 'row shows the activity score and the sector rank');
     check((await p2.locator('#app tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
     check((await p2.locator('#app tr:has-text("SWKS") .badge:has-text("Cheat · 52% up the base")').count()) === 1, 'a shelf breakout inside a forming base is labelled as a cheat entry');
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 300);

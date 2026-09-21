@@ -74,6 +74,8 @@ export interface TradingConfig {
   allowedGrades: string[];
   allowEtfs: boolean;
   rsMin: number; // 0-99: skip candidates whose rsRating is below this (0 = no floor)
+  activityMin: number; // 0-10: skip candidates whose tape activity score is below this (0 = no floor)
+  sectorTop: number; // only names in the top-N sectors by median RS at scan time (0 = no floor)
   regimeMa: number; // market switch: SPY close vs this SMA; 0 disables
   regimeExit: boolean; // also flatten the book while SPY is below the SMA
   regimeSymbol: string;
@@ -139,6 +141,9 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): TradingConfig {
       .filter(Boolean),
     allowEtfs: (env.TRADE_ALLOW_ETFS || "true") === "true",
     rsMin: num("TRADE_RS_MIN", 80), // Minervini study: RS>=80 PF 2.05 / 23% reach +20% vs 1.75 / 4.7% under 50
+    // Off until the exit-engine simulation sets them (institutional-activity-study.md).
+    activityMin: Math.floor(num("TRADE_ACTIVITY_MIN", 0)),
+    sectorTop: Math.floor(num("TRADE_SECTOR_TOP", 0)),
     regimeMa: Math.floor(num("TRADE_REGIME_MA", 200)),
     regimeExit: (env.TRADE_REGIME_EXIT || "true") === "true",
     regimeSymbol: env.TRADE_REGIME_SYMBOL || "SPY",

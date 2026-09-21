@@ -95,6 +95,7 @@ export interface BreakoutAnalysis {
   // contraction. <3%: 59.9% win / 9.3% stop but 2.6% reach +20%; >=12%: 53.5%
   // / 48.4% / 31.6%. Tight = low fail rate, small move. Label only.
   pivotTightPct: number;
+  activity: MarketData["activity"] | null; // tape activity 0-10 (activity.js); label + ranking, never a gate
 }
 
 export interface SetupAnalysis {
@@ -488,6 +489,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     ma200Rising,
     pctAbove52wLow,
     pivotTightPct,
+    activity: data.activity ?? null,
   };
 }
 

@@ -10,7 +10,9 @@ import {
 } from "./risk.js";
 import { afterClose, closedBelowMa, nyDate, trailingStop } from "./exits.js";
 import {
+  passesActivityFloor,
   passesRsFloor,
+  passesSectorFloor,
   rankCandidates,
   regimeFrom,
   type Regime,
@@ -540,6 +542,16 @@ export class TradingAgent {
       if (!passesRsFloor(s.rsRating, this.config.rsMin))
         return skip(
           `RS ${s.rsRating ?? "n/a"} below floor ${this.config.rsMin}`,
+          true,
+        );
+      if (!passesActivityFloor(s.activityScore, this.config.activityMin))
+        return skip(
+          `activity ${s.activityScore ?? "n/a"} below floor ${this.config.activityMin}`,
+          true,
+        );
+      if (!passesSectorFloor(s.sectorRank, this.config.sectorTop))
+        return skip(
+          `sector rank ${s.sectorRank ?? "n/a"} outside top ${this.config.sectorTop}`,
           true,
         );
       if (s.assetType === "etf" && !this.config.allowEtfs)

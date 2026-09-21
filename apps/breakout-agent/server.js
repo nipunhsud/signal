@@ -896,6 +896,8 @@ app.get('/api/signals', async (req, res) => {
           bs."baseDepthPct",
           bs."trendTemplate",
           bs."pivotTightPct",
+          bs."activityScore", bs."activityAcc", bs."activityDist", bs."activityBigUp", bs."activityUdv", bs."activityObv",
+          bs."sectorRank", bs."sectorCount",
           bs."volumeRatio",
           bs."priorBaseDays",
           bs."extensionPriorBreakoutBarsAgo",
@@ -961,6 +963,8 @@ app.get('/api/signals', async (req, res) => {
         "baseDepthPct",
         "trendTemplate",
         "pivotTightPct",
+        "activityScore", "activityAcc", "activityDist", "activityBigUp", "activityUdv", "activityObv",
+        "sectorRank", "sectorCount",
         "volumeRatio",
         "priorBaseDays",
         "extensionPriorBreakoutBarsAgo",
@@ -1123,6 +1127,10 @@ app.get('/api/signals', async (req, res) => {
         isBlueSky: s.isBlueSky === true,
         coilRatio: s.coilRatio != null ? Number(s.coilRatio) : null,
         isStaircase: s.isStaircase === true,
+        // Institutional activity from the tape (label + ranking; see activity.js)
+        activity: s.activityScore != null ? { score: Number(s.activityScore), acc: Number(s.activityAcc ?? 0), dist: Number(s.activityDist ?? 0), bigUp: Number(s.activityBigUp ?? 0), udv: s.activityUdv != null ? Number(s.activityUdv) : null, obv: s.activityObv != null ? Number(s.activityObv) : null } : null,
+        sectorRank: s.sectorRank != null ? Number(s.sectorRank) : null,
+        sectorCount: s.sectorCount != null ? Number(s.sectorCount) : null,
         // Read-time fallback mirrors the scanner's 8-cell grid so rows minted
         // before the column existed still show a grade even if the DB
         // backfill hasn't caught them yet. Never overrides a stored verdict.
@@ -2216,7 +2224,8 @@ async function alertLedger({ since, until, region = 'us' } = {}) {
     WITH alerted AS (
       SELECT DISTINCT ON (bs.asset)
         bs.asset, bs."entryPrice", bs."stopLoss", bs."basePivot", bs."baseGrade", bs."baseBars",
-        bs."baseDepthPct", bs."breakoutType", bs."lastAlertAt", bs."createdAt", bs."currentPrice"
+        bs."baseDepthPct", bs."breakoutType", bs."lastAlertAt", bs."createdAt", bs."currentPrice",
+        bs."activityScore", bs."sectorRank", bs."sectorCount"
       FROM "BreakoutSignal" bs
       WHERE bs."lastAlertAt" >= ${since} AND bs."lastAlertAt" < ${until}
         AND bs."createdAt" <= bs."lastAlertAt"
@@ -2334,7 +2343,24 @@ async function computeSectorStrength(region) {
       }))
       .sort((a, b) => (b.medianRsScore ?? -Infinity) - (a.medianRsScore ?? -Infinity))
       .map((s, i) => ({ rank: i + 1, ...s }));
-    return { region, asOf: new Date().toISOString(), universe: rows.length, sectors };
+    // Rotation: keep today's ranks and read the ones from four weeks ago, so
+    // the tab (and the chat) can say which sectors are rising, not just which
+    // are on top. One RuntimeFlag row per region per day.
+    const today = etParts().date;
+    try {
+      const key = `sector_ranks:${region}:${today}`;
+      const value = JSON.stringify(Object.fromEntries(sectors.map((s) => [s.sector, s.rank])));
+      await db.runtimeFlag.upsert({ where: { key }, create: { key, value }, update: { value } });
+      const cutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const old = await db.runtimeFlag.findMany({ where: { key: { startsWith: `sector_ranks:${region}:` } } });
+      const dated = old.map((r) => ({ date: r.key.split(':')[2], r })).filter((x) => x.date <= cutoff).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      if (dated) {
+        const prev = JSON.parse(dated.r.value);
+        for (const s of sectors) s.rank4w = prev[s.sector] ?? null;
+        for (const s of sectors) s.rank4wDate = dated.date;
+      }
+    } catch (e) { console.warn('[sector-strength] rank history:', e.message); }
+    return { region, asOf: new Date().toISOString(), universe: rows.length, sectors, leadingCount: Math.ceil(sectors.length / 3) };
   }
 }
 
