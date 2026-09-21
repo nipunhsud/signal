@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { classifyShelf } from './shelf.js';
+import { rowState } from './row-state.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -1043,11 +1044,14 @@ app.get('/api/signals', async (req, res) => {
       // Did price ever reach the frozen entry while it was in force? A row whose
       // entry level was never cleared has no trade to be stopped out of.
       const streakHigh = s.streakHigh != null ? parseFloat(s.streakHigh) : null;
-      const entryCleared = s.entryPrice == null || streakHigh == null || streakHigh >= entryResistance * 0.99;
-      const noEntry = !entryCleared && s.currentPrice < entryResistance;
-      // Stopped out: price has closed at/below the frozen stop. The trade is
-      // dead — keep it visible but flag it and drop it out of alerts/high-conf.
-      const stoppedOut = entryCleared && persistedStopLoss != null && s.currentPrice <= persistedStopLoss;
+      // Graded rows judge against the base pivot, and an emailed graded row
+      // has cleared it by definition (row-state.js; NET 2026-09-14 wore
+      // "Below pivot" four days after its pivot-close email).
+      const { entryCleared, noEntry, stoppedOut } = rowState({
+        entryPrice: s.entryPrice != null ? parseFloat(s.entryPrice) : null,
+        entryResistance, streakHigh, currentPrice: s.currentPrice, stopLoss: persistedStopLoss,
+        baseGrade: s.baseGrade, basePivot: s.basePivot != null ? Number(s.basePivot) : null, alertedAt: s.episodeAlertedAt || null,
+      });
 
       // Grade-first bucketing: a graded breakout more than 5% past its base
       // pivot is an EXTENSION of that base's move, not an entry — it leaves
