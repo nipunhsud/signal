@@ -2552,6 +2552,8 @@
               <div class="grid grid-cols-1 gap-1.5">
                 ${row('Signal', sig)}
                 ${row('RS', rs)}
+                ${signal.activity ? row('Activity', `<span class="text-xs">${this.activityChipHtml(signal)} <span class="text-gray-400">${signal.activity.acc} heavy up · ${signal.activity.dist} heavy down · ${signal.activity.bigUp} print${signal.activity.bigUp === 1 ? '' : 's'} at the high${signal.activity.udv != null ? ` · up÷down vol ${signal.activity.udv}x` : ''}</span></span>`) : ''}
+                ${signal.sectorRank != null ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${signal.sectorCount}${signal.sectorRank <= Math.ceil((signal.sectorCount || 1) / 3) ? ' · leading sector' : ''}</span></span>`) : ''}
                 ${signal.trendTemplate != null || signal.pivotTightPct != null ? row('Trend', `<span class="text-xs">${signal.trendTemplate == null ? '' : signal.trendTemplate ? '<span class="text-green-400" data-tip="Minervini trend template: close above a rising 200-day, 50 > 150 > 200, 30%+ off the 52-week low, within 25% of the high. Historically 16.7% of these reach +20% in 60 bars vs 6.6% without.">template ✓</span>' : '<span class="text-gray-400" data-tip="Fails the Minervini trend template — usually the prior run is under 30% off the 52-week low. Historically 6.6% reach +20% in 60 bars.">template ✗</span>'}${signal.pivotTightPct != null ? ` <span class="text-gray-500">·</span> <span class="font-mono" data-tip="Range of the 10 bars before the breakout, % of pivot. Under 5%: 9-18% fail rate but small moves. 12%+: 48% fail rate, 32% reach +20%.">pivot ${this.safeNum(signal.pivotTightPct, 1)}%${signal.pivotTightPct < 5 ? ' tight' : signal.pivotTightPct >= 12 ? ' loose' : ''}</span>` : ''}</span>`) : ''}
                 ${row('Trend · 30d', spark || dash)}
                 ${row('Earnings', c.earnings)}
@@ -5146,6 +5148,7 @@
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
                         <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Rank</th>
+                        <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Where the sector ranked four weeks ago. An arrow up means money is rotating in.">4 wk ago</span></th>
                         <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
                         <th style="min-width:70px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Stocks</th>
                         <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Median trailing 1-week return of the sector's stocks.">1W</span></th>
@@ -5158,7 +5161,8 @@
                     <tbody>
                       ${sectors.map((s, idx) => `
                         <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50">
-                          <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank === 1 ? 'text-green-400 font-bold' : 'text-gray-400'}">#${s.rank}</td>
+                          <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank <= (d.leadingCount || 3) ? 'text-amber-300 font-bold' : 'text-gray-400'}" data-tip="${s.rank <= (d.leadingCount || 3) ? 'Leading sector (top third by median RS)' : ''}">#${s.rank}</td>
+                          <td data-label="4 wk ago" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank4w == null ? 'text-gray-600' : s.rank4w > s.rank ? 'text-green-400' : s.rank4w < s.rank ? 'text-red-400' : 'text-gray-400'}">${s.rank4w == null ? '—' : `#${s.rank4w} ${s.rank4w > s.rank ? '↑' : s.rank4w < s.rank ? '↓' : '·'}`}</td>
                           <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap font-semibold text-white">${s.sector}</td>
                           <td data-label="Stocks" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums text-gray-400">${s.stocks}</td>
                           <td data-label="1W" class="px-3 py-2.5 whitespace-nowrap text-right">${pct(s.median1wPct)}</td>
@@ -5286,6 +5290,22 @@
         const wk = signal.baseBars ? `${Math.round(signal.baseBars / 5)}wk ` : '';
         const tip = `${sh.label} entry: closed above a shelf ${sh.posPct}% of the way up a ${wk}base that has not resolved, ${sh.pctBelowPivot}% under the ${CUR}${sh.basePivot} pivot (Minervini cheat areas: lower third = low cheat, middle = cheat, upper = handle). Emailed when the base is within grade limits (blue sky, 25% deep or less, above the 200-day); otherwise tracked here only.`;
         return `<span class="badge ${cls} ring-1" data-tip="${tip}"><span class="badge-dot"></span>${sh.label} · ${sh.posPct}% up the base</span>`;
+      }
+
+      // Institutional activity from the tape, 0-10 (activity.js). Size-of-winner
+      // signal: ranks names, never gates them.
+      activityChipHtml(signal) {
+        const a = signal && signal.activity;
+        if (!a || a.score == null) return '';
+        const cls = a.score >= 5 ? 'bg-blue-500/15 text-blue-300 ring-blue-500/30' : a.score >= 3 ? 'bg-gray-700/50 text-gray-300 ring-gray-600/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60';
+        const odds = a.score >= 7 ? '32% reached +20%, 42% touched the fail level' : a.score >= 5 ? '24% reached +20%, 36% touched the fail level' : a.score >= 3 ? '19% reached +20%, 33% touched the fail level' : '11-13% reached +20%, 25-27% touched the fail level';
+        return `<span class="badge ${cls} ring-1" data-tip="Institutional activity ${a.score}/10: ${a.acc} heavy up day${a.acc === 1 ? '' : 's'} and ${a.dist} heavy down in the last 50 sessions${a.bigUp ? `, ${a.bigUp} print${a.bigUp === 1 ? '' : 's'} on double volume at the high` : ''}${a.udv != null ? `, up volume ${a.udv}x down in the base` : ''}. Historically at this score ${odds}. A size-of-winner signal, not a win-rate signal."><span class="badge-dot"></span>activity ${a.score}</span>`;
+      }
+
+      sectorChipHtml(signal) {
+        if (!signal || signal.sectorRank == null || !signal.sectorCount) return '';
+        const leading = signal.sectorRank <= Math.ceil(signal.sectorCount / 3);
+        return `<span class="badge ${leading ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30' : 'bg-gray-800 text-gray-500 ring-gray-700/60'} ring-1" data-tip="${signal.sector || 'Sector'} ranked ${signal.sectorRank} of ${signal.sectorCount} sectors by median relative strength at scan time${leading ? ' — a leading sector (top third)' : ''}."><span class="badge-dot"></span>${signal.sector ? signal.sector.replace(/ Services| Discretionary| Staples/, (m) => m) : 'sector'} #${signal.sectorRank}</span>`;
       }
 
       gradeBadgeHtml(signal) {
@@ -5435,6 +5455,8 @@
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
+                                ${this.activityChipHtml(signal)}
+                                ${this.sectorChipHtml(signal)}
                                 <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>
                                 <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">
                                   ✕

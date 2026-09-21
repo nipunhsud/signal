@@ -85,6 +85,15 @@ model BreakoutSignal {
   baseDepthPct Float?  // base depth %
   trendTemplate Boolean? // Minervini trend template at the breakout (label; 200MA-rising is the gate)
   pivotTightPct Float?   // 10-bar range before the breakout, % of pivot (VCP final contraction)
+  // Institutional activity from the tape (activity.js; institutional-activity-study.md). Label + ranking.
+  activityScore Int?
+  activityAcc   Int?     // heavy up days in the last 50 sessions
+  activityDist  Int?     // heavy down days
+  activityBigUp Int?     // +2% on 2x volume within 5% of the 52w high
+  activityUdv   Float?   // base up/down volume ratio
+  activityObv   Float?   // OBV drift across the base, share of base volume
+  sectorRank    Int?     // the sector's rank by median RS at scan time (1 = leading)
+  sectorCount   Int?     // sectors ranked at that time
   priorBaseDays Int @default(0) // # of days in prior consolidation
   priorBaseRangePercent Float @default(0) // % range of that base
   priorBreakoutBarsAgo Int @default(0) // bars ago since prior high-volume breakout

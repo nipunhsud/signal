@@ -4,6 +4,35 @@ import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js
 import { sendEmail } from "./email.js";
 import { postXThread } from "./x-post.js";
 import { classifyShelf, cheatGate } from "../shelf.js";
+// @ts-ignore — plain JS at the app root
+import { activityWords } from "../activity.js";
+
+// Sector rank at scan time: sectors of the fresh universe ordered by the
+// median RS score of their names (the same roll-up the Sectors tab shows).
+// Cached per process for 30 minutes; a scan pass stamps every signal with
+// the sector's rank and the sector count so the row, the chat and the trader
+// can prefer names in leading sectors without another query.
+let sectorRankCache: { region: string; expires: number; ranks: Map<string, number>; count: number } | null = null;
+async function sectorRankFor(region: string, sector: string | null | undefined): Promise<{ rank: number | null; count: number | null }> {
+  if (!sector || sector === "Unclassified") return { rank: null, count: null };
+  if (!sectorRankCache || sectorRankCache.region !== region || sectorRankCache.expires < Date.now()) {
+    try {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const rows = await db.assetReturn.findMany({ where: { region, assetType: "stock", updatedAt: { gte: dayAgo } }, select: { sector: true, rsScore: true } });
+      const by = new Map<string, number[]>();
+      for (const r of rows) { const k = r.sector || "Unclassified"; if (!by.has(k)) by.set(k, []); by.get(k)!.push(r.rsScore); }
+      const med = (v: number[]) => { const a = v.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : -Infinity; };
+      const ordered = [...by.entries()].filter(([, v]) => v.length >= 3).map(([k, v]) => [k, med(v)] as const).sort((x, y) => y[1] - x[1]);
+      const ranks = new Map<string, number>(); ordered.forEach(([k], i) => ranks.set(k, i + 1));
+      sectorRankCache = { region, expires: Date.now() + 30 * 60 * 1000, ranks, count: ordered.length };
+    } catch (e: any) {
+      console.warn("[sector rank] failed:", e?.message);
+      return { rank: null, count: null };
+    }
+  }
+  const rank = sectorRankCache.ranks.get(sector) ?? null;
+  return { rank, count: rank == null ? null : sectorRankCache.count };
+}
 import { db } from "./db.js";
 import { filterDelistedStocks } from "./tools/delistings.js";
 import { getOrAnalyzeTranscript } from "./tools/transcript-analysis.js";
@@ -665,6 +694,9 @@ export class BreakoutAgent {
         breakoutAnalysis.trendTemplate
           ? "Trend template ✓"
           : `Trend template ✗${!breakoutAnalysis.ma200Rising ? " (200MA falling)" : breakoutAnalysis.pctAbove52wLow < 30 ? ` (${breakoutAnalysis.pctAbove52wLow.toFixed(0)}% off the 52w low)` : ""}`,
+        breakoutAnalysis.activity
+          ? `Activity ${breakoutAnalysis.activity.score}/10 (${breakoutAnalysis.activity.acc} up / ${breakoutAnalysis.activity.dist} down heavy days, ${breakoutAnalysis.activity.bigUp} print${breakoutAnalysis.activity.bigUp === 1 ? "" : "s"})`
+          : null,
         breakoutAnalysis.pivotTightPct > 0
           ? `Pivot range ${breakoutAnalysis.pivotTightPct.toFixed(1)}%${breakoutAnalysis.pivotTightPct < 5 ? " (tight)" : breakoutAnalysis.pivotTightPct >= 12 ? " (loose)" : ""}`
           : null,
@@ -871,6 +903,7 @@ export class BreakoutAgent {
         // entryPrice / stopLoss / latestForAsset / isActiveStreak computed above.
 
         if (!isUnchanged) {
+          const sectorInfo = await sectorRankFor(regionOf(asset), breakoutAnalysis.sector);
           // epsBeat/epsSurprisePct aren't fetched during the broad scan (cost).
           // Fetch here — only for persisted, changed, meaningful breakouts —
           // so the Beat & Raise panel has real beat data to screen on.
@@ -929,6 +962,14 @@ export class BreakoutAgent {
               baseDepthPct: breakoutAnalysis.baseDepthPct > 0 ? breakoutAnalysis.baseDepthPct : null,
               trendTemplate: breakoutAnalysis.trendTemplate,
               pivotTightPct: breakoutAnalysis.pivotTightPct > 0 ? breakoutAnalysis.pivotTightPct : null,
+              activityScore: breakoutAnalysis.activity?.score ?? null,
+              activityAcc: breakoutAnalysis.activity?.acc ?? null,
+              activityDist: breakoutAnalysis.activity?.dist ?? null,
+              activityBigUp: breakoutAnalysis.activity?.bigUp ?? null,
+              activityUdv: breakoutAnalysis.activity?.udv ?? null,
+              activityObv: breakoutAnalysis.activity?.obv ?? null,
+              sectorRank: sectorInfo.rank,
+              sectorCount: sectorInfo.count,
               priorBaseDays: breakoutAnalysis.priorBaseDays,
               priorBaseRangePercent: breakoutAnalysis.priorBaseRangePercent,
               priorBreakoutBarsAgo: breakoutAnalysis.priorBreakoutBarsAgo,
@@ -1296,6 +1337,10 @@ Worth watching: ${review.watchFor}
 
     const fmt = (v: number) => "$" + v.toFixed(2);
     const pad = (k: string, v: string) => `${k.padEnd(12)}${v}`;
+    const activityLine = rec.activityScore != null
+      ? `${rec.activityScore}/10 — ${activityWords({ score: rec.activityScore, acc: rec.activityAcc ?? 0, dist: rec.activityDist ?? 0, bigUp: rec.activityBigUp ?? 0, udv: rec.activityUdv ?? null, obv: rec.activityObv ?? null, points: { net: 0, bigUp: 0, udv: 0, obv: 0 } })}`
+      : null;
+    const sectorLine = rec.sectorRank != null && rec.sectorCount ? `${latestRecord.sector || "unknown"} — ranked ${rec.sectorRank} of ${rec.sectorCount} sectors` : null;
     const baseLine = [
       rec.baseGrade ? `grade ${rec.baseGrade}` : null,
       weeks ? `${weeks} weeks` : null,
@@ -1310,7 +1355,8 @@ Worth watching: ${review.watchFor}
       shelfNow ? pad("Base pivot", `${fmt(shelfNow.basePivot)}  (${shelfNow.pctBelowPivot.toFixed(1)}% above the close, not cleared yet)`) : null,
       shelfNow ? pad("Entry", `${shelfNow.label.toLowerCase()}, ${shelfNow.posPct}% of the way up the base`) : null,
       baseLine ? pad("Base", baseLine) : null,
-      pad("Sector", `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
+      activityLine ? pad("Activity", activityLine) : null,
+      pad("Sector", sectorLine || `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
       pad("Confidence", `${(result.confidence * 100).toFixed(0)}%`),
       latestRecord.assetType === "etf" && latestRecord.expenseRatio ? pad("Expense", `${latestRecord.expenseRatio}%`) : null,
     ].filter(Boolean).join("\n");

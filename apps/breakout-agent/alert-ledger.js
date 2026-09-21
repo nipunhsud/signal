@@ -28,6 +28,9 @@ export function gradeAlerts(rows) {
       return {
         asset: r.asset,
         kind: shelf ? shelf.kind : 'pivot',
+        activity: r.activityScore != null ? Number(r.activityScore) : null, // tape activity 0-10 at alert time
+        sectorRank: r.sectorRank != null ? Number(r.sectorRank) : null,
+        sectorCount: r.sectorCount != null ? Number(r.sectorCount) : null,
         alertedAt: r.lastAlertAt,
         grade: r.baseGrade || null,
         baseWeeks: r.baseBars ? Math.round(Number(r.baseBars) / 5) : null,

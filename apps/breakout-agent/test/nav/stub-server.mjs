@@ -15,7 +15,7 @@ const sig = (asset, signalType, confidence, extra = {}) => ({
 
 export const SIGNALS = {
   highConfidence: [
-    sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed' }),  // +2.9% over pivot → confirmed
+    sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed', activity: { score: 5, acc: 5, dist: 0, bigUp: 2, udv: 1.47, obv: 0.12 }, sectorRank: 2, sectorCount: 11, sector: 'Health Care' }),  // +2.9% over pivot → confirmed
     sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
     sig('MSFT', 'breakout', 88, { baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
     sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),

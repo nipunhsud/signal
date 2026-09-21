@@ -4,6 +4,8 @@ import { db } from "../db.js";
 // @ts-ignore — plain-JS base segmentation at the app root, shared with the
 // dashboard's /api/bases so scanner and chart X-ray agree on what "the base" is.
 import { detectBases } from "../../base-detect.js";
+// @ts-ignore — plain JS at the app root, shared with the study and the tests
+import { computeActivity } from "../../activity.js";
 
 const cache = new Map<string, { data: MarketData; expires: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -555,6 +557,9 @@ export interface MarketData {
   isStaircase?: boolean; // thirds contracting progressively — Minervini's staircase
   failedPokes?: number; // bars that wicked within 0.5% of the pivot but closed >1% below it
   coilRatio?: number; // 2nd-half range / 1st-half range — <1 = tightening into the pivot
+  // Institutional activity from the tape (activity.js): heavy up/down days,
+  // prints at the high, base volume tells, scored 0-10. Ranks, never gates.
+  activity?: { score: number; acc: number; dist: number; bigUp: number; udv: number | null; obv: number | null } | null;
   // X-ray base: the most recent base-detect segment over the full bar window,
   // and whether TODAY resolved it by closing above its pivot. Feeds baseGrade
   // in breakout-logic; brokeOutToday is the validated alert trigger (close
@@ -1226,6 +1231,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       // The last segment is the active base; if today's close resolved it, the
       // breakout date equals today's bar and brokeOutToday flips true.
       let gradedBase: MarketData["gradedBase"];
+      let activity: MarketData["activity"] = null;
       try {
         const xray = detectBases(
           allBars.map((b: any) => ({
@@ -1233,6 +1239,12 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
           })),
         );
         const lastBase = xray[xray.length - 1];
+        try {
+          activity = computeActivity(
+            allBars.map((b: any) => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume })),
+            lastBase || null,
+          );
+        } catch {}
         if (lastBase) {
           const pIdx = allBars.findIndex((b: any) => b.date === lastBase.pivotDate);
           const beforePivot = allBars.slice(Math.max(0, pIdx - 251), pIdx + 1);
@@ -1543,6 +1555,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
         isStaircase: baseQuality.isStaircase,
         gradedBase,
         gapRetest,
+        activity,
       };
 
       cache.set(symbol, { data: result, expires: Date.now() + CACHE_TTL_MS });
