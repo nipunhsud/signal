@@ -11,7 +11,8 @@
     'Which names in the pool are still within 5% of the pivot?',
     'Rank the pool by base grade, then by how far past the pivot each one closed.',
     'Which of these have the longest, shallowest bases?',
-    'Is the tape supportive this week? Which sectors lead?',
+    'Which sectors lead right now, and which names sit in them?',
+    'Does the market regime change how these breakouts are likely to go?',
     'Which names fell through the fail level, and what did their bases look like?',
   ];
   const TOOL_WORDS = { get_recent_alerts: 'read the alert pool', get_signal_history: 'read the alert history', get_base_xray: 'ran the base X-ray', get_market_health: 'checked market health', get_sector_strength: 'checked sector strength', search_learn: 'searched Learn' };

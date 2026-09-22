@@ -104,3 +104,12 @@ test('the transcript is validated: only user/assistant strings, last one a user 
   const { status } = await postChat(async () => {}, { messages: [{ role: 'assistant', content: 'x' }] });
   assert.equal(status, 400);
 });
+
+test("the prompt carries the measured regime claim, not the gauge implication", async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
+  assert.match(src, /market health gauge does not predict breakout outcomes/);
+  assert.match(src, /under both its 50-day and 200-day with the 50-day falling/);
+  assert.match(src, /activity score beats its low bucket in every regime/);
+  const mcp = (await import('node:fs')).readFileSync(new URL('../mcp.js', import.meta.url), 'utf8');
+  assert.match(mcp, /does NOT predict breakout outcomes/, 'the market-health tool states the caveat');
+});
