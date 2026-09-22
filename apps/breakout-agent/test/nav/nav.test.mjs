@@ -232,6 +232,22 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     check(rtxt.includes('week ending 2026-09-12') && rtxt.includes('$AAPL') && rtxt.includes('past the pivot') && rtxt.includes('produced 1 breakout'), 'pulse?w= shows the week the post names, with the same sentence');
     await p2.close();
   }
+  console.log('--- book');
+  {
+    const pb = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await pb.goto(`${base}/dashboard/book`); await settle(pb, 600);
+    const txt = await pb.locator('#app').innerText();
+    check((await pb.locator('#app h1').innerText()) === 'Book', 'the Book tab renders');
+    check(txt.includes('This week'), 'the running list is the first thing on the page');
+    // NVDA: 123.45 against a 120 entry and a 111.60 stop is 3.45 on 8.40 of risk
+    check(txt.includes('+0.41R'), 'an open position is scored in R');
+    check(txt.includes('+2.00R'), 'and so is a closed one (114 from 100 on 7 of risk)');
+    check(txt.includes('no stop set'), 'a position with no stop is called out');
+    check(txt.includes('TWLO'), 'a name emailed this week and not in the book is offered');
+    check(/1 of 1 positive|100%/.test(txt), 'closed trades carry a record');
+    check((await pb.locator('#app button:has-text("Log a trade")').count()) === 1, 'there is one way in from the page');
+    await pb.close();
+  }
   console.log('--- chat');
   {
     const p4 = await browser.newPage({ viewport: { width: 1400, height: 800 } });

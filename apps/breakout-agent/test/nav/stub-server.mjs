@@ -88,6 +88,22 @@ export function startStub(port = 0) {
     send('text', { delta: 'SWKS sits 2.3% under its shelf.\n\n| Ticker | Grade | vs pivot |\n|---|---|---|\n| AAPL | A+ | +2.9% |\n| SWKS | A | -2.3% |' });
     send('done', {}); r.end();
   });
+  // The trade book, as the Book tab reads it.
+  let book = [
+    { id: 't1', asset: 'NVDA', status: 'open', openedAt: '2026-09-15T14:00:00Z', entry: 120, stop: 111.6, shares: 50, exit: null, closedAt: null, note: null, signalGrade: 'A', signalKind: 'pivot', updatedAt: '2026-09-20T14:00:00Z' },
+    { id: 't2', asset: 'SWKS', status: 'open', openedAt: '2026-09-18T14:00:00Z', entry: 70, stop: null, shares: 10, exit: null, closedAt: null, note: null, signalGrade: null, signalKind: 'cheat', updatedAt: '2026-09-18T14:00:00Z' },
+    { id: 't3', asset: 'AAPL', status: 'closed', openedAt: '2026-09-01T14:00:00Z', entry: 100, stop: 93, shares: 20, exit: 114, closedAt: '2026-09-19T20:00:00Z', note: 'trailed out', signalGrade: 'A+', signalKind: 'pivot', updatedAt: '2026-09-19T20:00:00Z' },
+  ];
+  app.get('/api/book', async (q, r) => {
+    const { gradePosition, bookStats, runningList, weekWindowOf } = await import('../../book.js');
+    const px = { NVDA: 123.45, SWKS: 69.1 };
+    const positions = book.map((t) => gradePosition(t, t.status === 'closed' ? null : px[t.asset] ?? null));
+    r.json({ positions, open: positions.filter((p) => !p.closed), closed: positions.filter((p) => p.closed),
+      stats: bookStats(positions), running: runningList(positions, weekWindowOf(), ['TWLO', 'NVDA']) });
+  });
+  app.post('/api/book', express.json(), (q, r) => { book.push({ id: 't' + (book.length + 1), status: 'open', openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...q.body }); r.json({ ok: true }); });
+  app.patch('/api/book/:id', express.json(), (q, r) => { const t = book.find((x) => x.id === q.params.id); if (t) Object.assign(t, q.body, q.body.exit ? { status: 'closed' } : {}); r.json({ ok: true }); });
+  app.delete('/api/book/:id', (q, r) => { book = book.filter((x) => x.id !== q.params.id); r.json({ ok: true }); });
   app.get('/api/*', (q, r) => r.json({}));
   const spa = (q, r) => r.sendFile(path.join(pub, 'index.html'));
   app.get(['/dashboard', '/dashboard/*', '/in/dashboard', '/in/dashboard/*', /^\/\$.*/, '/s/:s'], spa);

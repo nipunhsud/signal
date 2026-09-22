@@ -221,6 +221,7 @@ model User {
   shortlistLists        ShortlistList[]
 
   @@index([subscriptionStatus])
+  bookTrades       BookTrade[]
 }
 
 // Extensible for future agents
@@ -331,6 +332,34 @@ model Shortlist {
 
   @@unique([listId, asset])
   @@index([listId])
+}
+
+// The reader's own trade book: what they actually bought, where they decided
+// to be wrong, and how it ended. Separate from Trade, which is the autotrader's
+// broker record — this one is hand-kept and never written by an agent.
+model BookTrade {
+  id          String    @id @default(cuid())
+  userId      String
+  asset       String
+  status      String    @default("open") // open | closed
+  openedAt    DateTime
+  entry       Float
+  shares      Float?
+  stop        Float?
+  target      Float?
+  closedAt    DateTime?
+  exit        Float?
+  note        String?
+  // What the screen knew when it was logged, frozen for the record.
+  signalGrade String?
+  signalKind  String? // pivot | deep | cheat | manual
+  signalPivot Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, openedAt])
 }
 
 model RemovedAsset {
