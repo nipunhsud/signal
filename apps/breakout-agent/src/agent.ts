@@ -695,7 +695,7 @@ export class BreakoutAgent {
           ? "Trend template ✓"
           : `Trend template ✗${!breakoutAnalysis.ma200Rising ? " (200MA falling)" : breakoutAnalysis.pctAbove52wLow < 30 ? ` (${breakoutAnalysis.pctAbove52wLow.toFixed(0)}% off the 52w low)` : ""}`,
         breakoutAnalysis.deepBase
-          ? `Deep base ${breakoutAnalysis.baseDepthPct.toFixed(0)}% on power volume${breakoutAnalysis.deepBasePremium ? " (tight coil, dry base)" : ""}`
+          ? `Deep base ${breakoutAnalysis.baseDepthPct.toFixed(0)}%, cleared the pivot by ${breakoutAnalysis.pivotClearancePct.toFixed(1)}%${breakoutAnalysis.deepBasePremium ? " (tight coil, dry base)" : ""}`
           : null,
         breakoutAnalysis.activity
           ? `Activity ${breakoutAnalysis.activity.score}/10 (${breakoutAnalysis.activity.acc} up / ${breakoutAnalysis.activity.dist} down heavy days, ${breakoutAnalysis.activity.bigUp} print${breakoutAnalysis.activity.bigUp === 1 ? "" : "s"})`
@@ -1274,7 +1274,7 @@ export class BreakoutAgent {
     ].filter(Boolean);
     // A deep base is a different bet from a graded one and the email says so.
     const deepLine = rec.deepBase
-      ? `This one is a deep base, ${rec.baseDepthPct ? Number(rec.baseDepthPct).toFixed(0) + "% " : ""}under its pivot at the low, which the grade rules exclude at 25%. Over 2,555 of them since 1985: 53% were positive 20 bars on, 45% touched the fail level, and 28% ran 20% or more within 60 bars, against 14% for graded breakouts. Bigger winners, more failures.`
+      ? `This one is a deep base, ${rec.baseDepthPct ? Number(rec.baseDepthPct).toFixed(0) + "% " : ""}under its pivot at the low, which the grade rules exclude at 25%. It cleared the pivot decisively on real volume, which is what separates the band: over 1,517 of those since 1985, 52% were positive 20 bars on, 50% touched the fail level, and 32% ran 20% or more within 60 bars, against 14% for graded breakouts. Bigger winners, more failures.`
       : null;
     // Shelf (cheat) entry: the emailed level sits inside a base that has not resolved.
     const shelfNow = classifyShelf({

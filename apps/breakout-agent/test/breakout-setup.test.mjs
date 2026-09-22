@@ -72,28 +72,42 @@ test('a shelf breakout inside an ungraded base still classifies as Type1 for tra
 
 const deepGb = (over = {}) => gb({ depthPct: 28, bars: 56, sky: true, status: 'breakout', brokeOutToday: true, dryUp: 0.7, coil: 0.75, ...over });
 
-test('deep base: 25-35% deep, blue sky, 8wk+, on 2x volume through the pivot', () => {
+test('deep base: 25-35% deep, blue sky, 8wk+, cleared by 2%+ on 1.5x volume', () => {
   // the grade still refuses it — that is the point of the kind
-  const r = analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb() }));
+  const r = analyzeBreakout(md({ close: 103, high: 103.5, volume: 1.6e6, gradedBase: deepGb() }));
   assert.equal(r.baseGrade, null, 'past the 25% the grade allows');
   assert.equal(r.deepBase, true);
   assert.equal(r.gradedBreakoutToday, true, 'the trigger is the same close through the pivot');
   assert.equal(r.deepBasePremium, true, 'tight coil and a dry base');
+  assert.equal(Math.round(r.pivotClearancePct * 10) / 10, 3, 'closed 3% through the 100 pivot');
 });
 
 test('deep base: each condition is load-bearing', () => {
-  assert.equal(analyzeBreakout(md({ volume: 1.84e6, gradedBase: deepGb() })).deepBase, false, '1.84x is under power — AMD misses by a hair and the line was not moved to fit it');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ depthPct: 24 }) })).deepBase, false, '24% deep is a graded base, not this kind');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ depthPct: 36 }) })).deepBase, false, 'past 35% is broken structure');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ bars: 30 }) })).deepBase, false, 'under 8 weeks');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ sky: false }) })).deepBase, false, 'not blue sky');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, ma200: 105, gradedBase: deepGb() })).deepBase, false, 'under the 200-day');
-  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ dryUp: 1.2, coil: 1.1 }) })).deepBasePremium, false, 'premium needs the tight coil and the dry base');
+  const deep = (o = {}) => analyzeBreakout(md({ close: 103, high: 103.5, volume: 1.6e6, ...o }));
+  assert.equal(deep({ volume: 1.4e6, gradedBase: deepGb() }).deepBase, false, 'under 1.5x volume');
+  assert.equal(deep({ close: 101, high: 101.5, gradedBase: deepGb() }).deepBase, false, 'a 1% clearance is not decisive');
+  assert.equal(deep({ gradedBase: deepGb({ depthPct: 24 }) }).deepBase, false, '24% deep is a graded base, not this kind');
+  assert.equal(deep({ gradedBase: deepGb({ depthPct: 36 }) }).deepBase, false, 'past 35% is broken structure');
+  assert.equal(deep({ gradedBase: deepGb({ bars: 30 }) }).deepBase, false, 'under 8 weeks');
+  assert.equal(deep({ gradedBase: deepGb({ sky: false }) }).deepBase, false, 'not blue sky');
+  assert.equal(deep({ ma200: 105, gradedBase: deepGb() }).deepBase, false, 'under the 200-day');
+  assert.equal(deep({ gradedBase: deepGb({ dryUp: 1.2, coil: 1.1 }) }).deepBasePremium, false, 'premium needs the tight coil and the dry base');
+});
+
+test('deep base: the two cases that set the thresholds now qualify', () => {
+  // INTC 2026-04-08: 25.3% deep, 52 bars, 1.83x, closed 8.3% through the pivot, ran +112%
+  const intc = analyzeBreakout(md({ close: 108.3, high: 109, volume: 1.83e6, gradedBase: deepGb({ depthPct: 25.3, bars: 52, dryUp: 1.12, coil: 1.03 }) }));
+  assert.equal(intc.deepBase, true);
+  assert.equal(intc.deepBasePremium, false, 'no tight coil, no dry base — it qualifies on the clearance');
+  // AMD 2026-09-21: 27.5% deep, 56 bars, 1.84x, closed 5.3% through the pivot
+  const amd = analyzeBreakout(md({ close: 105.3, high: 106, volume: 1.84e6, gradedBase: deepGb({ depthPct: 27.5, bars: 56, dryUp: 0.63 }) }));
+  assert.equal(amd.deepBase, true);
 });
 
 test('deep base does not require tightness into the pivot: the study says it hurts here', () => {
   const src = readFileSync(new URL('../src/tools/breakout-logic.ts', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('const deepShape'), src.indexOf('const deepBasePremium'));
   assert.doesNotMatch(block, /pivotTightPct|tight10/, 'no tightness condition in the gate');
+  assert.match(block, /pivotClearancePct >= 2/, 'the clearance is what sorts the band');
   assert.match(src, /Tightness before the breakout is deliberately NOT required/);
 });
