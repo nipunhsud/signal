@@ -83,7 +83,13 @@ export function buildDossier({ symbol, bars, bases = [], activity = null, signal
   const context = [];
 
   // ── hit-rate levers ───────────────────────────────────────────────────────
-  hitRate.push(grade
+  const deepQualifies = !!(base && base.isBlueSky && depth > 25 && depth <= 35 && base.bars >= 40 && snapshot.above200 === true);
+  hitRate.push(deepQualifies && !grade
+    ? f('Base kind', 'deep base',
+        `${depth}% deep, blue sky, ${weeks} weeks — past the 25% the grade rules allow, inside the deep-base band.`,
+        'The 25-35% band the depth cut drops ran a 2.08 profit factor against 1.84 for graded bases, with 24.5% reaching +20% against 13.9%, at a 41% fail-level touch rate against 28%. On 2x breakout volume it ran 2.39 and 28.4%. Bigger winners, more failures.',
+        'context', LEARN.base)
+    : grade
     ? f('Base grade', grade,
         `The base grades ${grade}.`,
         { S: '62.6% of S breakouts were positive 20 bars on, 11.6% touched the fail level.', 'A+': '57.7% positive, 22.6% touched the fail level.', A: '54.8% positive, 32.1% touched the fail level.' }[grade],

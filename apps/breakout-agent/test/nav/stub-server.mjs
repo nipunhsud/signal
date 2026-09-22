@@ -21,6 +21,7 @@ export const SIGNALS = {
     sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),
     sig('SWKS', 'breakout', 90, { basePivot: 84.79, baseDepthPct: 34.6, baseBars: 15, currentPrice: 74.02, entryPrice: 70.75, shelf: { kind: 'cheat', label: 'Cheat', posPct: 52, baseLow: 55.45, basePivot: 84.79, level: 70.75, pctBelowPivot: 12.7 } }), // shelf breakout inside a forming, ungraded base
     sig('AMD', 'setup', 91),
+    sig('DEEP', 'breakout', 95, { basePivot: 100, baseDepthPct: 28, baseBars: 56, currentPrice: 103, entryPrice: 100, deepBase: true, volumeTag: 'power', sector: 'Energy', sectorRank: 1, sectorCount: 11 }), // the deep-base kind
   ],
   mediumConfidence: [],
   tracking: [],

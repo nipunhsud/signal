@@ -27,7 +27,8 @@ export function gradeAlerts(rows) {
       const shelf = classifyShelf({ level: entry, basePivot: r.basePivot, baseDepthPct: r.baseDepthPct, price: r.currentPrice });
       return {
         asset: r.asset,
-        kind: shelf ? shelf.kind : 'pivot',
+        kind: shelf ? shelf.kind : r.deepBase ? 'deep-pivot' : 'pivot',
+        deepBase: r.deepBase === true,
         activity: r.activityScore != null ? Number(r.activityScore) : null, // tape activity 0-10 at alert time
         sectorRank: r.sectorRank != null ? Number(r.sectorRank) : null,
         sectorCount: r.sectorCount != null ? Number(r.sectorCount) : null,

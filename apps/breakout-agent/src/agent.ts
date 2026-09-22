@@ -694,6 +694,9 @@ export class BreakoutAgent {
         breakoutAnalysis.trendTemplate
           ? "Trend template ✓"
           : `Trend template ✗${!breakoutAnalysis.ma200Rising ? " (200MA falling)" : breakoutAnalysis.pctAbove52wLow < 30 ? ` (${breakoutAnalysis.pctAbove52wLow.toFixed(0)}% off the 52w low)` : ""}`,
+        breakoutAnalysis.deepBase
+          ? `Deep base ${breakoutAnalysis.baseDepthPct.toFixed(0)}% on power volume${breakoutAnalysis.deepBasePremium ? " (tight coil, dry base)" : ""}`
+          : null,
         breakoutAnalysis.activity
           ? `Activity ${breakoutAnalysis.activity.score}/10 (${breakoutAnalysis.activity.acc} up / ${breakoutAnalysis.activity.dist} down heavy days, ${breakoutAnalysis.activity.bigUp} print${breakoutAnalysis.activity.bigUp === 1 ? "" : "s"})`
           : null,
@@ -767,6 +770,15 @@ export class BreakoutAgent {
         baseDepthPct: breakoutAnalysis.baseDepthPct,
       });
       const isCheatBreakout = shelf != null;
+      // Deep base: the 25-35% band the grade's depth cut drops, alertable on a
+      // 2x close through the pivot (docs/depth-cut-study.md). Same trigger as a
+      // graded breakout — the close above the base pivot — so it freezes the
+      // pivot as the entry the same way.
+      const isDeepBreakout =
+        breakoutAnalysis.deepBase &&
+        breakoutAnalysis.gradedBreakoutToday &&
+        breakoutAnalysis.liquidityOk;
+      const pivotBreakout = isGradedBreakout || isDeepBreakout;
       const lastRowAgeMs = latestForAsset
         ? Date.now() - new Date(latestForAsset.createdAt).getTime()
         : Infinity;
@@ -787,7 +799,7 @@ export class BreakoutAgent {
         // A shelf (cheat) entry does not freeze the pivot close that follows:
         // when the base resolves, that is a new episode with the pivot as entry.
         !(
-          isGradedBreakout &&
+          pivotBreakout &&
           breakoutAnalysis.basePivot > 0 &&
           (latestForAsset.entryPrice as number) < breakoutAnalysis.basePivot * 0.999
         );
@@ -800,10 +812,10 @@ export class BreakoutAgent {
       // and freezing it produced phantom "stopped out" rows. Graded breakouts
       // clear their pivot by definition; other flips wait for a close above.
       const flipLevel =
-        isGradedBreakout && breakoutAnalysis.basePivot > 0
+        pivotBreakout && breakoutAnalysis.basePivot > 0
           ? breakoutAnalysis.basePivot
           : breakoutAnalysis.resistance;
-      const levelCleared = isGradedBreakout || data.close >= flipLevel * 0.995;
+      const levelCleared = pivotBreakout || data.close >= flipLevel * 0.995;
       const entryPrice: number | null = isActiveStreak
         ? (latestForAsset!.entryPrice as number)
         : levelCleared
@@ -834,7 +846,7 @@ export class BreakoutAgent {
       // at 80% upstream, so RS is the condition that decides; a name with no
       // RS rank yet does not email. Everything else stays on the dashboard.
       const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0.8;
-      const shouldAlert = (isGradedBreakout || isCheatBreakout) && qualityOk;
+      const shouldAlert = (isGradedBreakout || isCheatBreakout || isDeepBreakout) && qualityOk;
 
       // Debug logging for breakout classification
       if (breakoutAnalysis.pineScriptGreen) {
@@ -886,7 +898,7 @@ export class BreakoutAgent {
       // MA stack still inverted) — it must still persist or sendAlert finds no
       // record. Green-cone signals failing both systems are dropped as before.
       const isMeaningfulBreakout =
-        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout || isCheatBreakout;
+        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout || isCheatBreakout || isDeepBreakout;
 
       if (isMeaningfulBreakout) {
         const latestBreakout = await db.breakoutSignal.findFirst({
@@ -962,6 +974,7 @@ export class BreakoutAgent {
               baseDepthPct: breakoutAnalysis.baseDepthPct > 0 ? breakoutAnalysis.baseDepthPct : null,
               trendTemplate: breakoutAnalysis.trendTemplate,
               pivotTightPct: breakoutAnalysis.pivotTightPct > 0 ? breakoutAnalysis.pivotTightPct : null,
+              deepBase: breakoutAnalysis.deepBase,
               activityScore: breakoutAnalysis.activity?.score ?? null,
               activityAcc: breakoutAnalysis.activity?.acc ?? null,
               activityDist: breakoutAnalysis.activity?.dist ?? null,
@@ -1255,9 +1268,14 @@ export class BreakoutAgent {
     const isEp = latestRecord.breakoutType === "EP";
     const weeks = rec.baseBars ? Math.round(rec.baseBars / 5) : null;
     const baseBits = [
-      rec.baseGrade ? `grade ${rec.baseGrade}` : null,
+      rec.baseGrade ? `grade ${rec.baseGrade}` : rec.deepBase ? "deep base" : null,
       weeks ? `${weeks}-week base` : null,
+      rec.deepBase && rec.baseDepthPct ? `${Number(rec.baseDepthPct).toFixed(0)}% deep` : null,
     ].filter(Boolean);
+    // A deep base is a different bet from a graded one and the email says so.
+    const deepLine = rec.deepBase
+      ? `This one is a deep base, ${rec.baseDepthPct ? Number(rec.baseDepthPct).toFixed(0) + "% " : ""}under its pivot at the low, which the grade rules exclude at 25%. Over 2,555 of them since 1985: 53% were positive 20 bars on, 45% touched the fail level, and 28% ran 20% or more within 60 bars, against 14% for graded breakouts. Bigger winners, more failures.`
+      : null;
     // Shelf (cheat) entry: the emailed level sits inside a base that has not resolved.
     const shelfNow = classifyShelf({
       level: latestRecord.entryPrice,
@@ -1364,6 +1382,7 @@ Worth watching: ${review.watchFor}
     const body = `${result.asset} ${what}.
 
 ${levels}
+${deepLine ? "\n" + deepLine + "\n" : ""}
 
 Why the screen flagged it
 ${result.reasoning}
@@ -1424,15 +1443,17 @@ Screen output for research, not advice.
           !postedSet.has(s.asset) &&
           regionOf(s.asset) === "US" && // X audience is US — never tease NSE/BSE names
           s.breakoutType !== "EP" &&
-          gradeRank[r.baseGrade] != null &&
+          // Graded OR deep-base: a deep-base alert carries no grade, and the
+          // grade gate used to hide the whole kind from the tease.
+          (gradeRank[r.baseGrade] != null || r.deepBase === true) &&
           s.entryPrice != null
         );
       })
-      .sort((a, b) => (gradeRank[(b as any).baseGrade] - gradeRank[(a as any).baseGrade]) || b.confidence - a.confidence)
+      .sort((a, b) => ((gradeRank[(b as any).baseGrade] ?? 0) - (gradeRank[(a as any).baseGrade] ?? 0)) || b.confidence - a.confidence)
       .slice(0, maxPerDay);
 
     if (qualifying.length === 0) {
-      console.log("⊘ X tease: no graded fresh breakout today");
+      console.log("⊘ X tease: no graded or deep-base breakout today");
       return;
     }
 

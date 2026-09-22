@@ -40,6 +40,13 @@ for (const f of files) {
       if (!(b.close > ma200)) continue;                   // the grade's trend rule
       let skyAt = 0; for (let k = Math.max(0, pIdx - 251); k <= pIdx; k++) if (bars[k].high > skyAt) skyAt = bars[k].high;
       if (!(bars[pIdx].high >= skyAt * 0.98)) continue;    // blue sky only
+      // Tightness going in: the range of the 10 bars BEFORE the breakout bar,
+      // as a share of the pivot. Same measure the Minervini study used, where
+      // it was a safety label on its own; the question here is whether it
+      // earns its keep inside the deep band alongside power volume.
+      let hh = 0, ll = Infinity;
+      for (let k = i - 10; k < i; k++) { if (bars[k].high > hh) hh = bars[k].high; if (bars[k].low < ll) ll = bars[k].low; }
+      const tight10 = ((hh - ll) / bars[pIdx].high) * 100;
       const entry = b.close;
       let minLow = Infinity, maxC60 = -Infinity;
       for (let k = i + 1; k <= i + 20; k++) minLow = Math.min(minLow, bars[k].low);
@@ -49,6 +56,7 @@ for (const f of files) {
         depth: base.depthPct, weeks: base.weeks, bars: base.bars,
         vr: +(b.volume / av20).toFixed(2),
         coil: base.coilRatio, dry: base.volumeDryUp, udv: base.upDownVolumeRatio, pokes: base.failedPokes, vcp: base.isVcpShape,
+        tight10: +tight10.toFixed(1),
         gapPct: base.breakout.gapPct,
         ret20: +(((bars[i + 20].close - entry) / entry) * 100).toFixed(2),
         ret60: +(((bars[i + 60].close - entry) / entry) * 100).toFixed(2),
@@ -85,6 +93,38 @@ line('>25% + 0-2 pokes', rows.filter((r) => r.depth > 25 && r.pokes <= 2));
 line('>25% + 8wk+', rows.filter((r) => r.depth > 25 && r.weeks >= 8));
 line('>25% + vol>=1.5 + 8wk+', rows.filter((r) => r.depth > 25 && r.vr >= 1.5 && r.weeks >= 8));
 line('AMD-like: >25,8wk+,vcp,dry<.8', rows.filter((r) => r.depth > 25 && r.weeks >= 8 && r.vcp && r.dry < 0.8));
+console.log('\n=== 25-35% deep: tightness of the 10 bars before the breakout, % of pivot ===');
+const deep = rows.filter((r) => r.depth > 25);
+for (const [lo, hi] of [[0, 4], [4, 6], [6, 8], [8, 12], [12, 999]]) line(`>25% tight10 ${lo}-${hi}%`, deep.filter((r) => r.tight10 >= lo && r.tight10 < hi));
+console.log('--- the same bands in the band the cut keeps, for contrast ---');
+const shallow = rows.filter((r) => r.depth <= 25);
+for (const [lo, hi] of [[0, 4], [4, 6], [6, 8], [8, 12], [12, 999]]) line(`<=25% tight10 ${lo}-${hi}%`, shallow.filter((r) => r.tight10 >= lo && r.tight10 < hi));
+
+console.log('\n=== 25-35% deep: power volume crossed with tightness ===');
+for (const [vlo, vhi, vl] of [[2, 99, 'power 2x+'], [1.2, 2, 'confirmed 1.2-2x'], [0, 1.2, 'quiet <1.2x']]) {
+  for (const [tlo, thi, tl] of [[0, 6, 'tight <6%'], [6, 10, 'mid 6-10%'], [10, 999, 'loose 10%+']]) {
+    line(`>25% ${vl} · ${tl}`, deep.filter((r) => r.vr >= vlo && r.vr < vhi && r.tight10 >= tlo && r.tight10 < thi));
+  }
+}
+
+console.log('\n=== the candidate rule against what the cut keeps ===');
+const cand = (r) => r.depth > 25 && r.vr >= 2 && r.tight10 < 8 && r.weeks >= 8;
+line('baseline: everything <=25%', shallow);
+line('whole dropped band 25-35%', deep);
+line('CANDIDATE >25,8wk+,2x,tight<8', rows.filter(cand));
+line('  same without the tightness', rows.filter((r) => r.depth > 25 && r.vr >= 2 && r.weeks >= 8));
+line('  same without the volume', rows.filter((r) => r.depth > 25 && r.tight10 < 8 && r.weeks >= 8));
+line('  candidate shape at <=25%', shallow.filter((r) => r.vr >= 2 && r.tight10 < 8 && r.weeks >= 8));
+line('AMD-like + power', rows.filter((r) => r.depth > 25 && r.weeks >= 8 && r.vcp && r.dry < 0.8 && r.vr >= 2));
+
+console.log('\n=== the candidate, by decade ===');
+for (let d = 1980; d <= 2020; d += 10) {
+  const inD = rows.filter((r) => r.year >= d && r.year < d + 10);
+  if (!inD.length) continue;
+  line(`${d}s candidate`, inD.filter(cand));
+  line(`${d}s <=25% baseline`, inD.filter((r) => r.depth <= 25));
+}
+
 console.log('\n=== by decade: <=25% vs 25-35% ===');
 for (let d = 1980; d <= 2020; d += 10) {
   const inD = rows.filter((r) => r.year >= d && r.year < d + 10);

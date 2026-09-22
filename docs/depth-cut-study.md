@@ -59,6 +59,53 @@ right when it is right. Three points of win rate buy eleven points of reach.
 factor in all five: 2.82 vs 2.61 (1980s), 2.50 vs 2.19 (1990s), 1.96 vs 1.79
 (2000s), 1.95 vs 1.75 (2010s), 2.07 vs 1.71 (2020s).
 
+## Addendum: power and tightness (2026-09-21)
+
+Tightness going into the breakout was the obvious pairing to test next — a
+deep base that coils before it resolves. It does the opposite of what it looks
+like it should, inside this band and in the one the cut keeps.
+
+| 25–35% deep, 10-bar range before the breakout | n | win | fail-level touch | reach +20% | PF |
+|---|---|---|---|---|---|
+| under 4% of the pivot | 539 | 57.9% | 14.1% | 6.3% | 1.79 |
+| 4–6% | 1,273 | 55.3% | 24.9% | 12.1% | 1.74 |
+| 6–8% | 1,471 | 54.0% | 32.0% | 15.4% | 1.71 |
+| 8–12% | 2,374 | 51.6% | 42.9% | 23.5% | 1.78 |
+| 12% or more | 2,834 | 51.8% | 56.4% | 39.1% | 2.58 |
+
+Tight is safe and small; loose is dangerous and large. Crossed with volume the
+best cell is power **and loose**, not power and tight:
+
+| 25–35% deep | n | win | fail-level touch | reach +20% | PF |
+|---|---|---|---|---|---|
+| 2x volume, range under 6% | 463 | 57.9% | 23.8% | 13.2% | 1.98 |
+| 2x volume, range 6–10% | 861 | 51.5% | 43.1% | 22.3% | 1.86 |
+| 2x volume, range 10%+ | 1,524 | 52.4% | 57.3% | 41.1% | **2.92** |
+| quiet volume, range under 6% | 835 | 55.2% | 19.3% | 8.0% | 1.58 |
+
+So the rule that ships requires depth, length and power volume, and **no
+tightness condition**. Adding one costs more than it earns: the same slice with
+a sub-8% range runs 1.99 on 881 cases against 2.39 on 2,555 without it.
+
+| Rule | n | win | fail-level touch | reach +20% | PF |
+|---|---|---|---|---|---|
+| graded baseline, 25% or shallower | 44,434 | 55.9% | 27.8% | 13.9% | 1.84 |
+| **deep + 8wk+ + 2x volume (shipped)** | **2,555** | **53.5%** | **44.9%** | **28.4%** | **2.39** |
+| the same plus a sub-8% range | 881 | 55.7% | 30.6% | 16.2% | 1.99 |
+| the same plus a tight coil and dry base | 189 | 56.1% | 42.9% | 31.7% | 3.39 |
+
+By decade the shipped rule ran 2.49, 3.34, 2.17, 2.40 and 2.18, beating the
+graded baseline in four of five and tying the 1980s.
+
+The tight-coil, dry-base version is the best cell in the study at 3.39, but on
+189 cases in forty years — about five a year. It ships as a label on the alert,
+not as a gate.
+
+AMD, the name that prompted all of this, resolved on 1.84x volume and does not
+qualify. The line stayed at 2x, which is the screen's existing definition of
+power; moving it to 1.8x to admit one name would have cost 0.05 of profit
+factor and all of the discipline.
+
 ## What this means for the product
 
 The cut is not protecting anyone from bad setups. It removes a cohort that
@@ -69,18 +116,15 @@ fail-level touch rate to 41%. On a product where a subscriber reads one name
 at a time, that changes the felt experience more than the profit factor
 justifies.
 
-**The shape that fits the evidence** is a deep-base kind of its own, separate
-from S/A+/A, alertable only with the tells that sort the band: 8 weeks or
-longer, and either a volume dry-up under 0.8 or a breakout on 2x volume. That
-slice ran a 2.49–2.56 profit factor against 1.84 for everything the cut keeps,
-and it is where AMD sits. Its label has to carry the higher fail rate in
-words, and the 20% trail matters more here than anywhere else, because the
-payoff is in the tail.
+**Shipped** as a deep-base kind of its own, separate from S/A+/A: blue-sky
+pivot, 25–35% deep, 8 weeks or longer, above a rising 200-day, emailed on the
+close through the pivot on 2x volume, with the standing RS 89 and confidence
+80% floor on top. Its label carries the higher fail rate in words, and the 20%
+trail matters more here than anywhere else because the payoff is in the tail.
 
-That is a change to the breakout rules, so by the standing rule it reaches the
-alert gate, the daily tease, the Saturday receipts, the backtest and the
-screener in one change, or not at all. Not shipped here: this study is the
-evidence for the decision, not the decision.
+Per the standing rule it reaches the alert gate, the daily tease, the Saturday
+receipts and the pool, the backtest, the screener badge and filter, the drawer,
+the dossier and the chat prompt in one change.
 
 ## Rerun
 

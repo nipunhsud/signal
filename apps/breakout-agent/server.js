@@ -967,6 +967,7 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
           bs."baseDepthPct",
           bs."trendTemplate",
           bs."pivotTightPct",
+          bs."deepBase",
           bs."activityScore", bs."activityAcc", bs."activityDist", bs."activityBigUp", bs."activityUdv", bs."activityObv",
           bs."sectorRank", bs."sectorCount",
           bs."volumeRatio",
@@ -1034,6 +1035,7 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         "baseDepthPct",
         "trendTemplate",
         "pivotTightPct",
+        "deepBase",
         "activityScore", "activityAcc", "activityDist", "activityBigUp", "activityUdv", "activityObv",
         "sectorRank", "sectorCount",
         "volumeRatio",
@@ -1202,6 +1204,7 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         coilRatio: s.coilRatio != null ? Number(s.coilRatio) : null,
         isStaircase: s.isStaircase === true,
         // Institutional activity from the tape (label + ranking; see activity.js)
+        deepBase: s.deepBase === true,
         activity: s.activityScore != null ? { score: Number(s.activityScore), acc: Number(s.activityAcc ?? 0), dist: Number(s.activityDist ?? 0), bigUp: Number(s.activityBigUp ?? 0), udv: s.activityUdv != null ? Number(s.activityUdv) : null, obv: s.activityObv != null ? Number(s.activityObv) : null } : null,
         sectorRank: s.sectorRank != null ? Number(s.sectorRank) : null,
         sectorCount: s.sectorCount != null ? Number(s.sectorCount) : null,
@@ -2297,7 +2300,7 @@ async function alertLedger({ since, until, region = 'us' } = {}) {
       SELECT DISTINCT ON (bs.asset)
         bs.asset, bs."entryPrice", bs."stopLoss", bs."basePivot", bs."baseGrade", bs."baseBars",
         bs."baseDepthPct", bs."breakoutType", bs."lastAlertAt", bs."createdAt", bs."currentPrice",
-        bs."activityScore", bs."sectorRank", bs."sectorCount"
+        bs."activityScore", bs."sectorRank", bs."sectorCount", bs."deepBase"
       FROM "BreakoutSignal" bs
       WHERE bs."lastAlertAt" >= ${since} AND bs."lastAlertAt" < ${until}
         AND bs."createdAt" <= bs."lastAlertAt"

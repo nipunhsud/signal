@@ -13,7 +13,13 @@ const dash = src('../public/index.html');
 const between = (s, start, end) => { const i = s.indexOf(start); assert.ok(i >= 0, `found ${start}`); const j = s.indexOf(end, i + start.length); return s.slice(i, j < 0 ? undefined : j); };
 
 test('email: the alert gate is the graded pivot close and nothing else', () => {
-  assert.match(agent, /const shouldAlert = \(isGradedBreakout \|\| isCheatBreakout\) && qualityOk;/);
+  assert.match(agent, /const shouldAlert = \(isGradedBreakout \|\| isCheatBreakout \|\| isDeepBreakout\) && qualityOk;/);
+  // The deep-base kind reaches the gate, the tease, the pool and the screener
+  // in one change — the standing rule for any new breakout rule.
+  assert.match(agent, /const isDeepBreakout =/);
+  assert.match(between(agent, 'const isMeaningfulBreakout =', ';'), /isDeepBreakout/);
+  assert.match(agent, /deepBase: breakoutAnalysis\.deepBase/, 'persisted');
+  assert.match(agent, /This one is a deep base/, 'the email names the kind and its rates');
   // Quality floor: RS 89+ AND confidence 80%+ (Sep 2026). Both, not either —
   // Type 1 confidence is floored at 80% upstream, so an OR let everything through.
   assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0\.8;/);
@@ -40,6 +46,7 @@ test('daily X tease reads only rows emailed today', () => {
   assert.match(tease, /lastAlertAt: \{ gte: startOfToday \}/);
   assert.doesNotMatch(tease, /\["Type1", "Type1b"\]\.includes/, 'the tease is not gated on signal type');
   assert.match(tease, /closed above a shelf today/, 'a cheat alert teases as a shelf, not a pivot');
+  assert.match(tease, /r\.deepBase === true/, 'a deep-base alert is not hidden from the tease by the grade gate');
 });
 
 test('weekly receipts, /api/alerts and the pulse page share the ledger', () => {
@@ -66,10 +73,14 @@ test('backtest and the monthly X audit score the emailed breakouts', () => {
   assert.match(agent, /\/api\/backtest\?type=Type1/);
 });
 
-test('the screener shows which rows were emailed', () => {
+test('the screener shows which rows were emailed', async () => {
   assert.match(server, /AS "episodeAlertedAt"/);
   assert.match(server, /alertedAt: s\.episodeAlertedAt/);
   assert.match(dash, /alertChipHtml\(signal\)/);
+  assert.match(dash, /deepBaseChipHtml\(signal\)/, 'the screener labels the deep-base kind');
+  assert.match(server, /deepBase: s\.deepBase === true/, 'the API returns it');
+  const ledger = (await import('node:fs')).readFileSync(new URL('../alert-ledger.js', import.meta.url), 'utf8');
+  assert.match(ledger, /'deep-pivot'/, 'the pool and the receipts carry the kind');
   assert.match(dash, /\/api\/history\//, 'per-ticker alert history is wired');
   assert.match(server, /app\.get\('\/api\/history\/:symbol'/);
 });
