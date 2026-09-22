@@ -96,6 +96,12 @@ export function composeReceipts(ledger, weekEnding) {
 // Pure; server.js supplies the rows. Tested in test/ledger.test.mjs.
 export function foldEpisodes(rows) {
   const episodes = [];
+  // The newest price the screen has for this asset, whatever episode its row
+  // landed in. A row written after the last kept episode (a re-segmented base
+  // with no entry yet) is filtered out below, and its price went with it — so
+  // the open episode showed a stale return (AMD: the card read +7.3% off a
+  // 600.91 scan while the header showed 615.53, +9.9%).
+  const newest = rows.length ? rows[rows.length - 1] : null;
   // One episode = one frozen entry. The base detector re-segments as price
   // moves (DE: four cards for one $9.11 trade; ZETA: two for one $31.05
   // shelf), so the base pivot is NOT part of the key — the latest base is
@@ -151,8 +157,13 @@ export function foldEpisodes(rows) {
       const kind = entry == null ? 'tracking'
         : basePivotNum != null && entry < basePivotNum * 0.999 ? 'shelf'
         : 'pivot';
+      // A shelf entry says "inside the base" only while that is still true.
+      // AMD entered at 559.91 under a 584.73 pivot and cleared it four days
+      // later; the label has to move with the price, not freeze at first sight.
+      const pivotCleared = basePivotNum != null && Math.max(ep.high, ep.lastPrice) >= basePivotNum;
       return {
         kind,
+        pivotCleared,
         fellAt: ep.fellAt,
         cappedPct: cappedPct != null ? Math.round(cappedPct * 10) / 10 : null,
         alertedPrice: ep.alertedPrice,
@@ -171,6 +182,24 @@ export function foldEpisodes(rows) {
       };
     })
     .reverse();
+  // Bring the open episode up to the newest price the asset has.
+  const open = out[0];
+  if (open && newest && newest.currentPrice != null && new Date(newest.createdAt) > new Date(open.lastSeen)) {
+    const px = Number(newest.currentPrice);
+    open.lastPrice = px;
+    open.asOf = newest.createdAt;
+    open.high = Math.max(open.high, px);
+    if (open.entry) {
+      const fell = open.fail != null && Math.min(open.low, px) <= open.fail;
+      const pct = ((px - open.entry) / open.entry) * 100;
+      const failPct = open.fail != null ? ((open.fail - open.entry) / open.entry) * 100 : null;
+      open.pct = Math.round(pct * 10) / 10;
+      open.cappedPct = Math.round((fell && failPct != null ? Math.min(pct, failPct) : pct) * 10) / 10;
+      open.maxPct = Math.round(((open.high - open.entry) / open.entry) * 1000) / 10;
+      open.status = fell ? 'fell' : px > open.entry ? 'past' : 'below';
+    }
+    if (open.basePivot != null) open.pivotCleared = Math.max(open.high, px) >= Number(open.basePivot);
+  }
   return out;
 }
 

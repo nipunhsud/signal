@@ -5320,7 +5320,9 @@
           const what = ep.alertedAt
             ? `<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"><span class="badge-dot"></span>emailed ${fmtD(ep.alertedAt)}${ep.alertedPrice ? ` at ${CUR}${n2(ep.alertedPrice)}` : ''}</span>`
             : ep.kind === 'shelf'
-              ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" data-tip="The level cleared was a 20-day high inside the base, not the base pivot. Not emailed: the screen emails the close above the pivot."><span class="badge-dot"></span>inside ${ep.grade && ep.grade !== 'X' ? `a grade ${ep.grade} base` : 'the base'} · not emailed</span>`
+              ? (ep.pivotCleared
+                ? `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" data-tip="The entry was a 20-day high inside the base; price has since closed above the base pivot${ep.basePivot != null ? ` of ${CUR}${n2(ep.basePivot)}` : ''}, so the base has resolved. Still not emailed: the base did not grade."><span class="badge-dot"></span>entered inside the base · pivot cleared since · not emailed</span>`
+                : `<span class="badge bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30" data-tip="The level cleared was a 20-day high inside the base, not the base pivot. Not emailed: the screen emails the close above the pivot."><span class="badge-dot"></span>inside ${ep.grade && ep.grade !== 'X' ? `a grade ${ep.grade} base` : 'the base'} · not emailed</span>`)
             : ep.grade && ep.grade !== 'X'
               ? `<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30"><span class="badge-dot"></span>grade ${ep.grade} · not emailed</span>`
               : `<span class="badge bg-gray-600/20 text-gray-400 ring-1 ring-gray-600/40" data-tip="Cleared a 20-bar high inside a base the screen did not grade (not blue sky, deeper than 25%, or under the 200-day). Tracked on the screener, never emailed."><span class="badge-dot"></span>shelf breakout · not emailed</span>`;
