@@ -73,6 +73,13 @@ export function buildMcpServer(deps, opts = {}) {
     );
 
     server.tool(
+      'analyze_ticker',
+      'The full dossier on one stock: price and trend snapshot, the current base and its grade, and EVERY factor weighed against what DataQuant\'s own full-history studies measured on that factor. Returns three groups — hitRate (levers that move the odds a breakout works: grade, blue sky, base age, depth, failed pokes, the market trend state), payoff (levers that move the size of the winner and the fail-level risk with it: relative strength, tape activity, breakout volume), and context (where price sits versus the pivot, sector rank, the screen\'s own record, earlier breakouts on the name) — plus the measured exit pair, and notCredited: the factors readers usually weigh that measured nothing (the market health score, distribution days, breadth, tightness, gaps). Every entry carries its reading, its evidence with the real numbers, a lean, and a Learn URL to cite. Call this for "analyse X", "what does the screen think of X", "is X worth watching", or any question that wants the whole picture on one name rather than one field. It works for any symbol, listed or not in the alert pool.',
+      { symbol: z.string().min(1).max(12).regex(/^[A-Za-z.\-^]+$/).describe('Ticker symbol') },
+      async ({ symbol }) => asText(await deps.analyzeTicker(symbol.toUpperCase())),
+    );
+
+    server.tool(
       'get_signal_history',
       'Everything the screen recorded for one ticker over two years, folded into episodes: first and last seen, base grade, pivot, entry and fail level, whether it was emailed and when, the kind of entry (pivot or shelf), latest price, best and current % from entry, and how it went (past the pivot, below, fell through the fail level). Use it to see how a name behaved on earlier breakouts.',
       { symbol: z.string().min(1).max(12).regex(/^[A-Za-z.\-^]+$/).describe('Ticker symbol') },

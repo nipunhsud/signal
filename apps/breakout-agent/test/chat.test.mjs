@@ -13,6 +13,7 @@ const deps = {
   detectBases: () => [],
   alertLedger: async ({ since, until, region }) => ({ since, until, region, alerts: [{ asset: 'AAPL', kind: 'pivot', grade: 'A+', pct: 2.9, status: 'past' }], summary: { count: 1, past: 1, fell: 0, below: 0, avgCappedPct: 2.9 } }),
   signalHistory: async (symbol) => ({ asset: symbol, episodes: [{ grade: 'A', status: 'past', pct: 4.1 }], rows: 3 }),
+  analyzeTicker: async (symbol) => ({ symbol, grade: 'A+', hitRate: [], payoff: [], context: [], notCredited: [] }),
 };
 
 async function open(opts) {
@@ -32,7 +33,7 @@ test('the public MCP never lists the alert pool; the subscriber chat does', asyn
 
   const sub = await open({ subscriber: true });
   const subNames = (await sub.client.listTools()).tools.map((t) => t.name).sort();
-  assert.deepEqual(subNames, ['get_base_xray', 'get_market_health', 'get_recent_alerts', 'get_sector_strength', 'get_signal_history', 'search_learn']);
+  assert.deepEqual(subNames, ['analyze_ticker', 'get_base_xray', 'get_market_health', 'get_recent_alerts', 'get_sector_strength', 'get_signal_history', 'search_learn']);
   await sub.close();
 });
 
@@ -131,4 +132,18 @@ test("the prompt says a ticker on screen need not be in the pool, and the contex
   assert.match(src, /often NOT in the alert pool/);
   assert.match(src, /drawnByReader/);
   assert.ok(src.indexOf("cache_control: { type: 'ephemeral' }") < src.indexOf('...(onScreen ?'), 'the volatile context follows the cached prefix');
+});
+
+test('the dossier tool is subscriber-only, reaches the assembler, and the prompt says when to call it', async () => {
+  const sub = await open({ subscriber: true });
+  const t = (await sub.client.listTools()).tools.find((x) => x.name === 'analyze_ticker');
+  assert.ok(t, 'the subscriber set carries it');
+  assert.match(t.description, /hitRate/);
+  assert.match(t.description, /notCredited/);
+  const r = await sub.client.callTool({ name: 'analyze_ticker', arguments: { symbol: 'mxl' } });
+  assert.equal(JSON.parse(r.content[0].text).symbol, 'MXL', 'symbols are upper-cased');
+  await sub.close();
+  const src = (await import('node:fs')).readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
+  assert.match(src, /call analyze_ticker first/);
+  assert.match(src, /never turn the dossier into a recommendation or a score out of ten/i);
 });
