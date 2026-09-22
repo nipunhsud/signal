@@ -175,6 +175,16 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   const bar = await page.locator('#app').innerText();
   const tools = vp.width > 640 ? ['Trendline', 'Ray', 'Level', 'Clear', 'Save', 'Share to X'] : ['Draw', 'Save', 'Share to X']; // phones fold the drawing tools behind Draw
   check(tools.every((l) => bar.includes(l)), `chart toolbar has ${tools.join(', ')}`);
+  // The daily bars are UTC-keyed, so the chart must read them as UTC or every
+  // bar renders a day early west of Greenwich (MU: today's close labelled
+  // "2026-09-21 20:00" for a New York reader).
+  const tzOk = await page.evaluate(() => {
+    const bars = dashboard._toKlineBars([{ time: '2026-09-22', open: 1, high: 2, low: 1, close: 2, volume: 10 }]);
+    const d = new Date(bars[0].timestamp);
+    return d.getUTCFullYear() === 2026 && d.getUTCMonth() === 8 && d.getUTCDate() === 22 && d.getUTCHours() === 0;
+  });
+  check(tzOk, 'a daily bar is keyed to UTC midnight of its own date');
+  check(/chart\.setTimezone\('UTC'\)/.test(await (await fetch(`${base}/index.html`)).text()), 'the chart is told to read them as UTC');
   const cctx = await page.evaluate(() => dashboard.chatContext());
   check(cctx.view === 'chart' && cctx.asset === 'NVDA' && cctx.chart?.timeframe === 'daily' && Array.isArray(cctx.bases), 'the chat is handed the open chart as context');
   const share = await page.evaluate(() => dashboard._chartShareText());

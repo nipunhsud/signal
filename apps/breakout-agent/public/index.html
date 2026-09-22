@@ -3182,6 +3182,11 @@
         this._ensureKlineOverlays();
         const chart = klinecharts.init(el);
         if (!chart) return null;
+        // Daily bars are keyed to a calendar date and fed as UTC midnight, so
+        // the chart must READ them as UTC. Left on the browser's zone, every
+        // bar rendered a day early for anyone west of Greenwich: a reader in
+        // New York saw today's 1,092.87 close on MU labelled "2026-09-21 20:00".
+        try { chart.setTimezone('UTC'); } catch (e) {}
         chart.setStyles({
           grid: {
             horizontal: { color: 'rgba(148,163,184,0.08)' },
