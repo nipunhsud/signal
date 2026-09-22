@@ -106,6 +106,92 @@ qualify. The line stayed at 2x, which is the screen's existing definition of
 power; moving it to 1.8x to admit one name would have cost 0.05 of profit
 factor and all of the discipline.
 
+## Addendum: what actually sorts the band (2026-09-21, second pass)
+
+Prompted by INTC. Its April 2026 breakout was 25.3% deep over 52 bars, blue
+sky, and ran **+112%** — and a bare 2x volume gate refused it on 1.83x. AMD
+was refused the same way on 1.84x. Two names inside a week landing just under
+the line is a reason to measure the line, not to move it.
+
+**Sweeping the volume threshold shows a plateau, not a cliff.** Deep band,
+8 weeks or longer:
+
+| Volume | n | per year | fail-level touch | reach +20% | PF |
+|---|---|---|---|---|---|
+| any | 7,866 | 192 | 39.0% | 22.5% | 1.97 |
+| 1.5x+ | 3,812 | 93 | 43.5% | 27.1% | 2.21 |
+| 1.8x+ | 2,981 | 73 | 44.5% | 27.8% | 2.34 |
+| 2.0x+ | 2,555 | 62 | 44.9% | 28.4% | 2.39 |
+| 2.5x+ | 1,811 | 44 | 45.5% | 28.6% | 2.38 |
+| 3.0x+ | 1,375 | 34 | 46.9% | 28.5% | 2.29 |
+
+Everything from 1.8x to 2.5x is the same number. Volume earns its keep up to
+about 1.5x and then stops discriminating.
+
+**What does discriminate is how decisively the close clears the pivot.**
+
+| Close vs the pivot | n | fail-level touch | reach +20% | mean 60-bar | PF |
+|---|---|---|---|---|---|
+| within 2% of it | 5,267 | 34.3% | 18.4% | +2.64% | 1.79 |
+| 2–5% past | 1,442 | 46.1% | 28.5% | +4.39% | 2.11 |
+| 5–10% past | 390 | 53.3% | 36.9% | +5.89% | **2.83** |
+| 10%+ past | 143 | 60.1% | 37.1% | +4.47% | 2.75 |
+
+A marginal clearance is the weak case; a decisive one is the whole edge. Both
+refused names were decisive: INTC closed 8.3% through its pivot, AMD 5.3%.
+
+**The pair beats either alone.**
+
+| Rule | n | per year | win | fail-level touch | reach +20% | mean 60-bar | PF |
+|---|---|---|---|---|---|---|---|
+| 2.0x volume (first pass) | 2,555 | 62 | 53.5% | 44.9% | 28.4% | +4.05% | 2.39 |
+| 2%+ clearance alone | 1,975 | 48 | 52.6% | 48.6% | 30.8% | +4.69% | 2.30 |
+| **1.5x and 2%+ clearance** | **1,517** | **37** | **52.4%** | **50.0%** | **31.7%** | **+5.12%** | **2.42** |
+| 1.5x and 3%+ clearance | 1,057 | 26 | 53.2% | 52.4% | 34.2% | +5.58% | 2.61 |
+| the union of 2x or the pair | 2,858 | 70 | 53.0% | 45.6% | 28.6% | +4.16% | 2.32 |
+
+The pair beat the bare 2x in three decades of five (3.41 vs 2.49 in the 1980s,
+2.23 vs 2.17 in the 2000s, 2.45 vs 2.18 in the 2020s), tied the 1990s, and lost
+the 2010s (2.08 vs 2.40). Taking the union of both rules is worse than either,
+so it is a replacement, not an addition.
+
+**It is a deep-band effect, not a factor mistaken for one.** The same pair
+applied to the bases the grade keeps lifts the profit factor from 1.76 to 1.91.
+In the deep band it lifts 1.76 to 2.42.
+
+**The clearance curve has no turn.** I said 2% was where it turned. It is not:
+with 1.5x volume the profit factor climbs the whole way, and so does the fail
+rate, while the alert count collapses.
+
+| Clearance floor | per year | fail-level touch | reach +20% | mean 60-bar | PF |
+|---|---|---|---|---|---|
+| any | 82 | 42.9% | 26.6% | +3.92% | 2.20 |
+| 1% | 56 | 46.0% | 28.9% | +4.48% | 2.33 |
+| 2% | 37 | 50.0% | 31.7% | +5.12% | 2.42 |
+| **3%** | **26** | **52.4%** | **34.2%** | **+5.58%** | **2.61** |
+| 4% | 18 | 53.7% | 36.7% | +5.47% | 2.78 |
+| 5% | 12 | 55.7% | 37.2% | +5.83% | 2.78 |
+| 8% | 6 | 59.6% | 38.7% | +6.56% | 3.05 |
+
+There is no optimum in the profit factor, so the threshold is a choice about
+cadence and sample. **3% is shipped.** It beat 2% in four decades of five (the
+1980s exception is 29 cases), and it leaves about 26 alerts a year. At 5% there
+are 12 a year and at 8% six, which is too thin to trust a live rule on.
+
+**The entry is the close, not the pivot.** At a 3% floor the average qualifier
+has already left its pivot by 6.6%, so the pivot is a level no reader could
+get, and the study measures this kind from the breakout close. The agent
+therefore freezes the close for a deep-base alert and sets the 7% fail level
+under it. Every number above is net of paying up for the clearance, which is
+the point: buying strength decisively beat buying the pivot cheaply. Graded
+breakouts keep the pivot, because their close sits within a couple of percent
+of it.
+
+**Shipped rule, replacing the 2x gate:** 1.5x volume **and** a close at least
+3% through the pivot, entered at that close. About 26 alerts a year against 62,
+a 2.61 profit factor against 2.39, a 34.2% chance of a 20% run against 28.4%.
+The price is a 52% fail-level touch rate against 45%, which the label states.
+
 ## What this means for the product
 
 The cut is not protecting anyone from bad setups. It removes a cohort that
@@ -117,8 +203,9 @@ at a time, that changes the felt experience more than the profit factor
 justifies.
 
 **Shipped** as a deep-base kind of its own, separate from S/A+/A: blue-sky
-pivot, 25–35% deep, 8 weeks or longer, above a rising 200-day, emailed on the
-close through the pivot on 2x volume, with the standing RS 89 and confidence
+pivot, 25–35% deep, 8 weeks or longer, above a rising 200-day, emailed when the
+close clears the pivot by 3% or more on 1.5x volume and entered at that close
+(see the second addendum for why that pair, that threshold and that entry), with the standing RS 89 and confidence
 80% floor on top. Its label carries the higher fail rate in words, and the 20%
 trail matters more here than anywhere else because the payoff is in the tail.
 
