@@ -4,6 +4,8 @@ import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { classifyShelf } from './shelf.js';
 import { rowState } from './row-state.js';
+import { buildDossier } from './analysis.js';
+import { computeActivity } from './activity.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -2481,7 +2483,62 @@ app.get('/api/chat/pool', paywallApi, async (req, res) => {
 
 // Streamed chat: body { messages: [{role, content}], region? }. Answers over
 // the same read-only tools the MCP serves, plus the alert pool, in-process.
-const chatDeps = () => ({ computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases, alertLedger, signalHistory });
+// The analysis dossier: gather what the screen holds on one symbol and let
+// analysis.js weigh it against the studies. One call, so the model narrates a
+// fixed set of measured numbers instead of assembling them itself.
+async function analyzeTicker(symbol) {
+  const bars = await getDailyCandles(symbol);
+  if (!bars || bars.length < 60) return { symbol, error: 'no usable price history for this symbol' };
+  let bases = [];
+  try { bases = detectBases(bars); } catch (e) { console.warn(`[analyze] ${symbol} bases:`, e.message); }
+  let activity = null;
+  try { activity = computeActivity(bars, bases.length ? bases[bases.length - 1] : null); } catch (e) { console.warn(`[analyze] ${symbol} activity:`, e.message); }
+  const signal = await db.breakoutSignal.findFirst({ where: { asset: symbol }, orderBy: { createdAt: 'desc' } }).catch(() => null);
+  const region = /\.(NS|BO)$/i.test(symbol) ? 'IN' : 'US';
+  let marketTrend = null;
+  try {
+    const mh = await computeMarketHealth(region);
+    const per = Object.entries(mh?.components?.trend?.perBenchmark || {});
+    if (per.length) {
+      // The one measured state is "under both averages with the 50-day
+      // falling"; take the worse benchmark, as the gauge does for distribution.
+      const worst = per.map(([name, g]) => ({ name, ...g })).sort((a, b) => a.score - b.score)[0];
+      marketTrend = {
+        benchmark: worst.name,
+        underBothAverages: worst.aboveMA50 === false && worst.aboveMA200 === false,
+        ma50Rising: worst.ma50Rising,
+        label: `${worst.name} ${worst.aboveMA50 ? 'above' : 'below'} its 50-day, ${worst.aboveMA200 ? 'above' : 'below'} its 200-day, 50-day ${worst.ma50Rising ? 'rising' : 'flat or falling'}`,
+      };
+    }
+  } catch (e) { console.warn(`[analyze] ${symbol} market trend:`, e.message); }
+  let episodes = [];
+  try { episodes = (await signalHistory(symbol)).episodes.slice(0, 6); } catch {}
+  // The sector's rank now, not the one frozen on the row when it was written.
+  let sector = null;
+  const sectorName = signal && signal.sector && signal.sector !== 'Unclassified' ? signal.sector : null;
+  if (sectorName) {
+    try {
+      const ss = await computeSectorStrength(region);
+      const hit = (ss.sectors || []).find((s) => s.sector === sectorName);
+      if (hit) sector = { name: sectorName, rank: hit.rank, count: (ss.sectors || []).length };
+    } catch (e) { console.warn(`[analyze] ${symbol} sector:`, e.message); }
+    if (!sector && signal.sectorRank != null) sector = { name: sectorName, rank: Number(signal.sectorRank), count: signal.sectorCount != null ? Number(signal.sectorCount) : null };
+  }
+  return buildDossier({ symbol, bars, bases, activity, signal, marketTrend, sector, episodes });
+}
+
+app.get('/api/analyze/:symbol', paywallApi, async (req, res) => {
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!/^[A-Z.\-^]{1,12}$/.test(symbol)) return res.status(400).json({ error: 'symbol required' });
+  try {
+    res.json(await analyzeTicker(symbol));
+  } catch (e) {
+    console.error('[/api/analyze] failed:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const chatDeps = () => ({ computeMarketHealth, computeSectorStrength, getDailyCandles, detectBases, alertLedger, signalHistory, analyzeTicker });
 app.post('/api/chat', paywallApi, (req, res) => handleChatRequest(req, res, { deps: chatDeps() }));
 
 app.post('/mcp', async (req, res) => {

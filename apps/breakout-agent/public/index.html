@@ -2560,7 +2560,7 @@
                 ${row('Signal', sig)}
                 ${row('RS', rs)}
                 ${signal.activity ? row('Activity', `<span class="text-xs">${this.activityChipHtml(signal)} <span class="text-gray-400">${signal.activity.acc} heavy up · ${signal.activity.dist} heavy down · ${signal.activity.bigUp} print${signal.activity.bigUp === 1 ? '' : 's'} at the high${signal.activity.udv != null ? ` · up÷down vol ${signal.activity.udv}x` : ''}</span></span>`) : ''}
-                ${signal.sectorRank != null ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${signal.sectorCount}${signal.sectorRank <= Math.ceil((signal.sectorCount || 1) / 3) ? ' · leading sector' : ''}</span></span>`) : ''}
+                ${(() => { const sr = this.sectorRankNow(signal); return sr ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${sr.count}${sr.rank <= Math.ceil(sr.count / 3) ? ' · leading sector' : ''}${signal.sectorRank != null && signal.sectorRank !== sr.rank ? ` · was #${signal.sectorRank} when this row was written` : ''}</span></span>`) : ''; })()}
                 ${signal.trendTemplate != null || signal.pivotTightPct != null ? row('Trend', `<span class="text-xs">${signal.trendTemplate == null ? '' : signal.trendTemplate ? '<span class="text-green-400" data-tip="Minervini trend template: close above a rising 200-day, 50 > 150 > 200, 30%+ off the 52-week low, within 25% of the high. Historically 16.7% of these reach +20% in 60 bars vs 6.6% without.">template ✓</span>' : '<span class="text-gray-400" data-tip="Fails the Minervini trend template — usually the prior run is under 30% off the 52-week low. Historically 6.6% reach +20% in 60 bars.">template ✗</span>'}${signal.pivotTightPct != null ? ` <span class="text-gray-500">·</span> <span class="font-mono" data-tip="Range of the 10 bars before the breakout, % of pivot. Under 5%: 9-18% fail rate but small moves. 12%+: 48% fail rate, 32% reach +20%.">pivot ${this.safeNum(signal.pivotTightPct, 1)}%${signal.pivotTightPct < 5 ? ' tight' : signal.pivotTightPct >= 12 ? ' loose' : ''}</span>` : ''}</span>`) : ''}
                 ${row('Trend · 30d', spark || dash)}
                 ${row('Earnings', c.earnings)}
@@ -5367,10 +5367,30 @@
         return `<span class="badge ${cls} ring-1" data-tip="Institutional activity ${a.score}/10: ${a.acc} heavy up day${a.acc === 1 ? '' : 's'} and ${a.dist} heavy down in the last 50 sessions${a.bigUp ? `, ${a.bigUp} print${a.bigUp === 1 ? '' : 's'} on double volume at the high` : ''}${a.udv != null ? `, up volume ${a.udv}x down in the base` : ''}. Historically at this score ${odds}. A size-of-winner signal, not a win-rate signal."><span class="badge-dot"></span>activity ${a.score}</span>`;
       }
 
+      // A sector's rank is a property of the sector right now, so the chip
+      // reads the live roll-up. Rows carry the rank frozen when they were
+      // written, which put two names from one sector at two different ranks in
+      // the same list (ZETA "Technology #5" next to S and RBRK at "#3"). The
+      // stored value stays on the row for the record and is the fallback until
+      // the roll-up has loaded.
+      sectorRankNow(signal) {
+        const name = signal && signal.sector;
+        if (!name || name === 'Unknown' || name === 'Unclassified') return null;
+        const list = this.sectorStrength?.sectors;
+        if (Array.isArray(list) && list.length) {
+          const hit = list.find((s) => s.sector === name);
+          if (hit && hit.rank != null) return { rank: hit.rank, count: list.length, live: true };
+        }
+        if (signal.sectorRank != null && signal.sectorCount) return { rank: signal.sectorRank, count: signal.sectorCount, live: false };
+        return null;
+      }
+
       sectorChipHtml(signal) {
-        if (!signal || signal.sectorRank == null || !signal.sectorCount) return '';
-        const leading = signal.sectorRank <= Math.ceil(signal.sectorCount / 3);
-        return `<span class="badge ${leading ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30' : 'bg-gray-800 text-gray-500 ring-gray-700/60'} ring-1" data-tip="${signal.sector || 'Sector'} ranked ${signal.sectorRank} of ${signal.sectorCount} sectors by median relative strength at scan time${leading ? ' — a leading sector (top third)' : ''}."><span class="badge-dot"></span>${signal.sector ? signal.sector.replace(/ Services| Discretionary| Staples/, (m) => m) : 'sector'} #${signal.sectorRank}</span>`;
+        const s = this.sectorRankNow(signal);
+        if (!s) return '';
+        const leading = s.rank <= Math.ceil(s.count / 3);
+        const when = s.live ? 'by median relative strength across the fresh universe' : 'as recorded when this row was written';
+        return `<span class="badge ${leading ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30' : 'bg-gray-800 text-gray-500 ring-gray-700/60'} ring-1" data-tip="${signal.sector} ranked ${s.rank} of ${s.count} sectors ${when}${leading ? ' — a leading sector (top third)' : ''}."><span class="badge-dot"></span>${signal.sector} #${s.rank}</span>`;
       }
 
       gradeBadgeHtml(signal) {

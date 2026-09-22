@@ -15,7 +15,7 @@ const sig = (asset, signalType, confidence, extra = {}) => ({
 
 export const SIGNALS = {
   highConfidence: [
-    sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed', activity: { score: 5, acc: 5, dist: 0, bigUp: 2, udv: 1.47, obv: 0.12 }, sectorRank: 2, sectorCount: 11, sector: 'Health Care' }),  // +2.9% over pivot → confirmed
+    sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed', activity: { score: 5, acc: 5, dist: 0, bigUp: 2, udv: 1.47, obv: 0.12 }, sectorRank: 5, sectorCount: 11, sector: 'Technology' }),  // +2.9% over pivot → confirmed; stored rank is stale on purpose
     sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
     sig('MSFT', 'breakout', 88, { baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
     sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),
@@ -35,7 +35,11 @@ export function startStub(port = 0) {
   app.get('/api/winners', (q, r) => r.json({ winners: [{ asset: 'NVDA', tier: 'A' }, { asset: 'AAPL', tier: 'A' }, { asset: 'MSFT', tier: 'B' }] }));
   app.get('/api/beat-raise', (q, r) => r.json({ stocks: [] }));
   app.get('/api/unusual-volume', (q, r) => r.json({ stocks: [], date: '2026-09-04' }));
-  app.get('/api/sector-strength', (q, r) => r.json({ sectors: [] }));
+  app.get('/api/sector-strength', (q, r) => r.json({ universe: 4200, asOf: new Date().toISOString(), leadingCount: 4, sectors: [
+    { rank: 1, sector: 'Energy', stocks: 40, medianRsScore: 0.3, median1wPct: 1.2, median1mPct: 4, median3mPct: 9, leaders: 12, leadersPct: 30, topAssets: ['XOM'], rank4w: 8 },
+    { rank: 2, sector: 'Health Care', stocks: 60, medianRsScore: 0.2, median1wPct: 0.9, median1mPct: 3, median3mPct: 7, leaders: 14, leadersPct: 23, topAssets: ['KNSA'], rank4w: 6 },
+    { rank: 3, sector: 'Technology', stocks: 90, medianRsScore: 0.15, median1wPct: 0.6, median1mPct: 2, median3mPct: 6, leaders: 20, leadersPct: 22, topAssets: ['NVDA'], rank4w: 3 },
+  ] }));
   app.get('/api/backtest', (q, r) => r.json({ summary: { totalSignals: 0 }, recent: [] }));
   app.get('/api/market-health', (q, r) => r.json({}));
   app.get('/api/admin/status', (q, r) => r.json({ isAdmin: false }));

@@ -8,6 +8,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmtPct = (v) => (v >= 0 ? '+' : '') + Number(v).toFixed(1) + '%';
   const SUGGESTIONS = [
+    'Weigh all the evidence on the strongest name in the pool.',
     'Which names in the pool are still within 5% of the pivot?',
     'Rank the pool by base grade, then by how far past the pivot each one closed.',
     'Which of these have the longest, shallowest bases?',
@@ -15,7 +16,7 @@
     'Does the market regime change how these breakouts are likely to go?',
     'Which names fell through the fail level, and what did their bases look like?',
   ];
-  const TOOL_WORDS = { get_recent_alerts: 'read the alert pool', get_signal_history: 'read the alert history', get_base_xray: 'ran the base X-ray', get_market_health: 'checked market health', get_sector_strength: 'checked sector strength', search_learn: 'searched Learn' };
+  const TOOL_WORDS = { analyze_ticker: 'weighed the full dossier', get_recent_alerts: 'read the alert pool', get_signal_history: 'read the alert history', get_base_xray: 'ran the base X-ray', get_market_health: 'checked market health', get_sector_strength: 'checked sector strength', search_learn: 'searched Learn' };
 
   // Small markdown: paragraphs, bullets, numbered lists, bold, code, tables.
   function md(src) {
