@@ -122,7 +122,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minConfidence', 85); });
   await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]));
   const order = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
-  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded › X (${order.join(',')})`);
+  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'DEEP', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded › X (${order.join(',')})`);
   await page.evaluate(() => dashboard.setFilter('gradeFilter', 'A+'));
   const aplus = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
   check(JSON.stringify(aplus) === JSON.stringify(['MSFT', 'AAPL']), `grade ≥ A+ keeps S and A+ only (${aplus.join(',')})`);
@@ -139,11 +139,11 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => dashboard.setFilter('statusFilter', 'forming'));
   check(JSON.stringify(await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset))) === '["MSFT"]', 'status=forming keeps the under-pivot base');
   await page.evaluate(() => { dashboard.setFilter('statusFilter', 'all'); dashboard.setFilter('minBaseWeeks', 8); });
-  check(JSON.stringify(await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset))) === '["MSFT"]', 'base ≥ 8wk keeps only the 16wk base');
+  check(JSON.stringify(await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset))) === '["MSFT","DEEP"]', 'base ≥ 8wk keeps the 16wk and 11wk bases');
   check((await page.locator('#app button:has-text("Base ≥ 8wk")').count()) === 1, 'active chip shows Base ≥ 8wk');
   await page.evaluate(() => { dashboard.setFilter('minBaseWeeks', 0); dashboard.setSortPreset([{ key: 'weeks', dir: 'desc' }]); });
   const byWk = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset).slice(0, 3));
-  check(JSON.stringify(byWk) === JSON.stringify(['MSFT', 'AAPL', 'NVDA']), `sort by base length: 16wk › 5wk › 4wk (${byWk.join(',')})`);
+  check(JSON.stringify(byWk) === JSON.stringify(['MSFT', 'DEEP', 'AAPL']), `sort by base length: 16wk › 11wk › 5wk (${byWk.join(',')})`);
   check((await page.locator('#app [data-status="forming"]').count()) === 1 && (await page.locator('#app [data-grade="S"]').count()) === 1, 'row shows grade and status chips');
   await click(page, '#app [data-grade="A+"]'); await settle(page);
   check((await page.evaluate(() => dashboard.gradeFilter)) === 'A+' && (await drawer()) === null, 'clicking a grade chip filters without opening the drawer');
@@ -194,6 +194,11 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     await p2.goto(`${base}/dashboard`); await settle(p2, 400);
     check((await p2.locator('#app tr:has-text("NVDA") .badge:has-text("activity 5")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("Technology #3")').count()) === 1, 'row shows the activity score and the sector rank from the live roll-up, not the stale one on the row');
     check((await p2.locator('#app tr:has-text("NVDA") .badge:has-text("Technology #5")').count()) === 0, 'the rank frozen on the row is not what the chip shows');
+    check((await p2.locator('#app tr:has-text("DEEP") .badge:has-text("deep base · 28%")').count()) === 1, 'the deep-base kind is labelled on the row');
+    await p2.evaluate(() => dashboard.toggleQualityFilter('deep')); await settle(p2, 300);
+    const deepRows = await p2.locator('#app tbody tr').allInnerTexts();
+    check(deepRows.some((r) => r.includes('DEEP')) && !deepRows.some((r) => r.includes('NVDA')), 'the Deep filter keeps only deep bases');
+    await p2.evaluate(() => dashboard.toggleQualityFilter('deep')); await settle(p2, 200);
     check((await p2.locator('#app tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
     check((await p2.locator('#app tr:has-text("SWKS") .badge:has-text("Cheat · 52% up the base")').count()) === 1, 'a shelf breakout inside a forming base is labelled as a cheat entry');
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 300);

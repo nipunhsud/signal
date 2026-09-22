@@ -573,6 +573,8 @@ export interface MarketData {
     status: "breakout" | "forming";
     breakoutDate?: string;
     brokeOutToday: boolean;
+    dryUp?: number; // base average volume / the 50 bars before it
+    coil?: number; // 2nd-half range / 1st-half range
   };
   // Gap retest (DE Aug 2026 shape, full-history study Sep 2026: n=9,474,
   // PF 3.69, 41.3% reach +20% in 60 bars, 46% stop-touch): a 4%+ gap up on
@@ -1257,6 +1259,8 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             sky: lastBase.pivot >= priorHigh * 0.98,
             status: lastBase.status,
             breakoutDate: lastBase.breakout?.date,
+            dryUp: lastBase.volumeDryUp,
+            coil: lastBase.coilRatio,
             // Today's bar, OR the last completed session: if the 16:00 scan
             // saw a pre-auction quote under the pivot and the settled close
             // was over it, the next scan still fires. One-alert-per-base

@@ -95,6 +95,8 @@ export interface BreakoutAnalysis {
   // contraction. <3%: 59.9% win / 9.3% stop but 2.6% reach +20%; >=12%: 53.5%
   // / 48.4% / 31.6%. Tight = low fail rate, small move. Label only.
   pivotTightPct: number;
+  deepBase: boolean; // 25-35% deep blue-sky base, 8wk+, resolving on 2x volume
+  deepBasePremium: boolean; // the same with a tight coil and a dry base (label only)
   activity: MarketData["activity"] | null; // tape activity 0-10 (activity.js); label + ranking, never a gate
 }
 
@@ -433,6 +435,32 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
           : "A";
   }
   const gradedBreakoutToday = !!(gb && gb.brokeOutToday);
+
+  // Deep base (Sep 2026, docs/depth-cut-study.md). The grade stops at 25%
+  // depth, and the study showed the 25-35% band the cut drops has the BETTER
+  // profit factor (2.08 vs 1.84) with nearly double the +20% reach, at a much
+  // higher fail-level touch rate. Power volume is what sorts it: 25-35% deep,
+  // 8 weeks or longer, on a 2x close through the pivot ran PF 2.39 / 53.5%
+  // positive / 44.9% touched the fail level / 28.4% reached +20% (n=2,555),
+  // beating the graded pool in four decades of five.
+  // Tightness before the breakout is deliberately NOT required: inside this
+  // band it LOWERS the profit factor (tight under 6% ran 1.74-1.79, loose 12%+
+  // ran 2.58), the same way it did in the Minervini study.
+  const deepShape = !!(
+    gb &&
+    gb.sky &&
+    close > ma200 &&
+    ma200Rising &&
+    gb.depthPct > 25 &&
+    gb.depthPct <= 35 &&
+    gb.bars >= 40
+  );
+  const powerVolume = avgVolume > 0 && volume >= avgVolume * 2;
+  const deepBase = deepShape && powerVolume;
+  // A label, not a gate: the same slice with a tight coil and a dry base ran
+  // PF 3.39, on only 189 cases in forty years.
+  const deepBasePremium =
+    deepBase && (gb?.coil ?? 9) > 0 && (gb?.coil ?? 9) < 0.8 && (gb?.dryUp ?? 9) < 0.8;
   const gapRetestToday = !!(data.gapRetest && data.gapRetest.triggeredToday);
 
   return {
@@ -489,6 +517,8 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     ma200Rising,
     pctAbove52wLow,
     pivotTightPct,
+    deepBase,
+    deepBasePremium,
     activity: data.activity ?? null,
   };
 }

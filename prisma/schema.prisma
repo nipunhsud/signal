@@ -86,6 +86,7 @@ model BreakoutSignal {
   trendTemplate Boolean? // Minervini trend template at the breakout (label; 200MA-rising is the gate)
   pivotTightPct Float?   // 10-bar range before the breakout, % of pivot (VCP final contraction)
   // Institutional activity from the tape (activity.js; institutional-activity-study.md). Label + ranking.
+  deepBase      Boolean? // 25-35% deep blue-sky base that resolved on 2x volume (docs/depth-cut-study.md)
   activityScore Int?
   activityAcc   Int?     // heavy up days in the last 50 sessions
   activityDist  Int?     // heavy down days

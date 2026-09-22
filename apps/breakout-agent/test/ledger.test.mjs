@@ -134,3 +134,49 @@ test('a new entry starts a new card; rows without an entry group by base pivot',
   assert.deepEqual(eps.map((e) => e.kind), ['pivot', 'shelf', 'tracking']); // newest first
   assert.equal(eps[2].scans, 2);
 });
+
+// Rows as the scanner writes them: ascending, one per changed scan.
+const amdRow = (over = {}) => ({
+  createdAt: new Date('2026-09-21T14:00:00Z'), breakoutType: 'Type1', currentPrice: 600.9,
+  entryPrice: 559.91, stopLoss: 520.72, basePivot: 584.73, baseGrade: null, baseBars: 56,
+  baseDepthPct: 27.5, volumeTag: 'quiet', alertSentAt: null, lastAlertAt: null, xPostedAt: null, ...over,
+});
+
+test('AMD: the open episode takes the newest price even when the newest row folded into no episode', () => {
+  const rows = [
+    amdRow({ createdAt: new Date('2026-09-21T14:00:00Z'), currentPrice: 600.9 }),
+    amdRow({ createdAt: new Date('2026-09-21T20:30:00Z'), currentPrice: 600.905 }),
+    // the base re-segments after the breakout: no entry yet, so this row's
+    // episode is dropped — its price must not be dropped with it
+    amdRow({ createdAt: new Date('2026-09-21T21:00:00Z'), currentPrice: 615.53, entryPrice: null, basePivot: null, baseGrade: null }),
+  ];
+  const [open] = foldEpisodes(rows);
+  assert.equal(open.lastPrice, 615.53);
+  assert.equal(open.pct, 9.9, 'the card and the header agree');
+  assert.equal(open.maxPct, 9.9);
+  assert.equal(open.status, 'past');
+  assert.equal(String(open.asOf), String(new Date('2026-09-21T21:00:00Z')));
+});
+
+test('a shelf entry stops saying "inside the base" once the pivot is cleared', () => {
+  const inside = foldEpisodes([amdRow({ currentPrice: 570 })])[0];
+  assert.equal(inside.kind, 'shelf');
+  assert.equal(inside.pivotCleared, false, '570 is under the 584.73 pivot');
+
+  const cleared = foldEpisodes([
+    amdRow({ currentPrice: 570 }),
+    amdRow({ createdAt: new Date('2026-09-21T20:00:00Z'), currentPrice: 615.53 }),
+  ])[0];
+  assert.equal(cleared.kind, 'shelf', 'the entry was still a shelf');
+  assert.equal(cleared.pivotCleared, true, 'but the base has resolved since');
+});
+
+test('an episode that fell through its fail level stays fallen after the newest price', () => {
+  const ep = foldEpisodes([
+    amdRow({ currentPrice: 559 }),
+    amdRow({ createdAt: new Date('2026-09-21T18:00:00Z'), currentPrice: 515 }), // under 520.72
+    amdRow({ createdAt: new Date('2026-09-21T21:00:00Z'), currentPrice: 600, entryPrice: null, basePivot: null }),
+  ])[0];
+  assert.equal(ep.status, 'fell');
+  assert.equal(ep.cappedPct, -7, 'credited at the fail level, whatever price did after');
+});

@@ -2,6 +2,7 @@
 // the graded-base gate. Runs against the compiled agent code (npm run build).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { detectBases } from '../base-detect.js';
 import { analyzeBreakout } from '../dist/tools/breakout-logic.js';
 
@@ -67,4 +68,32 @@ test('a shelf breakout inside an ungraded base still classifies as Type1 for tra
   assert.equal(r.breakoutType, 'Type1');
   assert.equal(r.baseGrade, null);
   assert.equal(r.gradedBreakoutToday, false);
+});
+
+const deepGb = (over = {}) => gb({ depthPct: 28, bars: 56, sky: true, status: 'breakout', brokeOutToday: true, dryUp: 0.7, coil: 0.75, ...over });
+
+test('deep base: 25-35% deep, blue sky, 8wk+, on 2x volume through the pivot', () => {
+  // the grade still refuses it — that is the point of the kind
+  const r = analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb() }));
+  assert.equal(r.baseGrade, null, 'past the 25% the grade allows');
+  assert.equal(r.deepBase, true);
+  assert.equal(r.gradedBreakoutToday, true, 'the trigger is the same close through the pivot');
+  assert.equal(r.deepBasePremium, true, 'tight coil and a dry base');
+});
+
+test('deep base: each condition is load-bearing', () => {
+  assert.equal(analyzeBreakout(md({ volume: 1.84e6, gradedBase: deepGb() })).deepBase, false, '1.84x is under power — AMD misses by a hair and the line was not moved to fit it');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ depthPct: 24 }) })).deepBase, false, '24% deep is a graded base, not this kind');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ depthPct: 36 }) })).deepBase, false, 'past 35% is broken structure');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ bars: 30 }) })).deepBase, false, 'under 8 weeks');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ sky: false }) })).deepBase, false, 'not blue sky');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, ma200: 105, gradedBase: deepGb() })).deepBase, false, 'under the 200-day');
+  assert.equal(analyzeBreakout(md({ volume: 2.2e6, gradedBase: deepGb({ dryUp: 1.2, coil: 1.1 }) })).deepBasePremium, false, 'premium needs the tight coil and the dry base');
+});
+
+test('deep base does not require tightness into the pivot: the study says it hurts here', () => {
+  const src = readFileSync(new URL('../src/tools/breakout-logic.ts', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('const deepShape'), src.indexOf('const deepBasePremium'));
+  assert.doesNotMatch(block, /pivotTightPct|tight10/, 'no tightness condition in the gate');
+  assert.match(src, /Tightness before the breakout is deliberately NOT required/);
 });
