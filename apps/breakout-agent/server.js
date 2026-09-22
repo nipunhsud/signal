@@ -5,6 +5,7 @@ import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } fro
 import { classifyShelf } from './shelf.js';
 import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
+import { gradePosition, bookStats, runningList, parseTrade, weekWindowOf } from './book.js';
 import { computeActivity } from './activity.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
@@ -1704,6 +1705,98 @@ async function ownedList(req, listId) {
 }
 
 // Lists for the signed-in user. Auto-creates a default so the UI always has one.
+// ── The trade book ──────────────────────────────────────────────────────────
+// The reader's own positions. Hand-kept: no agent writes here. Prices come
+// from the signal rows first (one query for the whole book) and the shared
+// candle cache only for names the screen has no row for, so opening the tab
+// costs one database read and usually no market data at all.
+async function bookPrices(assets) {
+  const out = {};
+  if (!assets.length) return out;
+  try {
+    const rows = await db.breakoutSignal.findMany({
+      where: { asset: { in: assets } },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['asset'],
+      select: { asset: true, currentPrice: true },
+    });
+    for (const r of rows) if (r.currentPrice > 0) out[r.asset] = Number(r.currentPrice);
+  } catch (e) { console.warn('[book] signal prices:', e.message); }
+  const missing = assets.filter((a) => out[a] == null).slice(0, 25);
+  for (const a of missing) {
+    try {
+      const bars = await getDailyCandles(a);
+      if (bars && bars.length) out[a] = Number(bars[bars.length - 1].close);
+    } catch { /* a name with no data simply shows no price */ }
+  }
+  return out;
+}
+
+app.get('/api/book', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const rows = await db.bookTrade.findMany({ where: { userId: user.id }, orderBy: [{ status: 'asc' }, { openedAt: 'desc' }] });
+    const prices = await bookPrices([...new Set(rows.filter((r) => r.status !== 'closed').map((r) => r.asset))]);
+    const positions = rows.map((r) => gradePosition(r, prices[r.asset] ?? null));
+    const win = weekWindowOf();
+    // Names the screen emailed this week, so the running list can ask about
+    // the ones that never made it into the book.
+    let emailed = [];
+    try {
+      const led = await alertLedger({ since: win.since, until: win.until, region: regionOf(req) });
+      emailed = (led.alerts || []).map((a) => a.asset);
+    } catch (e) { console.warn('[book] ledger:', e.message); }
+    res.json({
+      positions,
+      open: positions.filter((p) => !p.closed),
+      closed: positions.filter((p) => p.closed),
+      stats: bookStats(positions),
+      running: runningList(positions, win, emailed),
+    });
+  } catch (error) {
+    console.error('[/api/book] failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/book', requireAuth(), async (req, res) => {
+  try {
+    const { value, error } = parseTrade(req.body || {});
+    if (error) return res.status(400).json({ error });
+    const user = await reqUser(req);
+    const row = await db.bookTrade.create({ data: { ...value, userId: user.id } });
+    res.json(gradePosition(row, null));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/book/:id', requireAuth(), async (req, res) => {
+  try {
+    const { value, error } = parseTrade(req.body || {}, { partial: true });
+    if (error) return res.status(400).json({ error });
+    const user = await reqUser(req);
+    const r = await db.bookTrade.updateMany({ where: { id: req.params.id, userId: user.id }, data: value });
+    if (!r.count) return res.status(404).json({ error: 'not found' });
+    const row = await db.bookTrade.findUnique({ where: { id: req.params.id } });
+    const prices = row.status === 'closed' ? {} : await bookPrices([row.asset]);
+    res.json(gradePosition(row, prices[row.asset] ?? null));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/book/:id', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const r = await db.bookTrade.deleteMany({ where: { id: req.params.id, userId: user.id } });
+    if (!r.count) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/shortlist-lists', requireAuth(), async (req, res) => {
   try {
     const user = await reqUser(req);

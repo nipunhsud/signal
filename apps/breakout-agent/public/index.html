@@ -548,6 +548,7 @@
       { key: 'unusual-volume', label: 'Unusual Volume', path: '/unusual-volume', group: 'screens', desc: '100%+ above-average volume on a bullish candle' },
       { key: 'sectors',        label: 'Sectors',        path: '/sectors',        group: 'screens', desc: 'Sector strength ranked by trailing returns' },
       { key: 'shortlist',      label: 'Shortlist',      path: '/shortlist',      group: 'tools',   desc: 'Your saved tickers' },
+      { key: 'book',           label: 'Book',           path: '/book',           group: 'tools',   desc: 'Your own trades: what you hold, what you closed, and what needs a look' },
       { key: 'backtest',       label: 'Backtest',       path: '/backtest',       group: 'tools',   desc: 'How the breakouts the screen emailed played out — research, not a track record' },
     ];
     const VIEW_KEYS = VIEWS.map(v => v.key);
@@ -668,6 +669,8 @@
         this.backtest = null;
         this.backtestLoading = false;
         this.backtestParams = { type: 'Type1', lookback: 30, horizon: 30 };
+        this.book = null;            // /api/book payload
+        this.bookLoading = false;
         this.winners = null;
         this.winnersLoading = false;
         this.beatRaise = null;
@@ -699,7 +702,9 @@
         this.closeDrawer({ silent: true });
         this.closeNavMenu();
         if (!opts.fromHistory) this.syncUrl();
-        if (name === 'backtest' && !this.backtest && !this.backtestLoading) {
+        if (name === 'book') {
+          this.fetchBook();
+        } else if (name === 'backtest' && !this.backtest && !this.backtestLoading) {
           this.fetchBacktest();
         } else if (name === 'winners' && !this.winners && !this.winnersLoading) {
           this.fetchWinners();
@@ -2577,6 +2582,7 @@
                   <span>6 months · Daily</span>
                   <span class="inline-flex items-center gap-3">
                     ${this.isAdmin && (signal.signalType === 'breakout' || signal.signalType === 'extension') ? `<button onclick="dashboard.tweetBreakout('${assetEscaped}', event)" title="Tweet this breakout to X (admin)" class="text-xs px-2 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium">🐦 Tweet</button>` : ''}
+                    <button onclick="dashboard.logTrade('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition" title="Log this as a trade in your book">Log</button>
                     <button onclick="dashboard.askChat('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition" title="Ask the screen about this name">Ask</button>
                     <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
                   </span>
@@ -3186,6 +3192,11 @@
         // the chart must READ them as UTC. Left on the browser's zone, every
         // bar rendered a day early for anyone west of Greenwich: a reader in
         // New York saw today's 1,092.87 close on MU labelled "2026-09-21 20:00".
+        // Only daily and weekly bars reach this chart, so there is no clock
+        // time to align and market hours are untouched — they live in server
+        // code on Eastern time. If intraday bars are ever added they carry a
+        // real time of day, and this must become 'America/New_York' with the
+        // bars keyed to the session rather than to midnight.
         try { chart.setTimezone('UTC'); } catch (e) {}
         chart.setStyles({
           grid: {
@@ -4656,6 +4667,227 @@
         `;
       }
 
+      // ── The trade book ──
+      async fetchBook() {
+        if (this.bookLoading) return;
+        this.bookLoading = true;
+        try {
+          const res = await fetch('/api/book');
+          if (res.status === 401) { location.href = '/?ref=book&next=' + encodeURIComponent(location.pathname); return; }
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+          this.book = await res.json();
+        } catch (e) {
+          this.book = { error: e.message, positions: [], open: [], closed: [], stats: {}, running: {} };
+        } finally {
+          this.bookLoading = false;
+          if (this.view === 'book') this.render();
+        }
+      }
+
+      // Log a position. From a signal row the level and the fail level are
+      // already known, so the reader only confirms what they actually paid.
+      async logTrade(asset, prefill = {}) {
+        const a = String(asset || '').toUpperCase();
+        const sig = (this.signals || []).find(s => s.asset === a);
+        const suggestedEntry = prefill.entry ?? sig?.currentPrice ?? '';
+        const entry = prompt(`Entry price for ${a}` + (suggestedEntry ? ` (the screen last saw ${CUR}${this.safeNum(suggestedEntry, 2)})` : ''), suggestedEntry ? Number(suggestedEntry).toFixed(2) : '');
+        if (entry === null) return;
+        const suggestedStop = prefill.stop ?? sig?.stopLoss ?? (entry ? Number(entry) * 0.93 : '');
+        const stop = prompt(`Where are you wrong on ${a}? (the fail level 7% under is ${CUR}${this.safeNum(suggestedStop, 2)})`, suggestedStop ? Number(suggestedStop).toFixed(2) : '');
+        if (stop === null) return;
+        const shares = prompt(`How many shares of ${a}? (leave blank if you would rather not say)`, '');
+        if (shares === null) return;
+        try {
+          const res = await fetch('/api/book', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              asset: a, entry, stop: stop === '' ? null : stop, shares: shares === '' ? null : shares,
+              signalGrade: sig?.baseGrade || null,
+              signalKind: sig?.deepBase ? 'deep' : sig?.shelf ? 'cheat' : sig?.baseGrade ? 'pivot' : 'manual',
+              signalPivot: sig?.basePivot ?? null,
+            }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error || 'could not log it');
+          this.toast(`${a} is in the book.`, { kind: 'success' });
+          this.book = null; this.fetchBook();
+        } catch (e) { this.toast(e.message, { kind: 'warn' }); }
+      }
+
+      async closeTrade(id, asset, last) {
+        const exit = prompt(`Exit price for ${asset}` + (last ? ` (last ${CUR}${this.safeNum(last, 2)})` : ''), last ? Number(last).toFixed(2) : '');
+        if (exit === null || exit === '') return;
+        await this.patchTrade(id, { exit, closedAt: new Date().toISOString() }, `${asset} closed.`);
+      }
+
+      async editStop(id, asset, stop) {
+        const next = prompt(`Stop for ${asset}`, stop != null ? Number(stop).toFixed(2) : '');
+        if (next === null) return;
+        await this.patchTrade(id, { stop: next === '' ? null : next }, `${asset} stop updated.`);
+      }
+
+      async editNote(id, asset, note) {
+        const next = prompt(`Note on ${asset} — why you took it, what would change your mind`, note || '');
+        if (next === null) return;
+        await this.patchTrade(id, { note: next }, 'Noted.');
+      }
+
+      async reopenTrade(id, asset) {
+        if (!confirm(`Reopen ${asset}? Its exit is cleared and it counts as open again.`)) return;
+        await this.patchTrade(id, { exit: null }, `${asset} reopened.`);
+      }
+
+      async deleteTrade(id, asset) {
+        if (!confirm(`Delete ${asset} from the book? This cannot be undone.`)) return;
+        try {
+          const res = await fetch('/api/book/' + id, { method: 'DELETE' });
+          if (!res.ok) throw new Error('could not delete it');
+          this.toast(`${asset} removed from the book.`, { kind: 'info' });
+          this.book = null; this.fetchBook();
+        } catch (e) { this.toast(e.message, { kind: 'warn' }); }
+      }
+
+      async patchTrade(id, body, okMsg) {
+        try {
+          const res = await fetch('/api/book/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error || 'could not save it');
+          this.toast(okMsg, { kind: 'success' });
+          this.book = null; this.fetchBook();
+        } catch (e) { this.toast(e.message, { kind: 'warn' }); }
+      }
+
+      renderBookPanel() {
+        const b = this.book;
+        const st = b?.stats || {};
+        const run = b?.running || {};
+        const n2 = (v, d = 2) => v == null ? '<span class="text-gray-600">—</span>' : `<span class="font-mono tabular-nums">${CUR}${this.safeNum(v, d)}</span>`;
+        const rFmt = (v) => v == null ? '<span class="text-gray-600">—</span>'
+          : `<span class="font-mono tabular-nums font-semibold ${v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-300'}">${v > 0 ? '+' : ''}${v.toFixed(2)}R</span>`;
+        const pFmt = (v) => v == null ? '<span class="text-gray-600">—</span>'
+          : `<span class="font-mono tabular-nums ${v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-gray-400'}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
+        const dt = (v) => v ? new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+        const esc = (x) => String(x || '').replace(/'/g, "\\'");
+
+        const tile = (label, value, sub) => `
+          <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-3">
+            <div class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">${label}</div>
+            <div class="mt-0.5 text-xl font-bold">${value}</div>
+            ${sub ? `<div class="mt-0.5 text-[11px] text-gray-500">${sub}</div>` : ''}
+          </div>`;
+
+        const openRow = (p) => `
+          <tr class="border-b border-gray-700/50 hover:bg-gray-700/20">
+            <td class="px-3 py-2.5 whitespace-nowrap"><button onclick="dashboard.openAsset('${esc(p.asset)}')" class="font-mono font-bold text-blue-400 hover:text-blue-300">${p.asset}</button>${p.signalGrade ? ` <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30">${p.signalGrade}</span>` : ''}${p.signalKind && p.signalKind !== 'pivot' && p.signalKind !== 'manual' ? ` <span class="text-[10px] text-gray-500">${p.signalKind}</span>` : ''}</td>
+            <td class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${dt(p.openedAt)} · ${p.days}d</td>
+            <td class="px-3 py-2.5 text-right">${n2(p.entry)}</td>
+            <td class="px-3 py-2.5 text-right">${p.stop == null ? '<button onclick="dashboard.editStop(\'' + p.id + '\', \'' + esc(p.asset) + '\', null)" class="text-[11px] px-1.5 py-0.5 rounded ring-1 ring-amber-500/40 text-amber-300">set a stop</button>' : `<button onclick="dashboard.editStop('${p.id}', '${esc(p.asset)}', ${p.stop})" class="hover:underline">${CUR}${this.safeNum(p.stop, 2)}</button>`}</td>
+            <td class="px-3 py-2.5 text-right">${n2(p.last)}</td>
+            <td class="px-3 py-2.5 text-right">${pFmt(p.pct)}</td>
+            <td class="px-3 py-2.5 text-right">${rFmt(p.r)}</td>
+            <td class="px-3 py-2.5 text-right text-xs text-gray-400">${p.openRisk != null ? CUR + this.safeNum(p.openRisk, 0) : '—'}</td>
+            <td class="px-3 py-2.5 text-right whitespace-nowrap">
+              <button onclick="dashboard.closeTrade('${p.id}', '${esc(p.asset)}', ${p.last ?? 'null'})" class="text-[11px] px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-200">Close</button>
+              <button onclick="dashboard.editNote('${p.id}', '${esc(p.asset)}', ${JSON.stringify(p.note || '')})" class="text-[11px] px-1.5 py-0.5 rounded text-gray-400 hover:text-white" title="${p.note ? 'Note: ' + String(p.note).slice(0, 120) : 'Add a note'}">${p.note ? '✎' : '+note'}</button>
+            </td>
+          </tr>`;
+
+        const closedRow = (p) => `
+          <tr class="border-b border-gray-700/50 hover:bg-gray-700/20">
+            <td class="px-3 py-2.5 whitespace-nowrap"><button onclick="dashboard.openAsset('${esc(p.asset)}')" class="font-mono font-semibold text-blue-400 hover:text-blue-300">${p.asset}</button></td>
+            <td class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${dt(p.openedAt)} → ${dt(p.closedAt)} · ${p.days}d</td>
+            <td class="px-3 py-2.5 text-right">${n2(p.entry)}</td>
+            <td class="px-3 py-2.5 text-right">${n2(p.exit)}</td>
+            <td class="px-3 py-2.5 text-right">${pFmt(p.pct)}</td>
+            <td class="px-3 py-2.5 text-right">${rFmt(p.r)}</td>
+            <td class="px-3 py-2.5 text-right whitespace-nowrap">
+              <button onclick="dashboard.reopenTrade('${p.id}', '${esc(p.asset)}')" class="text-[11px] px-1.5 py-0.5 rounded text-gray-400 hover:text-white">reopen</button>
+              <button onclick="dashboard.deleteTrade('${p.id}', '${esc(p.asset)}')" class="text-[11px] px-1.5 py-0.5 rounded text-gray-500 hover:text-red-400">delete</button>
+            </td>
+          </tr>`;
+
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-4 md:p-8 bg-gray-900" data-keep-scroll="book-y">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-5 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Book</h1>
+                  <p class="text-gray-500 text-sm">Your own trades, kept beside the screen that found them. Nothing here is written by the agent.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="dashboard.logTrade(prompt('Ticker to log') || '')" class="px-3 py-1.5 rounded-md text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white">Log a trade</button>
+                  <button onclick="dashboard.book = null; dashboard.fetchBook()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60">Refresh</button>
+                </div>
+              </div>
+
+              ${this.bookLoading && !b ? '<div class="text-center py-16 text-gray-500 text-sm">Opening the book…</div>' : b?.error ? `<div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg p-6 text-sm text-red-300">${b.error}</div>` : `
+                <!-- This week: the part meant to be looked at daily -->
+                <div class="bg-gray-800/40 ring-1 ring-gray-700/60 rounded-lg p-4 mb-5">
+                  <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+                    <h2 class="font-semibold">This week</h2>
+                    <span class="text-[11px] text-gray-500">${run.lastUpdated ? 'last touched ' + this.formatRelative(new Date(run.lastUpdated).toISOString()) : 'nothing logged yet'}</span>
+                  </div>
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    ${tile('Open', String(run.openCount ?? 0), run.openCount ? 'positions being carried' : 'nothing open')}
+                    ${tile('Opened', String((run.openedThisWeek || []).length), (run.openedThisWeek || []).map(x => x.asset).join(', ') || 'none this week')}
+                    ${tile('Closed', String((run.closedThisWeek || []).length), (run.closedThisWeek || []).map(x => x.asset).join(', ') || 'none this week')}
+                    ${tile('Realised', run.realisedR != null && (run.closedThisWeek || []).length ? `<span class="${run.realisedR > 0 ? 'text-green-400' : run.realisedR < 0 ? 'text-red-400' : ''}">${run.realisedR > 0 ? '+' : ''}${Number(run.realisedR).toFixed(2)}R</span>` : '—', 'this week, in risk units')}
+                  </div>
+                  ${(run.attention || []).length ? `
+                    <div class="mt-3 grid gap-1.5">
+                      ${run.attention.map(a => `<div class="flex items-center gap-2 text-[13px]"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span><button onclick="dashboard.openAsset('${esc(a.asset)}')" class="font-mono font-semibold text-blue-400 hover:text-blue-300">${a.asset}</button><span class="text-gray-300">${a.why}</span><span class="text-gray-500 text-xs">${a.detail}</span></div>`).join('')}
+                    </div>` : '<div class="mt-3 text-[13px] text-gray-500">Nothing in the book is asking for attention.</div>'}
+                  ${(run.notLogged || []).length ? `
+                    <div class="mt-3 pt-3 border-t border-gray-700/50 text-[13px]">
+                      <span class="text-gray-400">Emailed this week and not in the book:</span>
+                      ${run.notLogged.map(a => `<button onclick="dashboard.logTrade('${esc(a)}')" class="ml-1.5 font-mono text-[12px] px-1.5 py-0.5 rounded bg-gray-700/60 text-blue-300 ring-1 ring-gray-600/40 hover:bg-gray-700" title="Log ${a}">${a} +</button>`).join('')}
+                    </div>` : ''}
+                </div>
+
+                <!-- Open positions -->
+                <div class="mb-6">
+                  <h2 class="font-semibold mb-2">Open <span class="text-gray-500 font-normal text-sm">${(b.open || []).length}</span></h2>
+                  ${(b.open || []).length ? `
+                    <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60">
+                      <table class="w-full text-sm" style="min-width:820px;">
+                        <thead><tr class="border-b border-gray-600 text-[11px] uppercase tracking-wider text-gray-300">
+                          <th class="px-3 py-2.5 text-left font-semibold">Ticker</th><th class="px-3 py-2.5 text-left font-semibold">Opened</th>
+                          <th class="px-3 py-2.5 text-right font-semibold">Entry</th><th class="px-3 py-2.5 text-right font-semibold">Stop</th>
+                          <th class="px-3 py-2.5 text-right font-semibold">Last</th><th class="px-3 py-2.5 text-right font-semibold">Move</th>
+                          <th class="px-3 py-2.5 text-right font-semibold"><span data-tip="The move divided by the risk you took from entry to stop. The unit the exit study reports in.">R</span></th>
+                          <th class="px-3 py-2.5 text-right font-semibold"><span data-tip="What it would cost from here if the stop were hit.">At risk</span></th>
+                          <th class="px-3 py-2.5"></th>
+                        </tr></thead>
+                        <tbody>${(b.open || []).map(openRow).join('')}</tbody>
+                      </table>
+                    </div>` : '<div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-6 text-sm text-gray-500">Nothing open. Log one from here, or from any ticker on the screener.</div>'}
+                </div>
+
+                <!-- Closed -->
+                <div>
+                  <div class="flex items-baseline justify-between flex-wrap gap-2 mb-2">
+                    <h2 class="font-semibold">Closed <span class="text-gray-500 font-normal text-sm">${(b.closed || []).length}</span></h2>
+                    ${st.closed ? `<span class="text-[12px] text-gray-400">${st.wins} of ${st.closed} positive · ${st.winRate}% · average ${st.avgR > 0 ? '+' : ''}${st.avgR}R · profit factor ${st.profitFactor ?? '—'} · held ${st.avgDays}d on average</span>` : ''}
+                  </div>
+                  ${(b.closed || []).length ? `
+                    <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60">
+                      <table class="w-full text-sm" style="min-width:680px;">
+                        <thead><tr class="border-b border-gray-600 text-[11px] uppercase tracking-wider text-gray-300">
+                          <th class="px-3 py-2.5 text-left font-semibold">Ticker</th><th class="px-3 py-2.5 text-left font-semibold">Held</th>
+                          <th class="px-3 py-2.5 text-right font-semibold">Entry</th><th class="px-3 py-2.5 text-right font-semibold">Exit</th>
+                          <th class="px-3 py-2.5 text-right font-semibold">Move</th><th class="px-3 py-2.5 text-right font-semibold">R</th><th class="px-3 py-2.5"></th>
+                        </tr></thead>
+                        <tbody>${(b.closed || []).map(closedRow).join('')}</tbody>
+                      </table>
+                    </div>
+                    <p class="mt-2 text-[11px] text-gray-500">Win rate, average R and profit factor are computed the way the studies compute them, so your record sits next to the screen's published numbers on the same terms.</p>
+                  ` : '<div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg px-4 py-6 text-sm text-gray-500">Nothing closed yet.</div>'}
+                </div>
+              `}
+            </div>
+          </div>`;
+      }
+
       renderShortlistPanel() {
         const activeId = this.activeListId;
         const activeName = this.lists.find(l => l.id === activeId)?.name || '';
@@ -4871,6 +5103,8 @@
         this.renderNavBar();
         if (this.view === 'chart') {
           this.renderChartPanel();
+        } else if (this.view === 'book') {
+          this.renderBookPanel();
         } else if (this.view === 'backtest') {
           this.renderBacktestPanel();
         } else if (this.view === 'shortlist') {
