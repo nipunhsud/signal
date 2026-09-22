@@ -695,7 +695,7 @@ export class BreakoutAgent {
           ? "Trend template ✓"
           : `Trend template ✗${!breakoutAnalysis.ma200Rising ? " (200MA falling)" : breakoutAnalysis.pctAbove52wLow < 30 ? ` (${breakoutAnalysis.pctAbove52wLow.toFixed(0)}% off the 52w low)` : ""}`,
         breakoutAnalysis.deepBase
-          ? `Deep base ${breakoutAnalysis.baseDepthPct.toFixed(0)}%, cleared the pivot by ${breakoutAnalysis.pivotClearancePct.toFixed(1)}%${breakoutAnalysis.deepBasePremium ? " (tight coil, dry base)" : ""}`
+          ? `Deep base ${breakoutAnalysis.baseDepthPct.toFixed(0)}%, cleared the pivot by ${breakoutAnalysis.pivotClearancePct.toFixed(1)}% (entry is the close, not the pivot)${breakoutAnalysis.deepBasePremium ? ", tight coil and dry base" : ""}`
           : null,
         breakoutAnalysis.activity
           ? `Activity ${breakoutAnalysis.activity.score}/10 (${breakoutAnalysis.activity.acc} up / ${breakoutAnalysis.activity.dist} down heavy days, ${breakoutAnalysis.activity.bigUp} print${breakoutAnalysis.activity.bigUp === 1 ? "" : "s"})`
@@ -811,8 +811,16 @@ export class BreakoutAgent {
       // bar's own high: MRNA 2026-08-19 set $176.66 while price sat at $146),
       // and freezing it produced phantom "stopped out" rows. Graded breakouts
       // clear their pivot by definition; other flips wait for a close above.
-      const flipLevel =
-        pivotBreakout && breakoutAnalysis.basePivot > 0
+      // A deep-base alert freezes the BREAKOUT CLOSE, not the pivot. The rule
+      // requires the close to clear the pivot by 3%+ and the average qualifier
+      // clears it by 6.6%, so the pivot is a level the price has already left
+      // and no reader could get. The study measures this kind from the close
+      // too, so the entry, the 7% fail level and every reported return line up
+      // with the evidence. Graded breakouts keep the pivot: their close sits
+      // within a couple of percent of it.
+      const flipLevel = isDeepBreakout
+        ? data.close
+        : isGradedBreakout && breakoutAnalysis.basePivot > 0
           ? breakoutAnalysis.basePivot
           : breakoutAnalysis.resistance;
       const levelCleared = pivotBreakout || data.close >= flipLevel * 0.995;
@@ -1274,7 +1282,7 @@ export class BreakoutAgent {
     ].filter(Boolean);
     // A deep base is a different bet from a graded one and the email says so.
     const deepLine = rec.deepBase
-      ? `This one is a deep base, ${rec.baseDepthPct ? Number(rec.baseDepthPct).toFixed(0) + "% " : ""}under its pivot at the low, which the grade rules exclude at 25%. It cleared the pivot decisively on real volume, which is what separates the band: over 1,517 of those since 1985, 52% were positive 20 bars on, 50% touched the fail level, and 32% ran 20% or more within 60 bars, against 14% for graded breakouts. Bigger winners, more failures.`
+      ? `This one is a deep base, ${rec.baseDepthPct ? Number(rec.baseDepthPct).toFixed(0) + "% " : ""}under its pivot at the low, which the grade rules exclude at 25%. It cleared that pivot decisively on real volume, which is what separates the band, and the level above is the close it cleared at — not the pivot, which the price has already left. Over 1,057 of these since 1985, 53% were positive 20 bars on, 52% touched the fail level, and 34% ran 20% or more within 60 bars, against 14% for graded breakouts. Bigger winners, more failures.`
       : null;
     // Shelf (cheat) entry: the emailed level sits inside a base that has not resolved.
     const shelfNow = classifyShelf({

@@ -95,7 +95,7 @@ export interface BreakoutAnalysis {
   // contraction. <3%: 59.9% win / 9.3% stop but 2.6% reach +20%; >=12%: 53.5%
   // / 48.4% / 31.6%. Tight = low fail rate, small move. Label only.
   pivotTightPct: number;
-  deepBase: boolean; // 25-35% deep blue-sky base, 8wk+, cleared by 2%+ on 1.5x volume
+  deepBase: boolean; // 25-35% deep blue-sky base, 8wk+, cleared by 3%+ on 1.5x volume
   pivotClearancePct: number; // today's close vs the base pivot, %
   deepBasePremium: boolean; // the same with a tight coil and a dry base (label only)
   activity: MarketData["activity"] | null; // tape activity 0-10 (activity.js); label + ranking, never a gate
@@ -445,15 +445,21 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   // What sorts the band is not brute volume but a DECISIVE clearance of the
   // pivot on real volume. Sweeping the volume threshold alone flattens out
   // (1.8x ran 2.34, 2.0x 2.39, 2.5x 2.38 — a plateau, not a cliff), while the
-  // close's distance above the pivot separates hard: within 2% of it ran 1.79,
-  // 2-5% past 2.11, 5-10% past 2.83. Requiring both — 1.5x volume and a close
-  // at least 2% through the pivot — ran PF 2.42 / 31.7% reached +20% / +5.12%
-  // mean 60-bar (n=1,517), against 2.39 / 28.4% / +4.05% for a bare 2x, and it
-  // beat the bare 2x in three decades of five. It also catches the two cases
-  // that prompted the rule: INTC April 2026 (1.83x, 8.3% clear, ran +112%) and
-  // AMD September 2026 (1.84x, 5.3% clear), both of which a 2x gate refused.
-  // The same pair is far weaker in the band the grade keeps (1.91 vs a 1.76
-  // baseline), so this is a deep-band effect, not a factor mistaken for one.
+  // close's distance above the pivot keeps paying the whole way: with 1.5x
+  // volume, a 1% clearance ran PF 2.33, 2% ran 2.42, 3% ran 2.61, 5% ran 2.78,
+  // 8% ran 3.05. The threshold sits at 3%: it beat 2% in four decades of five
+  // (the 1980s exception is 29 cases) and still leaves about 26 alerts a year,
+  // where 5% leaves 12 and 8% leaves 6 — too thin to trust.
+  // The study's entry is the breakout CLOSE, so paying up for the clearance is
+  // already inside those numbers; buying strength decisively is what works,
+  // not buying the pivot cheaply. The agent therefore freezes the close as the
+  // entry for this kind, not the pivot, which at a 3% floor the price has
+  // already left by 6.6% on average.
+  // It also catches the two cases that prompted the rule: INTC April 2026
+  // (1.83x, cleared by 8.3%, ran +112%) and AMD September 2026 (1.84x, 5.3%),
+  // both refused by a 2x gate. The same pair is far weaker in the band the
+  // grade keeps (1.91 against a 1.76 baseline), so this is a deep-band effect,
+  // not a factor mistaken for one.
   //
   // Tightness before the breakout is deliberately NOT required: inside this
   // band it LOWERS the profit factor (tight under 6% ran 1.74-1.79, loose 12%+
@@ -472,7 +478,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const pivotClearancePct =
     gb && gb.pivot > 0 ? ((close - gb.pivot) / gb.pivot) * 100 : 0;
   const deepTrigger =
-    avgVolume > 0 && volume >= avgVolume * 1.5 && pivotClearancePct >= 2;
+    avgVolume > 0 && volume >= avgVolume * 1.5 && pivotClearancePct >= 3;
   const deepBase = deepShape && deepTrigger;
   // A label, not a gate: the same slice with a tight coil and a dry base ran
   // PF 3.39, on only 189 cases in forty years.

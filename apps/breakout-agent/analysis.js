@@ -87,7 +87,7 @@ export function buildDossier({ symbol, bars, bases = [], activity = null, signal
   hitRate.push(deepQualifies && !grade
     ? f('Base kind', 'deep base',
         `${depth}% deep, blue sky, ${weeks} weeks — past the 25% the grade rules allow, inside the deep-base band.`,
-        'The 25-35% band the depth cut drops ran a 2.08 profit factor against 1.84 for graded bases, with 24.5% reaching +20% against 13.9%, at a 41% fail-level touch rate against 28%. Cleared by 2% or more on 1.5x volume it ran 2.42 and 31.7%. Bigger winners, more failures.',
+        'The 25-35% band the depth cut drops ran a 2.08 profit factor against 1.84 for graded bases, with 24.5% reaching +20% against 13.9%, at a 41% fail-level touch rate against 28%. Cleared by 3% or more on 1.5x volume it ran 2.61 and 34.2%, measured from the close it cleared at. Bigger winners, more failures.',
         'context', LEARN.base)
     : grade
     ? f('Base grade', grade,

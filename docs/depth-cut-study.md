@@ -159,15 +159,38 @@ so it is a replacement, not an addition.
 applied to the bases the grade keeps lifts the profit factor from 1.76 to 1.91.
 In the deep band it lifts 1.76 to 2.42.
 
-**Shipped rule, replacing the 2x gate:** 1.5x volume **and** a close at least
-2% through the pivot. Fewer alerts (37 a year against 62), a better profit
-factor, half again the mean 60-bar return, and it catches both names that
-prompted the question. The price is a higher fail-level touch rate, 50%
-against 45%, which the label states.
+**The clearance curve has no turn.** I said 2% was where it turned. It is not:
+with 1.5x volume the profit factor climbs the whole way, and so does the fail
+rate, while the alert count collapses.
 
-The 3% clearance variant is better still on every measure. It is not shipped
-because 2% is already the point where the curve turns and 3% halves the
-alerts; if a month of live alerts looks noisy, that is the first dial to turn.
+| Clearance floor | per year | fail-level touch | reach +20% | mean 60-bar | PF |
+|---|---|---|---|---|---|
+| any | 82 | 42.9% | 26.6% | +3.92% | 2.20 |
+| 1% | 56 | 46.0% | 28.9% | +4.48% | 2.33 |
+| 2% | 37 | 50.0% | 31.7% | +5.12% | 2.42 |
+| **3%** | **26** | **52.4%** | **34.2%** | **+5.58%** | **2.61** |
+| 4% | 18 | 53.7% | 36.7% | +5.47% | 2.78 |
+| 5% | 12 | 55.7% | 37.2% | +5.83% | 2.78 |
+| 8% | 6 | 59.6% | 38.7% | +6.56% | 3.05 |
+
+There is no optimum in the profit factor, so the threshold is a choice about
+cadence and sample. **3% is shipped.** It beat 2% in four decades of five (the
+1980s exception is 29 cases), and it leaves about 26 alerts a year. At 5% there
+are 12 a year and at 8% six, which is too thin to trust a live rule on.
+
+**The entry is the close, not the pivot.** At a 3% floor the average qualifier
+has already left its pivot by 6.6%, so the pivot is a level no reader could
+get, and the study measures this kind from the breakout close. The agent
+therefore freezes the close for a deep-base alert and sets the 7% fail level
+under it. Every number above is net of paying up for the clearance, which is
+the point: buying strength decisively beat buying the pivot cheaply. Graded
+breakouts keep the pivot, because their close sits within a couple of percent
+of it.
+
+**Shipped rule, replacing the 2x gate:** 1.5x volume **and** a close at least
+3% through the pivot, entered at that close. About 26 alerts a year against 62,
+a 2.61 profit factor against 2.39, a 34.2% chance of a 20% run against 28.4%.
+The price is a 52% fail-level touch rate against 45%, which the label states.
 
 ## What this means for the product
 
@@ -181,8 +204,8 @@ justifies.
 
 **Shipped** as a deep-base kind of its own, separate from S/A+/A: blue-sky
 pivot, 25–35% deep, 8 weeks or longer, above a rising 200-day, emailed when the
-close clears the pivot by 2% or more on 1.5x volume (see the second addendum
-for why that pair and not a bare 2x), with the standing RS 89 and confidence
+close clears the pivot by 3% or more on 1.5x volume and entered at that close
+(see the second addendum for why that pair, that threshold and that entry), with the standing RS 89 and confidence
 80% floor on top. Its label carries the higher fail rate in words, and the 20%
 trail matters more here than anywhere else because the payoff is in the tail.
 

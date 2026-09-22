@@ -72,7 +72,7 @@ test('a shelf breakout inside an ungraded base still classifies as Type1 for tra
 
 const deepGb = (over = {}) => gb({ depthPct: 28, bars: 56, sky: true, status: 'breakout', brokeOutToday: true, dryUp: 0.7, coil: 0.75, ...over });
 
-test('deep base: 25-35% deep, blue sky, 8wk+, cleared by 2%+ on 1.5x volume', () => {
+test('deep base: 25-35% deep, blue sky, 8wk+, cleared by 3%+ on 1.5x volume', () => {
   // the grade still refuses it — that is the point of the kind
   const r = analyzeBreakout(md({ close: 103, high: 103.5, volume: 1.6e6, gradedBase: deepGb() }));
   assert.equal(r.baseGrade, null, 'past the 25% the grade allows');
@@ -86,6 +86,7 @@ test('deep base: each condition is load-bearing', () => {
   const deep = (o = {}) => analyzeBreakout(md({ close: 103, high: 103.5, volume: 1.6e6, ...o }));
   assert.equal(deep({ volume: 1.4e6, gradedBase: deepGb() }).deepBase, false, 'under 1.5x volume');
   assert.equal(deep({ close: 101, high: 101.5, gradedBase: deepGb() }).deepBase, false, 'a 1% clearance is not decisive');
+  assert.equal(deep({ close: 102.5, high: 103, gradedBase: deepGb() }).deepBase, false, '2.5% is under the 3% floor');
   assert.equal(deep({ gradedBase: deepGb({ depthPct: 24 }) }).deepBase, false, '24% deep is a graded base, not this kind');
   assert.equal(deep({ gradedBase: deepGb({ depthPct: 36 }) }).deepBase, false, 'past 35% is broken structure');
   assert.equal(deep({ gradedBase: deepGb({ bars: 30 }) }).deepBase, false, 'under 8 weeks');
@@ -108,6 +109,14 @@ test('deep base does not require tightness into the pivot: the study says it hur
   const src = readFileSync(new URL('../src/tools/breakout-logic.ts', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('const deepShape'), src.indexOf('const deepBasePremium'));
   assert.doesNotMatch(block, /pivotTightPct|tight10/, 'no tightness condition in the gate');
-  assert.match(block, /pivotClearancePct >= 2/, 'the clearance is what sorts the band');
+  assert.match(block, /pivotClearancePct >= 3/, 'the clearance is what sorts the band');
   assert.match(src, /Tightness before the breakout is deliberately NOT required/);
+});
+
+test('a deep-base alert freezes the close it cleared at, not the pivot it left', () => {
+  const src = readFileSync(new URL('../src/agent.ts', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('const flipLevel = isDeepBreakout'), src.indexOf('const levelCleared'));
+  assert.match(block, /isDeepBreakout\s*\?\s*data\.close/, 'deep uses the breakout close');
+  assert.match(block, /isGradedBreakout && breakoutAnalysis\.basePivot > 0/, 'graded still uses the pivot');
+  assert.match(src, /entry is the close, not the pivot/);
 });
