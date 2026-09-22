@@ -281,6 +281,12 @@
       },
       // POST with one retry after a session refresh: an expired Clerk cookie
       // answers 401 even though the user is signed in.
+      // What the host has on screen (the open chart, the reader's own lines).
+      // The standalone page has none; the dashboard panel supplies it.
+      onScreen() {
+        if (typeof opts.context !== 'function') return null;
+        try { return opts.context() || null; } catch { return null; }
+      },
       async post(body, signal) {
         const req = (retry) => fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(retry ? { 'X-Auth-Retry': '1' } : {}) }, body: JSON.stringify(body), signal });
         let r = await req(false);
@@ -322,7 +328,7 @@
         const ac = new AbortController();
         this._abort = ac;
         try {
-          const r = await this.post({ messages: this.history, region: this.region }, ac.signal);
+          const r = await this.post({ messages: this.history, region: this.region, context: this.onScreen() }, ac.signal);
           if (r.status === 401) { location.href = '/?ref=chat&next=' + encodeURIComponent(location.pathname); return; }
           if (r.status === 402) { location.href = '/upgrade'; return; }
           if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'HTTP ' + r.status); }

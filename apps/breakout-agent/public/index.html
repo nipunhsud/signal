@@ -3502,6 +3502,7 @@
                     <button onclick="dashboard.clearDrawings()" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Remove every line you drew on this ticker">Clear</button>
                   </span>
                   <span class="w-px h-4 bg-gray-700 mx-1"></span>
+                  <button onclick="dashboard.saveChart()" class="px-2.5 py-1 rounded text-xs font-semibold transition ${pill(false)}" title="Save this chart as an image, with the levels, the base boxes and your lines">Save</button>
                   <button onclick="dashboard.shareChart()" class="px-2.5 py-1 rounded text-xs font-semibold transition bg-sky-600/20 text-sky-300 ring-1 ring-sky-500/40 hover:bg-sky-600/30" title="${this.isAdmin ? 'Post this chart to X with the levels and your lines' : 'Save the chart as an image and open a post on X'}">Share to X</button>
                 </div>
               </div>
@@ -3787,6 +3788,7 @@
         if (!this._chat && window.DQChat) {
           this._chat = DQChat.mount(document.getElementById('chat-mount'), {
             region: REGION, compact: true,
+            context: () => this.chatContext(),
             onEscape: () => this.closeChat(),
             onOpenTicker: (t) => this.openAsset(t),
             refreshAuth: () => this.loadClerk().then((c) => c.session?.getToken()),
@@ -3810,6 +3812,62 @@
         this._onViewportChange();
       }
       toggleChat() { if (this.chatOpen) this.closeChat(); else { this.openChat(); this._chat?.focus(); } }
+
+      // What the reader is looking at, handed to the chat with every question.
+      // Without it the chat knew only the alert pool and answered "not in the
+      // pool" about a chart that was open on screen.
+      chatContext() {
+        const ctx = { view: this.view, region: REGION };
+        const asset = this.view === 'chart' ? this.chartAsset : (this.selectedAsset?.asset || null);
+        if (!asset) return ctx;
+        ctx.asset = asset;
+        if (this.view === 'chart') {
+          ctx.chart = {
+            timeframe: this.chartTf === 'w' ? 'weekly' : 'daily',
+            range: this.chartRange,
+            movingAverages: [this.chartMA50 ? 50 : null, this.chartMA200 ? 200 : null].filter(Boolean),
+          };
+          const kind = { segment: 'trendline', rayLine: 'ray', horizontalStraightLine: 'level' };
+          const lines = (this._loadDrawings() || []).map((d) => ({
+            kind: kind[d.name] || d.name,
+            points: (d.points || []).map((p) => ({
+              date: Number.isFinite(p.timestamp) ? new Date(p.timestamp).toISOString().slice(0, 10) : null,
+              price: Number.isFinite(p.value) ? Math.round(p.value * 100) / 100 : null,
+            })).filter((p) => p.date && p.price != null),
+          })).filter((l) => l.points.length);
+          if (lines.length) ctx.drawnByReader = lines;
+        }
+        const bc = this._basesCache;
+        if (bc && bc.asset === asset && bc.data && Array.isArray(bc.data.bases)) {
+          ctx.bases = bc.data.bases.slice(-3).map((b) => ({
+            start: b.start, end: b.end, weeks: b.weeks, depthPct: b.depthPct, pivot: b.pivot,
+            status: b.status, brokeOut: b.breakout?.date || null, runPct: b.breakout?.runPct ?? null,
+          }));
+        }
+        const sig = (this.signals || []).find((s) => s.asset === asset);
+        if (sig) {
+          ctx.signal = {
+            grade: sig.baseGrade || null, pivot: sig.basePivot ?? null, price: sig.currentPrice ?? null,
+            rs: sig.rsRating ?? null, activity: sig.activity?.score ?? null, emailed: sig.alertedAt || null,
+          };
+        }
+        return ctx;
+      }
+
+      // Save the chart as it stands — levels, base boxes and the reader's own
+      // lines — as a PNG.
+      async saveChart() {
+        try {
+          const png = await this._composeChartPng();
+          const a = document.createElement('a');
+          a.href = png;
+          a.download = `${this.chartAsset}-${this.chartTf === 'w' ? 'weekly' : 'daily'}-${new Date().toISOString().slice(0, 10)}.png`;
+          document.body.appendChild(a); a.click(); a.remove();
+          this.toast('Chart saved to your downloads.', { kind: 'success' });
+        } catch (err) {
+          this.toast('Save failed: ' + err.message, { kind: 'warn' });
+        }
+      }
       // From a row, the ticker drawer or the chart: open the panel with this
       // name selected, so the next question is about it.
       askChat(asset) {
