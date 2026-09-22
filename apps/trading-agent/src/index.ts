@@ -20,10 +20,17 @@ if (!config.enabled) {
     process.exit(1);
   });
 }
-const problems = validateConfig(config);
-if (problems.length) {
-  console.error("[trader] refusing to start:\n  - " + problems.join("\n  - "));
-  process.exit(1);
+// Only a trader that is meant to run has to pass validation. This block used
+// to run unconditionally, so a disabled container idled on the line above and
+// then exited 1 here for missing Alpaca keys — under `restart: unless-stopped`
+// that is a restart loop, which is exactly what the idle path was added to
+// avoid (it ran every few seconds on the droplet for days).
+if (config.enabled) {
+  const problems = validateConfig(config);
+  if (problems.length) {
+    console.error("[trader] refusing to start:\n  - " + problems.join("\n  - "));
+    process.exit(1);
+  }
 }
 
 const broker = new AlpacaBroker(config.alpaca);
