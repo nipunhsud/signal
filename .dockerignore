@@ -1,0 +1,34 @@
+# The build context is sent to the daemon in full on every build, and the
+# breakout-agent Dockerfile then COPYs apps/breakout-agent/ wholesale into the
+# image. Without this file that meant 4.4 GB of context per build and a
+# 4.72 GB dashboard image, almost all of it study-cache — forty years of daily
+# bars for 5,485 symbols that only the offline study scripts in src/scripts/
+# ever read, and nothing at runtime touches.
+#
+# That is why deploy.sh has to prune images before every build to stop the
+# droplet's disk filling.
+apps/breakout-agent/study-cache/
+apps/trading-agent/study-cache/
+
+# Installed inside the image by `pnpm install --frozen-lockfile`.
+node_modules/
+**/node_modules/
+
+# Built inside the image by `pnpm -F breakout-agent build`.
+apps/breakout-agent/dist/
+apps/trading-agent/dist/
+
+# Never needed to run the app.
+.git/
+.github/
+docs/
+*.md
+!apps/breakout-agent/**/*.md
+.claude/
+.env
+.env.*
+!.env.tiers/
+test-results/
+playwright-report/
+*.log
+.DS_Store
