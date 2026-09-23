@@ -2,6 +2,7 @@
 // Run with: node server.js
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
+import { mergeGapBars } from './candle-gaps.js';
 import { classifyShelf } from './shelf.js';
 import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
@@ -2088,12 +2089,39 @@ function shapeCandles(bars, range, tf) {
 
 // Shared 2y-daily-bar getter behind the cache; throws only when there is no
 // fresh data AND no stale fallback. Reused by /api/candles and /api/bases.
+// Yahoo publishes a timestamp for every session but sometimes leaves its OHLC
+// null. On 2026-09-22 it did that for every US symbol, SPY and QQQ included,
+// and fetchYahooCandles drops a null bar as a gap. The whole session then
+// vanished from the chart, the base boxes, the analysis and the chat, because
+// all four read getDailyCandles. The bar store holds the settled FMP bar for
+// exactly those sessions, so a hole gets filled rather than skipped. Only
+// sessions inside the range Yahoo returned are filled, so the 2y window and
+// the chart's own range control stay put.
+async function fillYahooGaps(symbol, bars) {
+  if (!bars.length) return bars;
+  let store;
+  try {
+    store = await loadDbCandles(symbol);
+  } catch (e) {
+    console.warn(`[candles] ${symbol}: store read failed while filling gaps: ${e.message}`);
+    return bars;
+  }
+  const merged = mergeGapBars(bars, store);
+  if (merged.length !== bars.length) {
+    const have = new Set(bars.map((b) => b.time));
+    console.log(`[candles] ${symbol}: filled ${merged.length - bars.length} session(s) Yahoo returned null: ${merged.filter((b) => !have.has(b.time)).map((b) => b.time).join(', ')}`);
+  }
+  return merged;
+}
+
 async function getDailyCandles(symbol) {
   const cached = candlesCache.get(symbol);
   if (cached && cached.expiresAt > Date.now()) return cached.bars;
   let bars;
+  let fromYahoo = false;
   try {
     bars = await fetchYahooCandles(symbol);
+    fromYahoo = true;
   } catch (yErr) {
     // Yahoo down or rate-limiting this host: the bar store first, FMP last.
     try {
@@ -2115,6 +2143,7 @@ async function getDailyCandles(symbol) {
     if (cached) return cached.bars;
     return [];
   }
+  if (fromYahoo) bars = await fillYahooGaps(symbol, bars);
   console.log(`[candles] ${symbol} = ${bars.length} bars`);
   candlesCache.set(symbol, { bars, expiresAt: Date.now() + CANDLES_TTL_MS });
   return bars;
