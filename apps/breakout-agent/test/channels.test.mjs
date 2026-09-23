@@ -168,3 +168,32 @@ test('email: confidence does not gate an email, and volume does', () => {
 test('the gate still refuses a name with no RS rank', () => {
   assert.match(between(agent, 'const qualityOk =', ';'), /rsRating != null/);
 });
+
+// Confidence drove the dashboard's quality signals too, and every one of them
+// marked the worse half. Measured over 97,563 graded breakouts, by profit
+// factor: the elite tint (0.99+) ran 1.72 against 2.14 for the yellow band,
+// and the star (0.90+) ran 1.81 against 2.09 for the rows without one. The
+// minimum-confidence slider defaulted to 85, which hid every row scoring 0.10
+// — the 78% of graded breakouts that are not Type1, and the better-performing
+// majority. All of it is gone; RS took the slider and the sort.
+test('dashboard: confidence no longer colours, stars, tints, filters or sorts', () => {
+  assert.doesNotMatch(dash, /minConfidence/, 'the confidence floor filter is gone');
+  assert.doesNotMatch(dash, /tier-elite|tier-strong/, 'rows are not tinted by confidence');
+  assert.doesNotMatch(dash, /★ High/, 'no high-confidence star');
+  assert.doesNotMatch(dash, /confTextColor|confColor/, 'no confidence colour ramp');
+  assert.doesNotMatch(dash, /\$\{signal\.confidence\}/, 'confidence is not rendered on a row or card');
+  assert.doesNotMatch(dash, /toggleSort\('confidence'/, 'no confidence column to sort');
+  assert.doesNotMatch(between(dash, 'const sortVal = {', '};'), /confidence/, 'not a sort key either');
+});
+
+test('dashboard: RS took its place, on the key the sort map actually uses', () => {
+  assert.match(dash, /minRs/, 'the slider filters on relative strength');
+  assert.match(dash, /this\.minRs = prefs\.minRs \?\? 0;/, 'and starts at 0, hiding nothing');
+  const sortVal = between(dash, 'const sortVal = {', '};');
+  assert.match(sortVal, /rs: \(s\) => s\.rsRating/, "RS is keyed 'rs'");
+  // The default sort must name a key sortVal knows, or it silently does nothing.
+  const dflt = between(dash, 'const keys = this.sortKeys?.length ? this.sortKeys :', ';');
+  for (const k of dflt.match(/key: '([^']+)'/g).map((m) => m.slice(6, -1))) {
+    assert.match(sortVal, new RegExp(`\\b${k}: \\(s\\)`), `the default sort key '${k}' exists in the map`);
+  }
+});

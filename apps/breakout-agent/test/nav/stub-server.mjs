@@ -15,13 +15,13 @@ const sig = (asset, signalType, confidence, extra = {}) => ({
 
 export const SIGNALS = {
   highConfidence: [
-    sig('NVDA', 'breakout', 97, { baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed', activity: { score: 5, acc: 5, dist: 0, bigUp: 2, udv: 1.47, obv: 0.12 }, sectorRank: 5, sectorCount: 11, sector: 'Technology' }),  // +2.9% over pivot → confirmed; stored rank is stale on purpose
-    sig('AAPL', 'breakout', 90, { baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
-    sig('MSFT', 'breakout', 88, { baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
-    sig('TSLA', 'breakout', 95, { baseGrade: 'X', basePivot: 120 }),
-    sig('SWKS', 'breakout', 90, { basePivot: 84.79, baseDepthPct: 34.6, baseBars: 15, currentPrice: 74.02, entryPrice: 70.75, shelf: { kind: 'cheat', label: 'Cheat', posPct: 52, baseLow: 55.45, basePivot: 84.79, level: 70.75, pctBelowPivot: 12.7 } }), // shelf breakout inside a forming, ungraded base
-    sig('AMD', 'setup', 91),
-    sig('DEEP', 'breakout', 95, { basePivot: 100, baseDepthPct: 28, baseBars: 56, currentPrice: 103, entryPrice: 100, deepBase: true, volumeTag: 'power', sector: 'Energy', sectorRank: 1, sectorCount: 11 }), // the deep-base kind
+    sig('NVDA', 'breakout', 97, { rsRating: 93, baseGrade: 'A', basePivot: 120, baseBars: 20, volumeTag: 'confirmed', activity: { score: 5, acc: 5, dist: 0, bigUp: 2, udv: 1.47, obv: 0.12 }, sectorRank: 5, sectorCount: 11, sector: 'Technology' }),  // +2.9% over pivot → confirmed; stored rank is stale on purpose
+    sig('AAPL', 'breakout', 90, { rsRating: 91, baseGrade: 'A+', basePivot: 120, baseBars: 25, volumeTag: 'power', alertedAt: '2026-09-08T14:05:00Z' }),    // +2.9% → power, emailed
+    sig('MSFT', 'breakout', 88, { rsRating: 88, baseGrade: 'S', basePivot: 120, baseBars: 80, currentPrice: 118 }),       // under pivot → forming
+    sig('TSLA', 'breakout', 95, { rsRating: 60, baseGrade: 'X', basePivot: 120 }),
+    sig('SWKS', 'breakout', 90, { rsRating: 90, basePivot: 84.79, baseDepthPct: 34.6, baseBars: 15, currentPrice: 74.02, entryPrice: 70.75, shelf: { kind: 'cheat', label: 'Cheat', posPct: 52, baseLow: 55.45, basePivot: 84.79, level: 70.75, pctBelowPivot: 12.7 } }), // shelf breakout inside a forming, ungraded base
+    sig('AMD', 'setup', 91, { rsRating: 91 }),
+    sig('DEEP', 'breakout', 95, { rsRating: 95, basePivot: 100, baseDepthPct: 28, baseBars: 56, currentPrice: 103, entryPrice: 100, deepBase: true, volumeTag: 'power', sector: 'Energy', sectorRank: 1, sectorCount: 11 }), // the deep-base kind
   ],
   mediumConfidence: [],
   tracking: [],

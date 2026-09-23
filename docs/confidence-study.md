@@ -171,11 +171,54 @@ RS 89 runs 2.59 on 4.8%. Neither is needed today.
 The dashboard's default sort changed with it. Within a grade the list ranked by
 confidence, which put the 1.76 bucket on top. It now ranks by RS.
 
-## What this does not do
+## Does it carry anything at all?
 
-Confidence still exists, is still computed, still shown, and can still be
-sorted on. It no longer decides whether anything is emailed or what the reader
-sees first. On this evidence the honest next step is to stop calling it
-confidence, since the number does not mean what the name promises.
+Two more cuts, to decide whether it earns a place on the screen.
+
+**Conditioned on the five-bar range it is mostly made of, it adds nothing.**
+Inside every range band, a higher score is equal or worse:
+
+| Five-bar range | confidence under 0.92 | 0.92 and over |
+|---|---|---|
+| 0 to 4% | 1.88 | 1.67 |
+| 4 to 6% | 1.91 | 1.68 |
+| 6 to 9% | 1.83 | 1.83 |
+| 9% and over | 2.44 | 2.33 |
+
+It is a restatement of the range with the sign flipped, not a second opinion.
+
+**Every visual it drove marked the worse half.**
+
+| What the screen painted | n | PF |
+|---|---|---|
+| elite tint, 0.99 and over | 58,228 | 1.72 |
+| strong tint, 0.95 to 0.99 | 9,328 | 2.06 |
+| green, 0.95 and over | 67,556 | 1.77 |
+| yellow, 0.85 to 0.95 | 14,523 | 2.14 |
+| orange, 0.75 to 0.85 | 15,484 | 2.03 |
+| ★ High, 0.90 and over | 74,618 | 1.81 |
+| no star | 22,945 | 2.09 |
+
+The green rows and the starred rows were the weaker cohort. The orange,
+unstarred rows were the stronger one.
+
+And the minimum-confidence slider defaulted to 85, which hides every row
+scoring 0.10: the 78% of graded breakouts that are not Type1, and the
+better-performing majority.
+
+## What was removed
+
+There is no use case left, so confidence no longer appears on the dashboard.
+Gone: the column, the ★ High badge, the green/yellow/orange ramp, the elite and
+strong row tints, the minimum-confidence slider, the sort key, the palette
+entry, the card tile, and `getSignalColor`, which was built entirely on it and
+had no live caller.
+
+RS took the slider, now starting at 0 rather than hiding three quarters of the
+board, and took the default secondary sort.
+
+The field is still computed and still returned by the API, because stored rows
+carry it and removing it is a migration. Nothing reads it to make a decision or
+to tell the reader anything.
 
 Scripts: `scripts/confidence-study.mjs`, `scripts/sector-strength-study.mjs`.
