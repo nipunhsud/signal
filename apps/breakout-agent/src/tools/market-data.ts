@@ -66,6 +66,10 @@ function writeDiskEod(symbol: string, today: string, bars: any[]): void {
 
 const BAR_WINDOW = 250; // what indicators consume (~1 trading year → 52w high)
 const DB_BAR_TAKE = 1500; // history kept hot for repair + future research reads
+// How far past the pivot the one-session grace window still fires. Beyond
+// this the emailed entry is not a price the reader can get. Measured in
+// docs/late-entry-study.md.
+const GRACE_DAY_MAX_CLEARANCE = 0.02;
 
 type EodBar = { date: string; open: number; high: number; low: number; close: number; volume: number; vwap?: number | null };
 
@@ -128,6 +132,39 @@ export async function flushFmpUsage(label: string): Promise<void> {
 // defaults, which is the one shape that can silently return a long range.
 export function deltaParams(lastDate: string, today: string): { from: string; to: string } {
   return { from: lastDate, to: today };
+}
+
+// Does the graded base count as resolved right now?
+//
+// Today's bar, OR the last completed session: if the 16:00 scan saw a
+// pre-auction quote under the pivot and the settled close was over it, the
+// next scan still fires. One-alert-per-base dedupe in sendAlert stops repeats.
+//
+// The extra session carries a price ceiling, because the entry in the email is
+// the pivot however far price has travelled since. TWLO 2026-09-22 emailed at
+// $279.33 against a $258.35 entry and a $240.27 fail level, 13.6% under the
+// price in the mail. Measured on 32,700 graded breakouts, buying a day late
+// costs nothing while price is still within 2% of the pivot (profit factor
+// 1.88 to 1.82, fail-level touches 21.5% to 22.2%) and a great deal past it:
+// 4-6% out it is 3.21 to 1.79 with touches 28.9% to 37.9%, and at 8-12% out,
+// where TWLO was, 5.20 to 2.32 with touches 29.6% to 45.2%. The trade stays
+// profitable; it stops being the trade the email describes. The breakout bar
+// itself keeps no ceiling — there the close is the price on offer.
+// See docs/late-entry-study.md.
+export function brokeOutNow(a: {
+  breakoutDate?: string | null;
+  latestDate: string;
+  prevDate?: string | null;
+  close: number;
+  pivot: number;
+}): boolean {
+  if (!a.breakoutDate || !(a.pivot > 0) || !(a.close > a.pivot)) return false;
+  if (a.breakoutDate === a.latestDate) return true;
+  return (
+    !!a.prevDate &&
+    a.breakoutDate === a.prevDate &&
+    a.close <= a.pivot * (1 + GRACE_DAY_MAX_CLEARANCE)
+  );
 }
 
 async function fetchFmpEodRange(
@@ -1261,14 +1298,14 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             breakoutDate: lastBase.breakout?.date,
             dryUp: lastBase.volumeDryUp,
             coil: lastBase.coilRatio,
-            // Today's bar, OR the last completed session: if the 16:00 scan
-            // saw a pre-auction quote under the pivot and the settled close
-            // was over it, the next scan still fires. One-alert-per-base
-            // dedupe in sendAlert stops repeats.
-            brokeOutToday:
-              (lastBase.breakout?.date === latest.date ||
-                (allBars.length >= 2 && lastBase.breakout?.date === allBars[allBars.length - 2].date)) &&
-              latest.close > lastBase.pivot,
+            // See brokeOutNow.
+            brokeOutToday: brokeOutNow({
+              breakoutDate: lastBase.breakout?.date,
+              latestDate: latest.date,
+              prevDate: allBars.length >= 2 ? allBars[allBars.length - 2].date : null,
+              close: latest.close,
+              pivot: lastBase.pivot,
+            }),
           };
         }
       } catch (e: any) {
