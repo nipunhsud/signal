@@ -184,6 +184,15 @@ test('dashboard: confidence no longer colours, stars, tints, filters or sorts', 
   assert.doesNotMatch(dash, /\$\{signal\.confidence\}/, 'confidence is not rendered on a row or card');
   assert.doesNotMatch(dash, /toggleSort\('confidence'/, 'no confidence column to sort');
   assert.doesNotMatch(between(dash, 'const sortVal = {', '};'), /confidence/, 'not a sort key either');
+  // Three tables render signals. The first pass removed the cell from one of
+  // them and left the header, which silently shifted every column in the
+  // Tracking table one to the left.
+  assert.doesNotMatch(dash, />Confidence</, 'no table anywhere still has the column header');
+  assert.doesNotMatch(dash, /\$\{item\.confidence\}/, 'nor the Shortlist tab');
+  assert.doesNotMatch(dash, /By confidence tier/, 'the backtest splits on RS now');
+  // A preset saved before the change can still name the old key, and the
+  // comparator skips keys it does not know rather than complaining.
+  assert.match(dash, /k\.key !== 'confidence'/, 'stored confidence sort keys are dropped on load');
 });
 
 test('dashboard: RS took its place, on the key the sort map actually uses', () => {

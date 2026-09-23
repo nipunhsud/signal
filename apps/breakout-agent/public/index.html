@@ -240,7 +240,6 @@
       border-radius: 4px;
     }
 
-    /* Confidence-tier row wash */
 
     /* Glossary tooltip — element is styled here; the floating panel is portaled to body via JS
        (avoids clipping by table overflow / sticky headers). */
@@ -601,10 +600,10 @@
         // to tie-breakers); shift-click adds/flips a secondary. Migrates the
         // legacy single sortBy/sortDirection pref.
         this.sortKeys = Array.isArray(prefs.sortKeys) && prefs.sortKeys.length
-          ? prefs.sortKeys.filter(k => k && k.key)
+          ? prefs.sortKeys.filter(k => k && k.key && k.key !== 'confidence')
           : prefs.sortBy
             ? [{ key: prefs.sortBy, dir: prefs.sortDirection ?? 'desc' }]
-            : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]; // best-graded bases first
+            : [{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }]; // best-graded bases first, then leaders
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
@@ -1183,7 +1182,7 @@
             kind: 'asset',
             id: 'asset:' + s.asset,
             label: s.asset,
-            desc: `${s.signalType} · ${s.confidence}% · ${s.sector || '—'}`,
+            desc: `${s.signalType}${s.rsRating != null ? ` · RS ${s.rsRating}` : ''} · ${s.sector || '—'}`,
             signal: s,
             search: `${s.asset} ${s.sector || ''} ${s.industry || ''}`.toLowerCase(),
             run: () => { this.openDrawer(s); this.closePalette(); },
@@ -1809,11 +1808,11 @@
               <button onclick="dashboard.toggleRulebook()" class="text-gray-500 hover:text-white transition ml-3">✕</button>
             </div>
             ${rule('VCP badge (recalibrated)', 'Type1 + base coil 0.70–0.90 + breakout volume ≥ 2.0x average. Full history (n=1,905): <span class="text-green-400 font-semibold">44.8% win / +3.6 mean vs 41.1% / +1.9 baseline</span> — beats the old coil+dry-up definition in <b>every decade</b> (old proxy: 38.3% win, below baseline in all eras). Dry-up is the confirmed trap (worst band every decade); the ≥0.7 coil floor is kept for its DBRG/pinned-tape rationale — standalone tightness claims did not replicate, but the combo edge holds.')}
-            ${rule('Blue Sky (strongest factor)', 'Pivot within 2% of the 52w high: <span class="text-green-400 font-semibold">57.7% win vs 34.5%</span> buried — the strongest AND most regime-stable rule in production (55.7–59.8% in every decade since the 1970s). +4 confidence on Type1. Context beats shape: shallow+sky wins 60.2%, shallow-but-buried 35.8% (stable all decades).')}
-            ${rule('Base age', '≥16 weeks (~80 bars): <span class="text-green-400 font-semibold">49.0% win vs 37.8%</span> for sub-4-week bases — confirmed and stable in every decade. +4 confidence. Older bases run less at their peak but fail far less often.')}
-            ${rule('Depth (contextual)', 'U-shaped and context-dependent. 10–20% is the worst pocket (<span class="text-orange-400 font-semibold">39.3% win, -5 confidence</span>). Shallow &lt;10% only works in context: at blue sky it wins 56.5%, but <span class="text-orange-400 font-semibold">shallow-and-buried wins 26.0%</span> — now -6 confidence when shallow without blue sky. 20–35% is boom-or-bust. (Sequence position — shallow as a 3rd+ base, 53.9% — needs base-objects in the scanner; future work.)')}
+            ${rule('Blue Sky (strongest factor)', 'Pivot within 2% of the 52w high: <span class="text-green-400 font-semibold">57.7% win vs 34.5%</span> buried — the strongest AND most regime-stable rule in production (55.7–59.8% in every decade since the 1970s). It gates the grade. Context beats shape: shallow+sky wins 60.2%, shallow-but-buried 35.8% (stable all decades).')}
+            ${rule('Base age', '≥16 weeks (~80 bars): <span class="text-green-400 font-semibold">49.0% win vs 37.8%</span> for sub-4-week bases. Older bases fail far less often and run far less: across 97,563 graded breakouts an 80-day base ran a <span class="text-orange-400 font-semibold">1.82 profit factor against 1.88</span> for shorter ones, so length is a label, not a gate.')}
+            ${rule('Depth (contextual)', 'The 39.3% win rate for 10–20% deep bases holds only <em>before</em> the grade is applied. Split on it: ungraded, that band runs a <span class="text-orange-400 font-semibold">0.52 profit factor</span>; graded, where it was being penalised, it runs <span class="text-green-400 font-semibold">1.96 against 1.79</span> for everything else. Profit factor rises with depth right across the graded band (1.58 → 2.24 from 0–5% to 20–25%): win rate falls, payoff more than compensates. The penalty was removed. Depth is priced once, by the grade.')}
             ${rule('Alert volume tiers', 'Alert-all-with-ranking: every Type1 emails, graded by the measured 8-cell factor grid — <span class="text-purple-300 font-semibold">S = sky+16wk+2x vol (67.2% win / 16% stopped, n=323)</span> · <span class="text-sky-300">A = any blue sky (56.7–59.6%)</span> · B = long+loud without sky (47.2%) · C = rest (29–41%, flat-to-negative means). Volume stays monotone in every decade (sub-1.2x negative over 50y — those never mint Type1 anyway); ≥4x adds the 🔥 flag.')}
-            ${rule('Staircase — the "road" (bonus, not gate)', 'Progressive thirds contraction (r1 ≥ r2 ≥ r3, ≥10% net shrink). Full history: the win-rate jump was 2y noise (45.5 vs 44.5), but the <span class="text-green-400 font-semibold">mean nearly doubles inside the gate (+5.2 vs +3.0, better in every decade)</span> — a mean-enhancer, not a win-rate edge. +3 confidence bonus stands; do not escalate to a gate.')}
+            ${rule('Staircase — the "road" (bonus, not gate)', 'Progressive thirds contraction (r1 ≥ r2 ≥ r3, ≥10% net shrink). Full history: the win-rate jump was 2y noise (45.5 vs 44.5), but the <span class="text-green-400 font-semibold">mean nearly doubles inside the gate (+5.2 vs +3.0, better in every decade)</span> — a mean-enhancer, not a win-rate edge. A label; it does not gate anything.')}
             ${rule('Failed pokes (counter-intuitive)', '1–2 pokes = <span class="text-green-400">defended pivot, 46.7% win</span>. Zero pokes = untested, 40.3% win and more stops. 3+ = heavy supply. Display flipped accordingly.')}
             <div class="border-t border-gray-700/50 mt-3 pt-2 text-[11px] text-gray-500">Survivorship caveat: sample = current signal universe (over-represents recent winners); treat as relative comparisons. Full bucket table: research scratchpad CSV.</div>
           </div>`;
@@ -2121,7 +2120,7 @@
         const el = document.getElementById('transcript-content');
         if (!el) return;
         if (!ta) {
-          el.innerHTML = '<span class="text-gray-500">No earnings call analysis yet. Triggered automatically for signals at 90%+ confidence, or click Analyze.</span>';
+          el.innerHTML = '<span class="text-gray-500">No earnings call analysis yet. Triggered automatically for the strongest signals, or click Analyze.</span>';
           return;
         }
         const toneColor = ta.tone === 'bullish' ? 'text-green-400' : ta.tone === 'bearish' ? 'text-red-400' : 'text-yellow-400';
@@ -2733,7 +2732,7 @@
                   ${row('RS Rating', 'Percentile of this stock\'s trailing returns vs every scanned stock (1-99). 80+ means it\'s outrunning 80% of the market — leaders, not laggards, produce the big breakouts.', rsHtml)}
                   ${row('Up/Down Volume', 'Volume on up-days divided by volume on down-days across the base. Above 1.5x means buyers were quietly absorbing shares while the price went sideways — accumulation.', udvHtml)}
                   ${row('Failed Pokes', 'Times price wicked to the pivot but closed well below it. Counter-intuitively, a tested-and-defended pivot (1-2 pokes) outperforms an untested one in our base study; 3+ suggests heavy supply.', fpHtml)}
-                  ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot — the volatility contraction that precedes strong breakouts.', coilHtml)}
+                  ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot. Measured, a tight base holds more often and pays much less: the tightest fifth ran a 1.70 profit factor and reached +20% 7.3% of the time, the loosest ran 3.02 and 42.2%.', coilHtml)}
                 </div>
               </div>`;
               })()}
@@ -4003,7 +4002,7 @@
               </div>
               <div class="mt-1.5 flex items-center flex-wrap gap-1.5">${badges}</div>
               <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                ${row('Coil', 'Range of the base&#39;s second half vs its first half. Below 1.0x the swings are tightening into the pivot.', coilHtml)}
+                ${row('Coil', 'Range of the base&#39;s second half vs its first half. Below 1.0x the swings are tightening into the pivot. Measured, tight holds more often and pays much less: profit factor 1.70 at the tight end against 3.02 at the loose end.', coilHtml)}
                 ${row('Volume dry-up', 'Average volume inside the base vs the 50 bars before it. Below 1.0x means sellers were running out while the base formed.', dryHtml)}
                 ${row('Up ÷ down volume', 'Volume on up-days divided by down-days inside the base. Above 1.5x means buyers were quietly absorbing shares.', udvHtml)}
                 ${row('Failed pokes', 'Times price wicked to the pivot but closed well below it. 0 is clean; 2+ means sellers defended the level.', fpHtml)}
@@ -4246,7 +4245,7 @@
 
       getFilteredSignals() {
         // "Stopped" is a cross-type view: show every stopped-out name regardless
-        // of signal type or the min-confidence slider.
+        // of signal type or the minimum-RS slider.
         const stoppedView = this.signalTypeFilter === 'stopped';
         let filtered = stoppedView
           ? this.signals.filter(s => s.stoppedOut)
@@ -4550,7 +4549,7 @@
                 <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4 mb-6">
                   <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
                     <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                    By confidence tier
+                    By relative strength
                   </h3>
                   ${(() => {
                     const maxAbs = Math.max(0.5, ...bt.byTier.map(t => Math.abs(t.avgReturn)));
@@ -4618,7 +4617,7 @@
                           <div class="w-16 font-mono text-blue-400 font-semibold">${r.asset}</div>
                           <div class="w-20 text-[11px] text-gray-500 font-mono">${r.signalDate}</div>
                           <div class="flex-1 text-[11px] text-gray-500 truncate">${r.sector}</div>
-                          <div class="w-14 text-right text-[11px] font-mono text-gray-400 tabular-nums">${fmt(r.confidence, { digits: 0, pct: true })}</div>
+                          <div class="w-14 text-right text-[11px] font-mono text-gray-400 tabular-nums">${r.rsRating != null ? 'RS ' + r.rsRating : '—'}</div>
                           <div class="w-20 text-right font-mono font-semibold tabular-nums ${returnColor(ret)}">${fmt(ret, { sign: true, pct: true })}</div>
                         </div>
                       `; }).join('')}
@@ -4866,7 +4865,7 @@
             ...item,
             signal,
             price: signal?.currentPrice,
-            confidence: signal?.confidence,
+            rsRating: signal?.rsRating,
           };
         });
 
@@ -4914,7 +4913,7 @@
                         <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Added</th>
                         <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Signal Status</th>
                         <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
-                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                         <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Action</th>
                       </tr>
                     </thead>
@@ -4944,8 +4943,8 @@
                           <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">
                             ${item.price ? CUR + item.price.toFixed(2) : '—'}
                           </td>
-                          <td data-label="Confidence" class="px-3 py-2.5 whitespace-nowrap">
-                            ${item.confidence ? `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40 tabular-nums">${item.confidence}%</span>` : '—'}
+                          <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">
+                            ${item.rsRating != null ? `<span class="px-2 py-0.5 rounded text-xs font-semibold tabular-nums ${item.rsRating >= 89 ? 'bg-green-500/20 text-green-300 ring-1 ring-green-500/40' : 'bg-gray-700/40 text-gray-300 ring-1 ring-gray-600/40'}">${item.rsRating}</span>` : '—'}
                           </td>
                           <td data-label="Action" class="px-3 py-2.5 whitespace-nowrap">
                             <button onclick="dashboard.toggleShortlist('${item.asset.replace(/'/g, "\\'")}', event);" class="px-2.5 py-1 rounded text-xs font-semibold bg-red-500/15 text-red-300 ring-1 ring-red-500/30 hover:bg-red-500/25 transition">
@@ -5188,7 +5187,7 @@
             <td data-label="Ratio" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
             <td data-label="Type" class="px-3 py-2.5 whitespace-nowrap text-center text-gray-400 text-xs">
               ${s.breakoutType || '—'}
-              ${s.lowConfidence ? `<span class="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-900/50 text-amber-400 ring-1 ring-amber-700/40" title="Below the screener's confidence bar — surfaced for the volume surge, not in the Screener list">low conf</span>` : ''}
+
             </td>
             <td data-label="Scanned" class="px-3 py-2.5 whitespace-nowrap text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
           </tr>
@@ -5793,10 +5792,6 @@
       renderMainDashboard() {
         const filtered = this.getFilteredSignals();
         const validSignals = this.signals.filter(s => (s.rsRating ?? 0) >= this.minRs);
-        const greenCount = validSignals.filter(s => s.pineScriptGreen || s.confidence === 99).length;
-        const brightCount = validSignals.filter(s => !s.pineScriptGreen && s.confidence >= 95 && s.confidence < 99).length;
-        const orangeCount = validSignals.filter(s => s.confidence >= 85 && s.confidence < 95).length;
-        const yellowCount = validSignals.filter(s => s.confidence >= 75 && s.confidence < 85).length;
         const extensionCount = validSignals.filter(s => s.signalType === 'extension').length;
 
         document.getElementById('app').innerHTML = `
@@ -6085,7 +6080,7 @@
                           <span data-tip="Last 30 daily closes. Green = closed higher over the window, red = closed lower.">Trend</span>
                         </th>
                         <th style="min-width:160px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings', event.shiftKey);">
-                          <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> ${this.sortIndicator('earnings')}
+                          <span data-tip="Last earnings-call tone score and guidance direction.">Earnings</span> ${this.sortIndicator('earnings')}
                         </th>
                         <th style="min-width:140px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('sector', event.shiftKey);">Sector ${this.sortIndicator('sector')}</th>
                         <th style="min-width:210px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 select-none whitespace-nowrap">
@@ -6114,7 +6109,7 @@
 
               ${(() => {
                 // Tracking: stale extensions the server moved out of the
-                // confidence buckets. Null-safe — old cached API responses
+                // live buckets. Null-safe — old cached API responses
                 // without the field just render nothing.
                 const tr = this.trackingSignals || [];
                 if (!tr.length) return '';
@@ -6131,7 +6126,6 @@
                         <thead class="sticky-head">
                           <tr class="border-b border-gray-600">
                             <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
-                            <th style="min-width:110px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
                             <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                             <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Trend</th>
                             <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Earnings</th>

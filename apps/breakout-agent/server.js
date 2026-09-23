@@ -1679,7 +1679,6 @@ app.get('/api/unusual-volume', async (req, res) => {
           breakoutType: c.breakoutType,
           confidence: c.confidence,
           displayConfidence,
-          lowConfidence: displayConfidence < 80, // below the actionable Signals bar
           createdAt: c.createdAt,
         };
       })
@@ -3097,6 +3096,7 @@ app.get('/api/backtest', async (req, res) => {
         "createdAt",
         "currentPrice",
         confidence,
+        "rsRating",
         sector,
         "lastAlertAt" AS "signalDate"
       FROM "BreakoutSignal"
@@ -3112,6 +3112,7 @@ app.get('/api/backtest', async (req, res) => {
         "createdAt",
         "currentPrice",
         confidence,
+        "rsRating",
         sector,
         "signalDate"
       FROM "BreakoutSignal"
@@ -3163,6 +3164,7 @@ app.get('/api/backtest', async (req, res) => {
               exitDate: closes[targetIdx].date,
               returnPct,
               confidence: Number(sig.confidence) * 100,
+              rsRating: sig.rsRating != null ? Number(sig.rsRating) : null,
               sector: sig.sector || 'Unknown',
             });
           }
@@ -3185,15 +3187,20 @@ app.get('/api/backtest', async (req, res) => {
     const bestReturn = evaluated.length ? Math.max(...evaluated.map((e) => e.returnPct)) : 0;
     const worstReturn = sortedReturns.length ? sortedReturns[0] : 0;
 
-    // By confidence tier
+    // By relative strength. This used to split on confidence, which was
+    // measured over 97,563 graded breakouts and found to separate nothing: no
+    // graded breakout can even score below 0.84, and where the number varies
+    // it runs backwards. RS is the axis the gate uses and the one that holds
+    // up — under 89 ran a 1.73 profit factor, 89-95 ran 2.04, 95+ ran 2.45.
+    // docs/confidence-study.md.
     const tiers = [
-      { label: '95-99%', min: 95, max: 100 },
-      { label: '90-94%', min: 90, max: 95 },
-      { label: '85-89%', min: 85, max: 90 },
-      { label: '80-84%', min: 80, max: 85 },
+      { label: 'RS 95-99', min: 95, max: 100 },
+      { label: 'RS 89-94', min: 89, max: 95 },
+      { label: 'RS 80-88', min: 80, max: 89 },
+      { label: 'RS under 80', min: 0, max: 80 },
     ];
     const byTier = tiers.map((t) => {
-      const rows = evaluated.filter((e) => e.confidence >= t.min && e.confidence < t.max);
+      const rows = evaluated.filter((e) => e.rsRating != null && e.rsRating >= t.min && e.rsRating < t.max);
       if (!rows.length) return { ...t, count: 0, avgReturn: 0, medianReturn: 0, winRate: 0 };
       // Capped (8% stop) for magnitude; raw for win rate — matches the headline.
       const rs = rows.map((r) => Math.max(-8, r.returnPct)).sort((a, b) => a - b);
