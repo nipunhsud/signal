@@ -84,3 +84,25 @@ test('the screener shows which rows were emailed', async () => {
   assert.match(dash, /\/api\/history\//, 'per-ticker alert history is wired');
   assert.match(server, /app\.get\('\/api\/history\/:symbol'/);
 });
+
+// AMD 2026-09-22: the signal cell showed a bare "A" while the Grade ≥ A filter
+// dropped the row. Its base is 27.5% deep, so it carries no grade at all — the
+// A was the evidence cohort, a different scale wearing the same letter. The
+// grade filter was right; the cell was ambiguous. The cohort letter now
+// travels with its noun, from one helper, so the two cannot be confused.
+test('dashboard: the evidence cohort never renders as a bare grade letter', () => {
+  const helper = between(dash, 'cohortChipHtml(signal) {', '\n      },');
+  assert.match(helper, /cohort \$\{c\}/, 'the chip names the scale it belongs to');
+  assert.doesNotMatch(helper, />\$\{c\}</, 'never a bare letter in its own element');
+  assert.match(helper, /Separate from the base grade/, 'the tooltip says so too');
+  // Both render sites go through the helper: no inline copy can drift.
+  const copies = dash.match(/Evidence cohort \(50-year study\)/g) || [];
+  assert.equal(copies.length, 1, 'one definition of the cohort chip, not three');
+  assert.equal((dash.match(/this\.cohortChipHtml\(signal\)/g) || []).length, 2, 'card view and table cell');
+});
+
+test('dashboard: the grade filter reads the base grade, not the cohort', () => {
+  const f = between(dash, "if (this.gradeFilter && this.gradeFilter !== 'all') {", '}');
+  assert.match(f, /s\.baseGrade && s\.baseGrade !== 'X'/, 'ungraded and unqualified rows are dropped');
+  assert.doesNotMatch(f, /cohort/, 'the cohort is not a grade');
+});

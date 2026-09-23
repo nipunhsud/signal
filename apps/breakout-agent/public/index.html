@@ -2551,7 +2551,7 @@
                     <span class="min-w-0 text-right">${html}</span>
                   </div>`;
                 const dash = '<span class="text-gray-600">—</span>';
-                const cohort = signal.cohort ? `<span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : '';
+                const cohort = this.cohortChipHtml(signal);
                 const vcp = signal.isVcp ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Volatility Contraction Pattern: tight base, volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>' : '';
                 const sky = signal.isBlueSky ? '<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : '';
                 // Graded rows: the fuller sentence here (the header carries the chips).
@@ -5497,6 +5497,22 @@
       // filter on that value. (Graded bases are blue-sky by definition, so the
       // Blue Sky pill is dropped here — it's in the grade tooltip instead.)
       // The drawer keeps the fuller gradeBadgeHtml() sentence.
+      // The evidence cohort is a study grouping, not the base grade, and the
+      // two use the same letters. AMD 2026-09-22 showed a bare "A" in the
+      // signal cell while Grade >= A filtered the row out: its base is 27.5%
+      // deep, so it carries no grade at all, and the A was its cohort. Two
+      // scales sharing one glyph in one cell. The letter now carries its noun.
+      cohortChipHtml(signal) {
+        const c = signal.cohort;
+        if (!c) return '';
+        const cls = c === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40'
+          : c === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
+          : c === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40'
+          : 'bg-gray-800 text-gray-500 ring-gray-700/60';
+        const tip = 'Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade). Separate from the base grade: a stock can sit in cohort A with no graded base.';
+        return `<span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${cls} whitespace-nowrap" data-tip="${tip}">cohort ${c}</span>`;
+      }
+
       signalCellHtml(signal) {
         const g = signal.baseGrade;
         if (!g) return '';
@@ -5814,7 +5830,7 @@
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
                             <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
-                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${this.alertChipHtml(signal) ? ' ' + this.alertChipHtml(signal) : ''}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ` <span class="text-[9px] font-bold px-1 py-0.5 rounded ring-1 ${signal.cohort === 'S' ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : signal.cohort === 'A' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30' : signal.cohort === 'B' ? 'bg-gray-600/40 text-gray-300 ring-gray-500/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60'}" data-tip="Evidence cohort (50-year study): S = 67% hist. win (sky+16wk+2x vol) · A = 57-60% (blue sky) · B = 47% (long+loud, no sky) · C = 29-41% (baseline grade)">${signal.cohort}</span>` : ''}</td>
+                            <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${this.alertChipHtml(signal) ? ' ' + this.alertChipHtml(signal) : ''}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ' ' + this.cohortChipHtml(signal) : ''}</td>
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
                             <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
