@@ -1179,9 +1179,9 @@
       }
 
       getPaletteItems() {
-        // Assets (sorted by confidence desc for practical relevance)
+        // Assets, strongest relative strength first (see the sort note below)
         const assets = [...this.signals]
-          .sort((a, b) => b.confidence - a.confidence)
+          .sort((a, b) => (b.rsRating ?? 0) - (a.rsRating ?? 0))
           .map(s => ({
             kind: 'asset',
             id: 'asset:' + s.asset,
@@ -1210,7 +1210,7 @@
           { id: 'wk:0',          label: 'Filter: Any base length', desc: 'Clear the minimum', kind: 'filter', run: () => { this.setFilter('minBaseWeeks', 0); this.closePalette(); } },
           { id: 'sort:weeks',    label: 'Sort: Longest base first', desc: 'Base length in weeks, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'weeks', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:status',   label: 'Sort: Live breakouts first', desc: 'power › confirmed › quiet › forming › extended, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'status', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
-          { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then confidence', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then RS', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'rsRating', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:conf',     label: 'Sort: Confidence', desc: 'Highest confidence first', kind: 'action', run: () => { this.setSortPreset([{ key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:rs',       label: 'Sort: Relative strength', desc: 'Leaders first', kind: 'action', run: () => { this.setSortPreset([{ key: 'rs', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:updated',  label: 'Sort: Newest first', desc: 'Most recently updated signals first', kind: 'action', run: () => { this.setSortPreset([{ key: 'updated', dir: 'desc' }]); this.closePalette(); } },
@@ -4352,7 +4352,14 @@
           weeks: (s) => baseWeeks(s),
           status: (s) => { const st = baseStatus(s); return st ? BASE_STATUS[st].rank : null; },
         };
-        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }];
+        // Within a grade the list used to rank by confidence. Measured over
+        // 97,563 graded breakouts, confidence runs backwards at the top: its
+        // largest term penalises a loose five-bar range, and loose measured
+        // better (0-4% ran a 1.70 profit factor, 14%+ ran 3.02), so the 0.96+
+        // bucket was the worst of all at 1.76. RS is monotonic where it counts
+        // (under 89 runs 1.73, 89-95 runs 2.04, 95+ runs 2.45), so the eye now
+        // starts at the top of the measured order. docs/confidence-study.md.
+        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'rsRating', dir: 'desc' }];
         filtered.sort((a, b) => {
           if (!!a.stoppedOut !== !!b.stoppedOut) return a.stoppedOut ? 1 : -1;
           for (const { key, dir } of keys) {

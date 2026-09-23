@@ -20,9 +20,14 @@ test('email: the alert gate is the graded pivot close and nothing else', () => {
   assert.match(between(agent, 'const isMeaningfulBreakout =', ';'), /isDeepBreakout/);
   assert.match(agent, /deepBase: breakoutAnalysis\.deepBase/, 'persisted');
   assert.match(agent, /This one is a deep base/, 'the email names the kind and its rates');
-  // Quality floor: RS 89+ AND confidence 80%+ (Sep 2026). Both, not either —
-  // Type 1 confidence is floored at 80% upstream, so an OR let everything through.
-  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0\.8;/);
+  // Quality floor: RS 89+ AND 1.5x volume on the bar that cleared the level.
+  // Confidence was measured over 97,563 graded breakouts and removed from the
+  // gate: no graded breakout can score under 0.84, what it really gated was
+  // the Type1 shape (78% of the pool cut for 0.15 of profit factor), and where
+  // the number varies it runs backwards. See docs/confidence-study.md.
+  assert.match(agent, /const volumeOkForAlert = data\.avgVolume > 0 && data\.volume >= data\.avgVolume \* 1\.5;/);
+  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && volumeOkForAlert;/);
+  assert.doesNotMatch(between(agent, 'const qualityOk =', ';'), /confidence/, 'confidence no longer decides an email');
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);
@@ -141,4 +146,25 @@ test('email: the chart link goes to our own page, with a scheme', () => {
   assert.match(agent, /const dqUrl = \(asset: string\) => `https:\/\/\$\{dqLink\(asset\)\}`;/,
     'as an absolute URL — mail clients autolink a bare host inconsistently');
   assert.doesNotMatch(agent, /tradingViewSymbol/, 'and the exchange-prefix helper it needed is gone');
+});
+
+// Confidence was the other half of the email gate until it was measured.
+// Replicated over 97,563 graded breakouts, 1985-2026: no graded breakout can
+// score below 0.84, so it never filtered on the number; what it filtered on
+// was the Type1 five-bar shape, which scores 0.10 when absent, cutting 78% of
+// the pool to buy 0.15 of profit factor; and where the number does vary it
+// runs backwards, because its largest term penalises a loose five-bar range
+// and a loose range measured better. docs/confidence-study.md.
+test('email: confidence does not gate an email, and volume does', () => {
+  const q = between(agent, 'const qualityOk =', ';');
+  assert.doesNotMatch(q, /confidence/);
+  assert.match(q, /rsRating >= 89/, 'RS holds up: under 89 runs 1.73, 89-95 runs 2.04, 95+ runs 2.45');
+  assert.match(q, /volumeOkForAlert/);
+  // The floor is the breakout bar's own volume, not the five bars before it —
+  // which is what confidence read, and why it missed this entirely.
+  assert.match(agent, /data\.volume >= data\.avgVolume \* 1\.5/);
+});
+
+test('the gate still refuses a name with no RS rank', () => {
+  assert.match(between(agent, 'const qualityOk =', ';'), /rsRating != null/);
 });
