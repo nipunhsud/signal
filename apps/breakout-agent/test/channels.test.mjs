@@ -106,3 +106,26 @@ test('dashboard: the grade filter reads the base grade, not the cohort', () => {
   assert.match(f, /s\.baseGrade && s\.baseGrade !== 'X'/, 'ungraded and unqualified rows are dropped');
   assert.doesNotMatch(f, /cohort/, 'the cohort is not a grade');
 });
+
+// A BUG alert arrived on 2026-09-23 in the email format deleted on 2026-09-09:
+// rocket emoji in the subject, "Weak-Vol Breakout" for a Type1b, a TRADE SETUP
+// block with a Buy Point, and "Source: Signal Forge". None of that is in the
+// tree, so a container on the droplet had been scanning and emailing on
+// two-week-old code, under none of the gates added since. The deploy now
+// removes orphans and fails loudly when a running container is not on the
+// image it just built.
+test('deploy: a container cannot survive on old code without the deploy failing', () => {
+  const deploy = src('../../../scripts/deploy.sh');
+  assert.match(deploy, /up -d --remove-orphans/, 'a service the compose file no longer names is removed');
+  assert.match(deploy, /DEPLOY INCOMPLETE/, 'a stale container fails the deploy');
+  assert.match(deploy, /docker inspect -f '\{\{\.Image\}\}'/, 'each running container is compared to the built image');
+  assert.match(deploy, /exit 1/, 'and the script exits non-zero');
+});
+
+test('email: the voice the alerts were rewritten to still holds', () => {
+  const body = between(agent, 'const subject =', 'await sendEmail(');
+  for (const banned of ['TRADE SETUP', 'Buy Point', 'Stop Loss', 'Risk/Reward', 'Signal Forge', '🚀']) {
+    assert.ok(!body.includes(banned), `no "${banned}" in an alert email`);
+  }
+  assert.doesNotMatch(agent, /Weak-Vol Breakout/, 'Type1b does not label an email; it does not email at all');
+});
