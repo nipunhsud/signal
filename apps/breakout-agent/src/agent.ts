@@ -54,14 +54,6 @@ export function regionOf(symbol: string): Region {
   return /\.(NS|BO)$/i.test(symbol) ? "IN" : "US";
 }
 
-// TradingView needs an exchange prefix for Indian tickers — FMP's .NS/.BO suffix
-// doesn't resolve there. Map .NS→NSE:, .BO→BSE:; US symbols pass through.
-export function tradingViewSymbol(symbol: string): string {
-  if (/\.NS$/i.test(symbol)) return "NSE:" + symbol.replace(/\.NS$/i, "");
-  if (/\.BO$/i.test(symbol)) return "BSE:" + symbol.replace(/\.BO$/i, "");
-  return symbol;
-}
-
 // Returns `label` so callers can log the checked exchange-local time.
 export function marketStatus(date: Date = new Date(), region: Region = "US"): {
   open: boolean;
@@ -1299,7 +1291,6 @@ export class BreakoutAgent {
           ? "is holding past its pivot"
           : "closed above its pivot";
     const subject = `${result.asset} ${what}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
-    const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Levels: the frozen pivot and its fail level (7% below), snapshotted when
     // the close first cleared it. Never the rolling Donchian value.
@@ -1395,8 +1386,7 @@ ${deepLine ? "\n" + deepLine + "\n" : ""}
 Why the screen flagged it
 ${result.reasoning}
 ${aiReviewSection}${transcriptSection}
-Chart   ${tradingViewUrl}
-Screen  ${dqLink(result.asset)}
+Chart and base history   ${dqUrl(result.asset)}
 
 Screen output for research, not advice.
 `;
@@ -1675,6 +1665,9 @@ const truncate = (s: string, n: number) =>
   s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
 // Per-ticker deep link, e.g. dataquant.ai/$hpe
 const dqLink = (asset: string) => `dataquant.ai/$${asset.toLowerCase()}`;
+// The same page with a scheme. Mail clients autolink a bare host inconsistently,
+// and a breakout alert is worth one dependable click.
+const dqUrl = (asset: string) => `https://${dqLink(asset)}`;
 // Final reply for a thread: where the rest lives. The link stays OUT of the
 // lead tweet (link-in-reply preserves lead-tweet reach). asset omitted → homepage.
 const ctaReply = (asset?: string) =>

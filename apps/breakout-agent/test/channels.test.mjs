@@ -129,3 +129,16 @@ test('email: the voice the alerts were rewritten to still holds', () => {
   }
   assert.doesNotMatch(agent, /Weak-Vol Breakout/, 'Type1b does not label an email; it does not email at all');
 });
+
+// The alert email sent the reader to TradingView for the chart, which is a bare
+// chart on a site we cannot annotate. Our own ticker page carries the same
+// chart with the base boxes and depth drawn, the grade and its evidence, and
+// the alert history for the name — everything the mail summarises.
+test('email: the chart link goes to our own page, with a scheme', () => {
+  const body = between(agent, 'const body = `', 'await sendEmail(');
+  assert.doesNotMatch(body, /tradingview/i, 'no TradingView link in an alert');
+  assert.match(body, /\$\{dqUrl\(result\.asset\)\}/, 'the ticker page instead');
+  assert.match(agent, /const dqUrl = \(asset: string\) => `https:\/\/\$\{dqLink\(asset\)\}`;/,
+    'as an absolute URL — mail clients autolink a bare host inconsistently');
+  assert.doesNotMatch(agent, /tradingViewSymbol/, 'and the exchange-prefix helper it needed is gone');
+});
