@@ -120,3 +120,51 @@ test('a deep-base alert freezes the close it cleared at, not the pivot it left',
   assert.match(block, /isGradedBreakout && breakoutAnalysis\.basePivot > 0/, 'graded still uses the pivot');
   assert.match(src, /entry is the close, not the pivot/);
 });
+
+// TWLO 2026-09-23: RS 97, sector 1 of 12, grade-A base 16.5% deep, three
+// entries (7 Aug, 15 Sep, 21 Sep), 349 scans, one email — sent a day late at
+// a price 8% past the pivot. Confidence sat at 79 against an 80 gate: 0.99
+// minus 0.196 for a loose 24.6% range floors at 0.80, plus 0.04 blue sky,
+// minus 0.05 for being 10-20% deep. That last penalty came from a population
+// the grade already removes: ungraded, the band runs PF 0.52; graded, where
+// the penalty was applied, it runs 1.96 against 1.79 for everything else.
+const twlo = (over = {}) => md({
+  open: 247.12, close: 266.06, high: 266.48, low: 244.14, volume: 3.02e6, avgVolume: 1.838e6,
+  ma20: 238, ma50: 221.47, ma150: 200, ma200: 168.91, ma200Prev: 168, low52w: 95,
+  highs: [235.32, 233.88, 244.89, 243.95, 247.28, 249.45, 240, 238, 236, 234, 232, 230, 228, 235, 241, 239, 237, 233, 231, 229],
+  lows: [226.63, 225.52, 226.74, 235.2, 236.18, 238.5, 220, 219, 218, 222, 221, 223, 224, 226, 228, 227, 225, 224, 223, 222],
+  high52w: 249.45, barsInRange: 6, priorBaseDays: 27, priorBaseRangePercent: 16.5,
+  consolidationRangePercent: 24.6, consolidationVolumePercent: 60,
+  gradedBase: gb({ pivot: 258.35, bars: 27, depthPct: 16.5, breakoutDate: '2026-09-21' }),
+  ...over,
+});
+
+test('TWLO 2026-09-21 clears the confidence gate instead of missing it by a point', () => {
+  const r = analyzeBreakout(twlo());
+  assert.equal(r.breakoutType, 'Type1');
+  assert.equal(r.baseGrade, 'A');
+  assert.equal(r.gradedBreakoutToday, true);
+  assert.ok(r.confidence >= 0.8, `confidence ${(r.confidence * 100).toFixed(0)}% clears the 80 gate`);
+});
+
+test('base depth no longer moves confidence inside the graded band', () => {
+  // Profit factor rises with depth here (1.58 at 0-5% to 2.24 at 20-25%), so a
+  // penalty on the middle of that range had the sign backwards. Depth is the
+  // grade's business; it is not priced twice.
+  const at = (d) => analyzeBreakout(twlo({
+    priorBaseRangePercent: d,
+    gradedBase: gb({ pivot: 258.35, bars: 27, depthPct: d, breakoutDate: '2026-09-21' }),
+  })).confidence;
+  const levels = [4, 8, 12, 16.5, 19, 22].map(at);
+  for (const c of levels) assert.equal(c, levels[0], 'every depth in the graded band scores the same');
+  assert.ok(levels[0] >= 0.8);
+});
+
+test('the penalties that were measured on the graded population stay', () => {
+  const base = analyzeBreakout(twlo()).confidence;
+  // Blue sky is still worth its 0.04: strip it and confidence drops.
+  const buried = analyzeBreakout(twlo({ high52w: 400, gradedBase: gb({ pivot: 258.35, bars: 27, depthPct: 16.5, sky: false, breakoutDate: '2026-09-21' }) }));
+  assert.ok(buried.confidence < base, 'a buried base still scores lower than a blue-sky one');
+  // A loose consolidation still costs: tighten it and confidence rises.
+  assert.ok(analyzeBreakout(twlo({ consolidationRangePercent: 4 })).confidence > base, 'a tight range still pays');
+});
