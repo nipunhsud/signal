@@ -235,3 +235,28 @@ test('the repricing bar travels from the detector to the card and the email', ()
   assert.match(dash, /b\.episodicPivot \?/, 'and the base card shows it');
   assert.match(dash, /Repriced \+\$\{b\.episodicPivot\.gainPct\}%/);
 });
+
+// TWLO cleared a 24.9%-deep blue-sky base at 241.28 on 2026-08-07, on 4.22x
+// volume above a rising 200-day, and the screen holds no row for that date.
+// The drawer reported that as a property of the stock: "it has not closed
+// above a graded pivot yet". It had. The X-ray's verdict now outranks the
+// rule list, and the panel names the miss instead.
+test('profile: the X-ray is reconciled against the rows the scanner wrote', () => {
+  assert.match(server, /const qualified = \[\]/, 'every resolved base is judged by the alert rules');
+  assert.match(server, /xray: \{ qualified:.*missed:/, 'and returned with the ones no row covers');
+  // A row counts if it names the same pivot or lands in the five sessions after.
+  assert.match(server, /Math\.abs\(r\.basePivot - q\.pivot\) \/ q\.pivot < 0\.01/);
+  assert.match(server, /5 \* 864e5/);
+  // Only a row written on or after the breakout can have recorded it. TWLO's
+  // 238.48 base had tracking rows naming that pivot for weeks before 7 August
+  // and none after, so matching on the pivot alone called the miss covered.
+  assert.match(server, /if \(r\.createdAt\.getTime\(\) < t\) return false;/);
+});
+
+test('profile: a missed breakout outranks "nothing rules it out"', () => {
+  assert.match(dash, /const missed = \(p\.xray && p\.xray\.missed\) \|\| \[\]/);
+  assert.match(dash, /if \(!why\.length && !missed\.length\) why\.push\('Nothing rules it out/,
+    'the old sentence only survives when the X-ray agrees');
+  assert.match(dash, /the screen has no row for/, 'and the miss is named');
+  assert.match(dash, /not back-filled/, 'with why it is not silently invented');
+});
