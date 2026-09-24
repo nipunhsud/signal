@@ -224,3 +224,14 @@ test('the grade itself still stops at 25%, and the deep kind covers 25-35%', () 
   assert.match(logic, /gb\.depthPct <= 25\) \{/, 'the grade cap is unchanged');
   assert.match(logic, /gb\.depthPct > 25 &&\s*\n\s*gb\.depthPct <= 35/, 'the deep kind takes the band above it');
 });
+
+// A base built on a repricing bar reaches the screen and the email together,
+// the standing rule for anything that changes how a breakout is judged.
+test('the repricing bar travels from the detector to the card and the email', () => {
+  const detect = src('../base-detect.js');
+  assert.match(detect, /episodicPivot/, 'the detector produces it');
+  assert.match(src('../src/tools/market-data.ts'), /ep: lastBase\.episodicPivot/, 'the scanner carries it onto gradedBase');
+  assert.match(agent, /Built on an \$\{data\.gradedBase\.ep\.gainPct\}% repricing day/, 'the reasoning line names it, so the email does too');
+  assert.match(dash, /b\.episodicPivot \?/, 'and the base card shows it');
+  assert.match(dash, /Repriced \+\$\{b\.episodicPivot\.gainPct\}%/);
+});
