@@ -240,10 +240,6 @@
       border-radius: 4px;
     }
 
-    /* Confidence-tier row wash */
-    .signal-row.tier-elite td:first-child { box-shadow: inset 2px 0 0 rgba(34,197,94,0.6); }
-    .signal-row.tier-elite { background-color: rgba(34,197,94,0.04) !important; }
-    .signal-row.tier-strong td:first-child { box-shadow: inset 2px 0 0 rgba(234,179,8,0.5); }
 
     /* Glossary tooltip — element is styled here; the floating panel is portaled to body via JS
        (avoids clipping by table overflow / sticky headers). */
@@ -597,17 +593,17 @@
         this.loading = true;
         this.scanning = false;
         this.filtering = '';
-        this.minConfidence = prefs.minConfidence ?? 85;
+        this.minRs = prefs.minRs ?? 0;
         this.lookbackDays = prefs.lookbackDays ?? 3; // breakout lookback window (days)
         // Multi-sort: ordered {key, dir} list — first entry is the primary sort,
         // the rest break ties. Click replaces the primary (previous keys demote
         // to tie-breakers); shift-click adds/flips a secondary. Migrates the
         // legacy single sortBy/sortDirection pref.
         this.sortKeys = Array.isArray(prefs.sortKeys) && prefs.sortKeys.length
-          ? prefs.sortKeys.filter(k => k && k.key)
+          ? prefs.sortKeys.filter(k => k && k.key && k.key !== 'confidence')
           : prefs.sortBy
             ? [{ key: prefs.sortBy, dir: prefs.sortDirection ?? 'desc' }]
-            : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]; // best-graded bases first
+            : [{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }]; // best-graded bases first, then leaders
         this.selectedAsset = null;
         this.currentAssetIndex = 0;
         this._chartToken = 0;
@@ -980,7 +976,7 @@
         if (!a) return [];
         const defs = [
           { key: 'dashboard',      short: 'S', label: 'Signals',      cls: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
-            has: (this.signals || []).some(s => (s.asset||'').toUpperCase() === a && s.confidence >= this.minConfidence) },
+            has: (this.signals || []).some(s => (s.asset||'').toUpperCase() === a && (s.rsRating ?? 0) >= this.minRs) },
           { key: 'winners',        short: 'W', label: 'Winners',      cls: 'bg-green-500/15 text-green-400 ring-green-500/30',
             has: (this.winners?.winners || []).some(r => (r.asset||'').toUpperCase() === a) },
           { key: 'beat-raise',     short: 'B', label: 'Beat & Raise', cls: 'bg-purple-500/15 text-purple-300 ring-purple-500/30',
@@ -1131,7 +1127,7 @@
             signalTypeFilter: this.signalTypeFilter,
             assetTypeFilter: this.assetTypeFilter,
             sectorFilter: this.sectorFilter,
-            minConfidence: this.minConfidence,
+            minRs: this.minRs,
             lookbackDays: this.lookbackDays,
             qualityFilters: this.qualityFilters,
             gradeFilter: this.gradeFilter,
@@ -1179,14 +1175,14 @@
       }
 
       getPaletteItems() {
-        // Assets (sorted by confidence desc for practical relevance)
+        // Assets, strongest relative strength first (see the sort note below)
         const assets = [...this.signals]
-          .sort((a, b) => b.confidence - a.confidence)
+          .sort((a, b) => (b.rsRating ?? 0) - (a.rsRating ?? 0))
           .map(s => ({
             kind: 'asset',
             id: 'asset:' + s.asset,
             label: s.asset,
-            desc: `${s.signalType} · ${s.confidence}% · ${s.sector || '—'}`,
+            desc: `${s.signalType}${s.rsRating != null ? ` · RS ${s.rsRating}` : ''} · ${s.sector || '—'}`,
             signal: s,
             search: `${s.asset} ${s.sector || ''} ${s.industry || ''}`.toLowerCase(),
             run: () => { this.openDrawer(s); this.closePalette(); },
@@ -1210,8 +1206,7 @@
           { id: 'wk:0',          label: 'Filter: Any base length', desc: 'Clear the minimum', kind: 'filter', run: () => { this.setFilter('minBaseWeeks', 0); this.closePalette(); } },
           { id: 'sort:weeks',    label: 'Sort: Longest base first', desc: 'Base length in weeks, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'weeks', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:status',   label: 'Sort: Live breakouts first', desc: 'power › confirmed › quiet › forming › extended, then grade', kind: 'action', run: () => { this.setSortPreset([{ key: 'status', dir: 'desc' }, { key: 'grade', dir: 'desc' }]); this.closePalette(); } },
-          { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then confidence', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
-          { id: 'sort:conf',     label: 'Sort: Confidence', desc: 'Highest confidence first', kind: 'action', run: () => { this.setSortPreset([{ key: 'confidence', dir: 'desc' }]); this.closePalette(); } },
+          { id: 'sort:grade',    label: 'Sort: Best grade first', desc: 'S › A+ › A, then RS', kind: 'action', run: () => { this.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:rs',       label: 'Sort: Relative strength', desc: 'Leaders first', kind: 'action', run: () => { this.setSortPreset([{ key: 'rs', dir: 'desc' }]); this.closePalette(); } },
           { id: 'sort:updated',  label: 'Sort: Newest first', desc: 'Most recently updated signals first', kind: 'action', run: () => { this.setSortPreset([{ key: 'updated', dir: 'desc' }]); this.closePalette(); } },
           { id: 'ast:all',       label: 'Show: All assets',   desc: 'Stocks + ETFs', kind: 'filter', run: () => { this.setFilter('assetTypeFilter', 'all'); this.closePalette(); } },
@@ -1266,7 +1261,7 @@
             const flatIdx = this._paletteFlat.indexOf(it);
             const active = flatIdx === this._paletteIndex ? 'active' : '';
             const badge = it.kind === 'asset'
-              ? `<span class="sf-palette-badge" style="background:rgba(59,130,246,0.15);color:#93c5fd">${it.signal.confidence}%</span>`
+              ? `<span class="sf-palette-badge" style="background:rgba(59,130,246,0.15);color:#93c5fd">RS ${it.signal.rsRating ?? '—'}</span>`
               : '';
             return `
               <div class="sf-palette-item ${active}" data-idx="${flatIdx}" onclick="dashboard._paletteFlat[${flatIdx}].run()">
@@ -1813,11 +1808,11 @@
               <button onclick="dashboard.toggleRulebook()" class="text-gray-500 hover:text-white transition ml-3">✕</button>
             </div>
             ${rule('VCP badge (recalibrated)', 'Type1 + base coil 0.70–0.90 + breakout volume ≥ 2.0x average. Full history (n=1,905): <span class="text-green-400 font-semibold">44.8% win / +3.6 mean vs 41.1% / +1.9 baseline</span> — beats the old coil+dry-up definition in <b>every decade</b> (old proxy: 38.3% win, below baseline in all eras). Dry-up is the confirmed trap (worst band every decade); the ≥0.7 coil floor is kept for its DBRG/pinned-tape rationale — standalone tightness claims did not replicate, but the combo edge holds.')}
-            ${rule('Blue Sky (strongest factor)', 'Pivot within 2% of the 52w high: <span class="text-green-400 font-semibold">57.7% win vs 34.5%</span> buried — the strongest AND most regime-stable rule in production (55.7–59.8% in every decade since the 1970s). +4 confidence on Type1. Context beats shape: shallow+sky wins 60.2%, shallow-but-buried 35.8% (stable all decades).')}
-            ${rule('Base age', '≥16 weeks (~80 bars): <span class="text-green-400 font-semibold">49.0% win vs 37.8%</span> for sub-4-week bases — confirmed and stable in every decade. +4 confidence. Older bases run less at their peak but fail far less often.')}
-            ${rule('Depth (contextual)', 'U-shaped and context-dependent. 10–20% is the worst pocket (<span class="text-orange-400 font-semibold">39.3% win, -5 confidence</span>). Shallow &lt;10% only works in context: at blue sky it wins 56.5%, but <span class="text-orange-400 font-semibold">shallow-and-buried wins 26.0%</span> — now -6 confidence when shallow without blue sky. 20–35% is boom-or-bust. (Sequence position — shallow as a 3rd+ base, 53.9% — needs base-objects in the scanner; future work.)')}
+            ${rule('Blue Sky (strongest factor)', 'Pivot within 2% of the 52w high: <span class="text-green-400 font-semibold">57.7% win vs 34.5%</span> buried — the strongest AND most regime-stable rule in production (55.7–59.8% in every decade since the 1970s). It gates the grade. Context beats shape: shallow+sky wins 60.2%, shallow-but-buried 35.8% (stable all decades).')}
+            ${rule('Base age', '≥16 weeks (~80 bars): <span class="text-green-400 font-semibold">49.0% win vs 37.8%</span> for sub-4-week bases. Older bases fail far less often and run far less: across 97,563 graded breakouts an 80-day base ran a <span class="text-orange-400 font-semibold">1.82 profit factor against 1.88</span> for shorter ones, so length is a label, not a gate.')}
+            ${rule('Depth (contextual)', 'The 39.3% win rate for 10–20% deep bases holds only <em>before</em> the grade is applied. Split on it: ungraded, that band runs a <span class="text-orange-400 font-semibold">0.52 profit factor</span>; graded, where it was being penalised, it runs <span class="text-green-400 font-semibold">1.96 against 1.79</span> for everything else. Profit factor rises with depth right across the graded band (1.58 → 2.24 from 0–5% to 20–25%): win rate falls, payoff more than compensates. The penalty was removed. Depth is priced once, by the grade.')}
             ${rule('Alert volume tiers', 'Alert-all-with-ranking: every Type1 emails, graded by the measured 8-cell factor grid — <span class="text-purple-300 font-semibold">S = sky+16wk+2x vol (67.2% win / 16% stopped, n=323)</span> · <span class="text-sky-300">A = any blue sky (56.7–59.6%)</span> · B = long+loud without sky (47.2%) · C = rest (29–41%, flat-to-negative means). Volume stays monotone in every decade (sub-1.2x negative over 50y — those never mint Type1 anyway); ≥4x adds the 🔥 flag.')}
-            ${rule('Staircase — the "road" (bonus, not gate)', 'Progressive thirds contraction (r1 ≥ r2 ≥ r3, ≥10% net shrink). Full history: the win-rate jump was 2y noise (45.5 vs 44.5), but the <span class="text-green-400 font-semibold">mean nearly doubles inside the gate (+5.2 vs +3.0, better in every decade)</span> — a mean-enhancer, not a win-rate edge. +3 confidence bonus stands; do not escalate to a gate.')}
+            ${rule('Staircase — the "road" (bonus, not gate)', 'Progressive thirds contraction (r1 ≥ r2 ≥ r3, ≥10% net shrink). Full history: the win-rate jump was 2y noise (45.5 vs 44.5), but the <span class="text-green-400 font-semibold">mean nearly doubles inside the gate (+5.2 vs +3.0, better in every decade)</span> — a mean-enhancer, not a win-rate edge. A label; it does not gate anything.')}
             ${rule('Failed pokes (counter-intuitive)', '1–2 pokes = <span class="text-green-400">defended pivot, 46.7% win</span>. Zero pokes = untested, 40.3% win and more stops. 3+ = heavy supply. Display flipped accordingly.')}
             <div class="border-t border-gray-700/50 mt-3 pt-2 text-[11px] text-gray-500">Survivorship caveat: sample = current signal universe (over-represents recent winners); treat as relative comparisons. Full bucket table: research scratchpad CSV.</div>
           </div>`;
@@ -2125,7 +2120,7 @@
         const el = document.getElementById('transcript-content');
         if (!el) return;
         if (!ta) {
-          el.innerHTML = '<span class="text-gray-500">No earnings call analysis yet. Triggered automatically for signals at 90%+ confidence, or click Analyze.</span>';
+          el.innerHTML = '<span class="text-gray-500">No earnings call analysis yet. Triggered automatically for the strongest signals, or click Analyze.</span>';
           return;
         }
         const toneColor = ta.tone === 'bullish' ? 'text-green-400' : ta.tone === 'bearish' ? 'text-red-400' : 'text-yellow-400';
@@ -2456,7 +2451,6 @@
                         ? '<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" title="Gap retest: a 4%+ gap up on volume, a pullback that held above the gap day\'s low, then the first close above the prior day\'s high. Historically PF 3.7 with a 46% fail-level touch rate and 41% reaching +20% in 60 bars. Tracked, not emailed until it proves out."><span class="badge-dot"></span>Gap retest</span>'
                         : ''}
                   ${signal.stoppedOut ? '<span class="badge bg-red-500/15 text-red-400 ring-1 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed"><span class="badge-dot"></span>Failed</span>' : signal.noEntry ? '<span class="badge bg-gray-500/15 text-gray-300 ring-1 ring-gray-500/30" title="Price has not closed above the base pivot — no breakout to track yet, so it cannot fail"><span class="badge-dot"></span>Below pivot</span>' : ''}
-                  ${signal.confidence >= 90 && !signal.stoppedOut ? '<span class="badge bg-green-500/15 text-green-400 ring-1 ring-green-500/30" title="High-confidence signal">★ High</span>' : ''}
                   <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="text-sm text-blue-400 hover:text-blue-300 transition ml-1" title="Open on TradingView">↗</a>
                   <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-sm text-gray-400 hover:text-white transition" title="Full chart">⤢</button>
                 </div>
@@ -2484,10 +2478,6 @@
                 const pctVsBuy = (buyVal && signal.currentPrice)
                   ? ((signal.currentPrice - buyVal) / buyVal * 100)
                   : null;
-                const confColor = signal.confidence >= 95 ? 'text-green-400'
-                  : signal.confidence >= 85 ? 'text-yellow-400'
-                  : signal.confidence >= 75 ? 'text-orange-400'
-                  : 'text-red-400';
                 return `
                 <div class="px-5 pb-3 grid grid-cols-4 gap-3">
                   <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
@@ -2505,12 +2495,11 @@
                     <div class="font-mono text-base font-bold text-red-400 tabular-nums leading-tight mt-0.5">${stop != null ? CUR + stop.toFixed(2) : '<span class="text-gray-600">—</span>'}</div>
                   </div>
                   <div class="bg-gray-800/60 rounded-md px-2.5 py-2 ring-1 ring-gray-700/60">
-                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Confidence</div>
+                    <div class="text-[10px] uppercase tracking-wider text-gray-500 font-medium" data-tip="Relative strength 1-99: percentile rank of trailing returns against the scanned universe. Under 89 ran a 1.73 profit factor, 89-95 ran 2.04, 95+ ran 2.45.">RS</div>
                     <div class="flex items-baseline gap-0.5 leading-tight mt-0.5">
-                      <span class="text-base font-bold ${confColor} tabular-nums">${signal.confidence}</span>
-                      <span class="text-[10px] text-gray-500">%</span>
+                      <span class="text-base font-bold ${signal.rsRating >= 89 ? 'text-green-400' : signal.rsRating >= 70 ? 'text-yellow-400' : 'text-gray-400'} tabular-nums">${signal.rsRating ?? '—'}</span>
                     </div>
-                    <div class="conf-bar ${confColor}" style="--pct: ${signal.confidence}%;"></div>
+                    <div class="conf-bar ${signal.rsRating >= 89 ? 'text-green-400' : signal.rsRating >= 70 ? 'text-yellow-400' : 'text-gray-400'}" style="--pct: ${signal.rsRating ?? 0}%;"></div>
                   </div>
                 </div>
                 <div class="px-5 pb-3 flex items-center gap-1.5 text-[11px]">
@@ -2743,7 +2732,7 @@
                   ${row('RS Rating', 'Percentile of this stock\'s trailing returns vs every scanned stock (1-99). 80+ means it\'s outrunning 80% of the market — leaders, not laggards, produce the big breakouts.', rsHtml)}
                   ${row('Up/Down Volume', 'Volume on up-days divided by volume on down-days across the base. Above 1.5x means buyers were quietly absorbing shares while the price went sideways — accumulation.', udvHtml)}
                   ${row('Failed Pokes', 'Times price wicked to the pivot but closed well below it. Counter-intuitively, a tested-and-defended pivot (1-2 pokes) outperforms an untested one in our base study; 3+ suggests heavy supply.', fpHtml)}
-                  ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot — the volatility contraction that precedes strong breakouts.', coilHtml)}
+                  ${row('Coil', 'Price range of the base\'s second half vs its first half. Below 1.0x the swings are tightening into the pivot. Measured, a tight base holds more often and pays much less: the tightest fifth ran a 1.70 profit factor and reached +20% 7.3% of the time, the loosest ran 3.02 and 42.2%.', coilHtml)}
                 </div>
               </div>`;
               })()}
@@ -2756,7 +2745,7 @@
                   <span data-tip="Green cone — a Pine Script pattern where price breaks resistance on rising volume, with MA stack bullish and ≥5 bars of tight consolidation just before. All conditions cleared here.">Breakout Confirmed</span>
                 </h3>
                 <div class="bg-green-500/10 ring-1 ring-green-500/30 rounded-lg px-3 py-2.5 mb-3">
-                  <p class="text-green-300 text-sm font-medium">All conditions met · <span class="font-bold">${signal.confidence}%</span> confidence</p>
+                  <p class="text-green-300 text-sm font-medium">All conditions met${signal.rsRating != null ? ` · RS <span class="font-bold">${signal.rsRating}</span>` : ''}${signal.volumeTag && signal.volumeTag !== 'quiet' ? ` · ${signal.volumeTag} volume` : ''}</p>
                 </div>
                 <div class="space-y-2 text-sm">
                   <div class="bg-gray-800/40 ring-1 ring-gray-700/50 rounded px-2.5 py-1.5 flex justify-between text-[13px]">
@@ -4013,7 +4002,7 @@
               </div>
               <div class="mt-1.5 flex items-center flex-wrap gap-1.5">${badges}</div>
               <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                ${row('Coil', 'Range of the base&#39;s second half vs its first half. Below 1.0x the swings are tightening into the pivot.', coilHtml)}
+                ${row('Coil', 'Range of the base&#39;s second half vs its first half. Below 1.0x the swings are tightening into the pivot. Measured, tight holds more often and pays much less: profit factor 1.70 at the tight end against 3.02 at the loose end.', coilHtml)}
                 ${row('Volume dry-up', 'Average volume inside the base vs the 50 bars before it. Below 1.0x means sellers were running out while the base formed.', dryHtml)}
                 ${row('Up ÷ down volume', 'Volume on up-days divided by down-days inside the base. Above 1.5x means buyers were quietly absorbing shares.', udvHtml)}
                 ${row('Failed pokes', 'Times price wicked to the pivot but closed well below it. 0 is clean; 2+ means sellers defended the level.', fpHtml)}
@@ -4159,7 +4148,7 @@
     ${tile('Price', CUR + n(s.currentPrice), '#0f172a')}
     ${tile(buyLabel, buyVal != null ? CUR + n(buyVal) : '—', '#b45309')}
     ${tile('Stop', s.stopLoss != null ? CUR + n(s.stopLoss) : '—', '#dc2626')}
-    ${tile('Confidence', s.confidence + '%', s.confidence >= 90 ? '#16a34a' : s.confidence >= 80 ? '#ca8a04' : '#ea580c')}
+    ${tile('RS', s.rsRating != null ? String(s.rsRating) : '—', s.rsRating >= 89 ? '#16a34a' : s.rsRating >= 70 ? '#ca8a04' : '#ea580c')}
   </div></div>
   ${chartImg ? `<div class="sec"><h3>6 months · Daily</h3>${chartImg}</div>` : ''}
   ${levels ? `<div class="sec"><h3>Levels</h3>${levels}</div>` : ''}
@@ -4192,34 +4181,6 @@
         }
       }
 
-      getSignalColor(signal) {
-        // Fresh breakout at 99% = solid green
-        if (signal.signalType === 'breakout' && signal.pineScriptGreen && signal.confidence === 99) {
-          return { emoji: '🟢', label: 'fresh-breakout', bgClass: 'bg-green-700' };
-        }
-        // 99% green cone (any type)
-        if (signal.confidence === 99) {
-          return { emoji: '🟢', label: 'green', bgClass: 'bg-green-700' };
-        }
-        // 95-98%: high confidence
-        if (signal.confidence >= 95) {
-          return { emoji: '🟢', label: 'bright-green', bgClass: 'bg-green-600' };
-        }
-        // 90-94%: green fade
-        if (signal.confidence >= 90) {
-          return { emoji: '🟢', label: 'green-fade', bgClass: 'bg-green-500' };
-        }
-        // 85-89%: orange
-        if (signal.confidence >= 85) {
-          return { emoji: '🟠', label: 'orange', bgClass: 'bg-orange-600' };
-        }
-        // Extensions below 85%
-        if (signal.signalType === 'extension') {
-          return { emoji: '🟡', label: 'extension', bgClass: 'bg-yellow-600' };
-        }
-        // Below 85% = filtered out
-        return { emoji: '⚪', label: 'neutral', bgClass: 'bg-gray-600' };
-      }
 
       getTradingViewUrl(asset) {
         // TradingView needs an exchange prefix for Indian tickers; FMP's .NS/.BO
@@ -4284,11 +4245,11 @@
 
       getFilteredSignals() {
         // "Stopped" is a cross-type view: show every stopped-out name regardless
-        // of signal type or the min-confidence slider.
+        // of signal type or the minimum-RS slider.
         const stoppedView = this.signalTypeFilter === 'stopped';
         let filtered = stoppedView
           ? this.signals.filter(s => s.stoppedOut)
-          : this.signals.filter(s => s.confidence >= this.minConfidence);
+          : this.signals.filter(s => (s.rsRating ?? 0) >= this.minRs);
 
         // Asset type filter (stocks, etfs, all)
         if (this.assetTypeFilter !== 'all') {
@@ -4341,7 +4302,6 @@
         // values (null RS, no earnings score) always sort last regardless of
         // direction, so "—" rows never lead the table.
         const sortVal = {
-          confidence: (s) => s.confidence,
           asset: (s) => s.asset,
           rs: (s) => s.rsRating,
           earnings: (s) => s.earningsSortScore,
@@ -4352,7 +4312,14 @@
           weeks: (s) => baseWeeks(s),
           status: (s) => { const st = baseStatus(s); return st ? BASE_STATUS[st].rank : null; },
         };
-        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }];
+        // Within a grade the list used to rank by confidence. Measured over
+        // 97,563 graded breakouts, confidence runs backwards at the top: its
+        // largest term penalises a loose five-bar range, and loose measured
+        // better (0-4% ran a 1.70 profit factor, 14%+ ran 3.02), so the 0.96+
+        // bucket was the worst of all at 1.76. RS is monotonic where it counts
+        // (under 89 runs 1.73, 89-95 runs 2.04, 95+ runs 2.45), so the eye now
+        // starts at the top of the measured order. docs/confidence-study.md.
+        const keys = this.sortKeys?.length ? this.sortKeys : [{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }];
         filtered.sort((a, b) => {
           if (!!a.stoppedOut !== !!b.stoppedOut) return a.stoppedOut ? 1 : -1;
           for (const { key, dir } of keys) {
@@ -4375,7 +4342,7 @@
 
       toggleSort(field, additive = false) {
         // Numeric columns start descending (best first); Asset starts A→Z.
-        const defaults = { asset: 'asc', confidence: 'desc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc', weeks: 'desc', status: 'desc' };
+        const defaults = { asset: 'asc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc', weeks: 'desc', status: 'desc' };
         const keys = [...(this.sortKeys || [])];
         const i = keys.findIndex(k => k.key === field);
         if (additive) {
@@ -4447,7 +4414,7 @@
 
       resetFilters() {
         this.filtering = '';
-        this.minConfidence = 85;
+        this.minRs = 0;
         this.signalTypeFilter = 'breakout';
         this.assetTypeFilter = 'all';
         this.sectorFilter = 'all';
@@ -4582,7 +4549,7 @@
                 <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4 mb-6">
                   <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
                     <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                    By confidence tier
+                    By relative strength
                   </h3>
                   ${(() => {
                     const maxAbs = Math.max(0.5, ...bt.byTier.map(t => Math.abs(t.avgReturn)));
@@ -4650,7 +4617,7 @@
                           <div class="w-16 font-mono text-blue-400 font-semibold">${r.asset}</div>
                           <div class="w-20 text-[11px] text-gray-500 font-mono">${r.signalDate}</div>
                           <div class="flex-1 text-[11px] text-gray-500 truncate">${r.sector}</div>
-                          <div class="w-14 text-right text-[11px] font-mono text-gray-400 tabular-nums">${fmt(r.confidence, { digits: 0, pct: true })}</div>
+                          <div class="w-14 text-right text-[11px] font-mono text-gray-400 tabular-nums">${r.rsRating != null ? 'RS ' + r.rsRating : '—'}</div>
                           <div class="w-20 text-right font-mono font-semibold tabular-nums ${returnColor(ret)}">${fmt(ret, { sign: true, pct: true })}</div>
                         </div>
                       `; }).join('')}
@@ -4898,7 +4865,7 @@
             ...item,
             signal,
             price: signal?.currentPrice,
-            confidence: signal?.confidence,
+            rsRating: signal?.rsRating,
           };
         });
 
@@ -4946,7 +4913,7 @@
                         <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Added</th>
                         <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Signal Status</th>
                         <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
-                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                         <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Action</th>
                       </tr>
                     </thead>
@@ -4976,8 +4943,8 @@
                           <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">
                             ${item.price ? CUR + item.price.toFixed(2) : '—'}
                           </td>
-                          <td data-label="Confidence" class="px-3 py-2.5 whitespace-nowrap">
-                            ${item.confidence ? `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40 tabular-nums">${item.confidence}%</span>` : '—'}
+                          <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">
+                            ${item.rsRating != null ? `<span class="px-2 py-0.5 rounded text-xs font-semibold tabular-nums ${item.rsRating >= 89 ? 'bg-green-500/20 text-green-300 ring-1 ring-green-500/40' : 'bg-gray-700/40 text-gray-300 ring-1 ring-gray-600/40'}">${item.rsRating}</span>` : '—'}
                           </td>
                           <td data-label="Action" class="px-3 py-2.5 whitespace-nowrap">
                             <button onclick="dashboard.toggleShortlist('${item.asset.replace(/'/g, "\\'")}', event);" class="px-2.5 py-1 rounded text-xs font-semibold bg-red-500/15 text-red-300 ring-1 ring-red-500/30 hover:bg-red-500/25 transition">
@@ -5220,7 +5187,7 @@
             <td data-label="Ratio" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right text-gray-300">${this.safeNum(s.volumeRatio, 1)}x</td>
             <td data-label="Type" class="px-3 py-2.5 whitespace-nowrap text-center text-gray-400 text-xs">
               ${s.breakoutType || '—'}
-              ${s.lowConfidence ? `<span class="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-900/50 text-amber-400 ring-1 ring-amber-700/40" title="Below the screener's confidence bar — surfaced for the volume surge, not in the Screener list">low conf</span>` : ''}
+
             </td>
             <td data-label="Scanned" class="px-3 py-2.5 whitespace-nowrap text-right text-gray-500 text-xs">${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
           </tr>
@@ -5774,21 +5741,13 @@
       // the row's onclick resolves its backing list from — main-table rows use
       // the filtered list, the Tracking section uses dashboard.trackingSignals.
       renderSignalRow(signal, idx, sourceExpr) {
-                        const color = this.getSignalColor(signal);
                         const tvUrl = this.getTradingViewUrl(signal.asset);
                         const inShortlist = this.isInShortlist(signal.asset);
                         const assetEscaped = signal.asset.replace(/'/g, "\\'");
                         const { signalLabel, price, levels, detail, earnings } = this.rowCells(signal);
-                        const confTextColor = signal.confidence >= 95 ? 'text-green-400'
-                          : signal.confidence >= 85 ? 'text-yellow-400'
-                          : signal.confidence >= 75 ? 'text-orange-400'
-                          : 'text-red-400';
-                        const tierClass = signal.confidence >= 99 ? 'tier-elite'
-                          : signal.confidence >= 95 ? 'tier-strong'
-                          : '';
                         return `
                           <tr
-                            class="signal-row ${tierClass} ${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 cursor-pointer ${signal.stoppedOut ? 'opacity-50 border-l-2 border-red-500/70' : signal.signalType === 'extension' ? 'border-l-2 border-yellow-500/70' : ''}"
+                            class="signal-row ${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 cursor-pointer ${signal.stoppedOut ? 'opacity-50 border-l-2 border-red-500/70' : signal.signalType === 'extension' ? 'border-l-2 border-yellow-500/70' : ''}"
                             data-signal-index="${idx}"
                             onclick="if (!event.target.closest('button') && !event.target.closest('a')) dashboard.openDrawer((${sourceExpr})[parseInt(this.dataset.signalIndex)])"
                           >
@@ -5817,15 +5776,6 @@
                                 </button>
                               </div>
                             </td>
-                            <td data-label="Confidence" class="px-3 py-2.5 whitespace-nowrap">
-                              <div class="flex flex-col gap-0.5 w-[70px]">
-                                <div class="flex items-baseline gap-1">
-                                  <span class="text-lg font-bold ${confTextColor} tabular-nums leading-none">${signal.confidence}</span>
-                                  <span class="text-[10px] text-gray-500 font-medium">%</span>
-                                </div>
-                                <div class="conf-bar ${confTextColor}" style="--pct: ${signal.confidence}%;"></div>
-                              </div>
-                            </td>
                             <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">${signal.rsRating != null ? `<span class="text-sm font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile, per market)">${signal.rsRating}</span>` : '<span class="text-gray-600">—</span>'}</td>
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
@@ -5841,11 +5791,7 @@
 
       renderMainDashboard() {
         const filtered = this.getFilteredSignals();
-        const validSignals = this.signals.filter(s => s.confidence >= this.minConfidence);
-        const greenCount = validSignals.filter(s => s.pineScriptGreen || s.confidence === 99).length;
-        const brightCount = validSignals.filter(s => !s.pineScriptGreen && s.confidence >= 95 && s.confidence < 99).length;
-        const orangeCount = validSignals.filter(s => s.confidence >= 85 && s.confidence < 95).length;
-        const yellowCount = validSignals.filter(s => s.confidence >= 75 && s.confidence < 85).length;
+        const validSignals = this.signals.filter(s => (s.rsRating ?? 0) >= this.minRs);
         const extensionCount = validSignals.filter(s => s.signalType === 'extension').length;
 
         document.getElementById('app').innerHTML = `
@@ -5978,20 +5924,25 @@
                     ${this.getSectors().map(sec => `<option value="${sec}" ${this.sectorFilter === sec ? 'selected' : ''}>${sec}</option>`).join('')}
                   </select>
 
-                  <!-- Min confidence inline slider -->
-                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap">
-                    Min
+                  <!-- Minimum relative strength. This slider used to be a
+                       confidence floor defaulting to 85, which hid every row
+                       scoring 10 — the 78% of graded breakouts that do not
+                       match the Type1 five-bar shape, and the better-performing
+                       majority. RS is the measured version of the same idea and
+                       starts at 0, hiding nothing. -->
+                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap" title="Minimum relative strength (1-99). 89+ is the band the screen emails from.">
+                    Min RS
                     <input
                       type="range"
-                      id="confidence-slider"
+                      id="rs-slider"
                       min="0"
-                      max="100"
-                      value="${this.minConfidence}"
-                      oninput="document.getElementById('confidence-label').textContent = this.value + '%';"
-                      onchange="dashboard.setFilter('minConfidence', parseInt(this.value));"
+                      max="99"
+                      value="${this.minRs}"
+                      oninput="document.getElementById('rs-label').textContent = this.value;"
+                      onchange="dashboard.setFilter('minRs', parseInt(this.value));"
                       class="w-24 accent-blue-500"
                     />
-                    <span id="confidence-label" class="w-10 text-right font-mono text-gray-300">${this.minConfidence}%</span>
+                    <span id="rs-label" class="w-8 text-right font-mono text-gray-300">${this.minRs}</span>
                   </label>
 
                   <!-- Lookback window slider — surfaces older breakout alerts -->
@@ -6055,7 +6006,7 @@
                 if (this.filtering) chips.push({ label: `Search: "${this.filtering}"`, clear: `dashboard.filtering=''; dashboard.render();` });
                 if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
                 if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
-                if (this.minConfidence !== 85) chips.push({ label: `Min: ${this.minConfidence}%`, clear: `dashboard.setFilter('minConfidence', 85)` });
+                if (this.minRs > 0) chips.push({ label: `RS ≥ ${this.minRs}`, clear: `dashboard.setFilter('minRs', 0)` });
                 if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Lookback: ${this.lookbackDays}d`, clear: `dashboard.setLookback(3)` });
                 if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
                 if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
@@ -6122,9 +6073,6 @@
                         <th style="min-width:180px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset', event.shiftKey);">
                           Asset ${this.sortIndicator('asset')}
                         </th>
-                        <th style="min-width:110px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('confidence', event.shiftKey);">
-                          <span data-tip="Model confidence in the setup (0-99%). Combines technical structure, volume, and earnings-call tone.">Confidence</span> ${this.sortIndicator('confidence')}
-                        </th>
                         <th style="min-width:60px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('rs', event.shiftKey);">
                           <span data-tip="Relative strength 1-99: percentile rank of trailing returns vs the scanned universe (per market). 80+ = leader, below 50 = laggard.">RS</span> ${this.sortIndicator('rs')}
                         </th>
@@ -6132,7 +6080,7 @@
                           <span data-tip="Last 30 daily closes. Green = closed higher over the window, red = closed lower.">Trend</span>
                         </th>
                         <th style="min-width:160px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('earnings', event.shiftKey);">
-                          <span data-tip="Last earnings-call tone score and guidance direction. Boosts confidence on bullish + raised.">Earnings</span> ${this.sortIndicator('earnings')}
+                          <span data-tip="Last earnings-call tone score and guidance direction.">Earnings</span> ${this.sortIndicator('earnings')}
                         </th>
                         <th style="min-width:140px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('sector', event.shiftKey);">Sector ${this.sortIndicator('sector')}</th>
                         <th style="min-width:210px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 select-none whitespace-nowrap">
@@ -6161,7 +6109,7 @@
 
               ${(() => {
                 // Tracking: stale extensions the server moved out of the
-                // confidence buckets. Null-safe — old cached API responses
+                // live buckets. Null-safe — old cached API responses
                 // without the field just render nothing.
                 const tr = this.trackingSignals || [];
                 if (!tr.length) return '';
@@ -6178,7 +6126,6 @@
                         <thead class="sticky-head">
                           <tr class="border-b border-gray-600">
                             <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
-                            <th style="min-width:110px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Confidence</th>
                             <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                             <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Trend</th>
                             <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Earnings</th>

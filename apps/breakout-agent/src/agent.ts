@@ -838,14 +838,39 @@ export class BreakoutAgent {
       // replaces the intrabar Donchian poke (57.0% win vs 22.8%; 81% of pokes
       // are traps). Type1/Type3/EP classification continues for tracking, the
       // dashboard, and streak bookkeeping — it just no longer decides emails.
-      // Quality floor on top of the setup gates (Sep 2026): an email needs
-      // BOTH a relative-strength rank of 89 or better (the name outperforms
-      // 89% of the scanned market — Minervini's "90% of my trades start at
-      // RS 89+", and the band where the Minervini study's profit factor
-      // stepped up to 2.20) AND confidence 80%+. Type 1 confidence is floored
-      // at 80% upstream, so RS is the condition that decides; a name with no
-      // RS rank yet does not email. Everything else stays on the dashboard.
-      const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0.8;
+      // Quality floor on top of the setup gates: a relative-strength rank of
+      // 89 or better, and real volume on the bar that cleared the level.
+      //
+      // The second half used to be confidence >= 0.80, and confidence did not
+      // survive being measured. Replicated over 97,563 graded breakouts,
+      // 1985-2026 (docs/confidence-study.md):
+      //
+      //   - It is not a score gate. A graded base is blue sky by definition,
+      //     so its consolidation term floors at 0.80 and blue sky adds 0.04.
+      //     No graded breakout can score under 0.84. Zero of 97,563 did.
+      //   - What it really gated was the Type1 five-bar shape, which scores
+      //     0.10 when absent. That silenced 78% of graded breakouts to buy
+      //     0.15 of profit factor: inside the RS 89+ leaders, Type1 ran 2.30
+      //     and everything it refused ran 2.15, on nearly three times the
+      //     cases.
+      //   - Where the number does vary it runs backwards. The top bucket is
+      //     the worst (0.96+ ran 1.76 against 2.19 at 0.88-0.92), because its
+      //     largest term penalises a loose five-bar range, and a loose range
+      //     is better: 0-4% ran 1.70, 14%+ ran 3.02.
+      //
+      // RS holds up and is monotonic at the top: under 89 runs 1.73, 89-95
+      // runs 2.04, 95+ runs 2.45. The breakout bar's own volume holds up too,
+      // and confidence never looked at it — it reads the five bars BEFORE the
+      // breakout. Under 1.2x runs 1.73, 1.5-2x runs 1.92, 3x+ runs 2.40.
+      //
+      // RS 89+ with 1.5x volume beats the gate it replaces on both counts:
+      // 11,199 cases at 2.43 against 6,337 at 2.30, and it wins in every
+      // decade. Sector rank was measured at the same time and adds almost
+      // nothing once RS is applied (2.31 top third against 2.25 bottom third
+      // inside RS 89+), because sector rank is built from member RS. It stays
+      // a label. A name with no RS rank yet does not email.
+      const volumeOkForAlert = data.avgVolume > 0 && data.volume >= data.avgVolume * 1.5;
+      const qualityOk = rsRating != null && rsRating >= 89 && volumeOkForAlert;
       const shouldAlert = (isGradedBreakout || isCheatBreakout || isDeepBreakout) && qualityOk;
 
       // Debug logging for breakout classification

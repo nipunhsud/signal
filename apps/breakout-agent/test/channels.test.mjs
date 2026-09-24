@@ -20,9 +20,14 @@ test('email: the alert gate is the graded pivot close and nothing else', () => {
   assert.match(between(agent, 'const isMeaningfulBreakout =', ';'), /isDeepBreakout/);
   assert.match(agent, /deepBase: breakoutAnalysis\.deepBase/, 'persisted');
   assert.match(agent, /This one is a deep base/, 'the email names the kind and its rates');
-  // Quality floor: RS 89+ AND confidence 80%+ (Sep 2026). Both, not either —
-  // Type 1 confidence is floored at 80% upstream, so an OR let everything through.
-  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0\.8;/);
+  // Quality floor: RS 89+ AND 1.5x volume on the bar that cleared the level.
+  // Confidence was measured over 97,563 graded breakouts and removed from the
+  // gate: no graded breakout can score under 0.84, what it really gated was
+  // the Type1 shape (78% of the pool cut for 0.15 of profit factor), and where
+  // the number varies it runs backwards. See docs/confidence-study.md.
+  assert.match(agent, /const volumeOkForAlert = data\.avgVolume > 0 && data\.volume >= data\.avgVolume \* 1\.5;/);
+  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && volumeOkForAlert;/);
+  assert.doesNotMatch(between(agent, 'const qualityOk =', ';'), /confidence/, 'confidence no longer decides an email');
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);
@@ -141,4 +146,63 @@ test('email: the chart link goes to our own page, with a scheme', () => {
   assert.match(agent, /const dqUrl = \(asset: string\) => `https:\/\/\$\{dqLink\(asset\)\}`;/,
     'as an absolute URL — mail clients autolink a bare host inconsistently');
   assert.doesNotMatch(agent, /tradingViewSymbol/, 'and the exchange-prefix helper it needed is gone');
+});
+
+// Confidence was the other half of the email gate until it was measured.
+// Replicated over 97,563 graded breakouts, 1985-2026: no graded breakout can
+// score below 0.84, so it never filtered on the number; what it filtered on
+// was the Type1 five-bar shape, which scores 0.10 when absent, cutting 78% of
+// the pool to buy 0.15 of profit factor; and where the number does vary it
+// runs backwards, because its largest term penalises a loose five-bar range
+// and a loose range measured better. docs/confidence-study.md.
+test('email: confidence does not gate an email, and volume does', () => {
+  const q = between(agent, 'const qualityOk =', ';');
+  assert.doesNotMatch(q, /confidence/);
+  assert.match(q, /rsRating >= 89/, 'RS holds up: under 89 runs 1.73, 89-95 runs 2.04, 95+ runs 2.45');
+  assert.match(q, /volumeOkForAlert/);
+  // The floor is the breakout bar's own volume, not the five bars before it —
+  // which is what confidence read, and why it missed this entirely.
+  assert.match(agent, /data\.volume >= data\.avgVolume \* 1\.5/);
+});
+
+test('the gate still refuses a name with no RS rank', () => {
+  assert.match(between(agent, 'const qualityOk =', ';'), /rsRating != null/);
+});
+
+// Confidence drove the dashboard's quality signals too, and every one of them
+// marked the worse half. Measured over 97,563 graded breakouts, by profit
+// factor: the elite tint (0.99+) ran 1.72 against 2.14 for the yellow band,
+// and the star (0.90+) ran 1.81 against 2.09 for the rows without one. The
+// minimum-confidence slider defaulted to 85, which hid every row scoring 0.10
+// — the 78% of graded breakouts that are not Type1, and the better-performing
+// majority. All of it is gone; RS took the slider and the sort.
+test('dashboard: confidence no longer colours, stars, tints, filters or sorts', () => {
+  assert.doesNotMatch(dash, /minConfidence/, 'the confidence floor filter is gone');
+  assert.doesNotMatch(dash, /tier-elite|tier-strong/, 'rows are not tinted by confidence');
+  assert.doesNotMatch(dash, /★ High/, 'no high-confidence star');
+  assert.doesNotMatch(dash, /confTextColor|confColor/, 'no confidence colour ramp');
+  assert.doesNotMatch(dash, /\$\{signal\.confidence\}/, 'confidence is not rendered on a row or card');
+  assert.doesNotMatch(dash, /toggleSort\('confidence'/, 'no confidence column to sort');
+  assert.doesNotMatch(between(dash, 'const sortVal = {', '};'), /confidence/, 'not a sort key either');
+  // Three tables render signals. The first pass removed the cell from one of
+  // them and left the header, which silently shifted every column in the
+  // Tracking table one to the left.
+  assert.doesNotMatch(dash, />Confidence</, 'no table anywhere still has the column header');
+  assert.doesNotMatch(dash, /\$\{item\.confidence\}/, 'nor the Shortlist tab');
+  assert.doesNotMatch(dash, /By confidence tier/, 'the backtest splits on RS now');
+  // A preset saved before the change can still name the old key, and the
+  // comparator skips keys it does not know rather than complaining.
+  assert.match(dash, /k\.key !== 'confidence'/, 'stored confidence sort keys are dropped on load');
+});
+
+test('dashboard: RS took its place, on the key the sort map actually uses', () => {
+  assert.match(dash, /minRs/, 'the slider filters on relative strength');
+  assert.match(dash, /this\.minRs = prefs\.minRs \?\? 0;/, 'and starts at 0, hiding nothing');
+  const sortVal = between(dash, 'const sortVal = {', '};');
+  assert.match(sortVal, /rs: \(s\) => s\.rsRating/, "RS is keyed 'rs'");
+  // The default sort must name a key sortVal knows, or it silently does nothing.
+  const dflt = between(dash, 'const keys = this.sortKeys?.length ? this.sortKeys :', ';');
+  for (const k of dflt.match(/key: '([^']+)'/g).map((m) => m.slice(6, -1))) {
+    assert.match(sortVal, new RegExp(`\\b${k}: \\(s\\)`), `the default sort key '${k}' exists in the map`);
+  }
 });
