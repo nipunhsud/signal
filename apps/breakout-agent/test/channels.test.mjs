@@ -206,3 +206,21 @@ test('dashboard: RS took its place, on the key the sort map actually uses', () =
     assert.match(sortVal, new RegExp(`\\b${k}: \\(s\\)`), `the default sort key '${k}' exists in the map`);
   }
 });
+
+// A 30%-deep base showed no grade and no explanation, reading as though the
+// screen ignored it. The grade does stop at 25%, but the 25-35% band has its
+// own alert kind, and over forty years it ran a higher profit factor than the
+// graded one. The base card now says which side of the line a base is on.
+test('dashboard: a base outside the grade says which band it is in', () => {
+  const badges = between(dash, 'const badges = [', '].filter(Boolean)');
+  assert.match(badges, /b\.depthPct > 25 && b\.depthPct <= 35 && b\.isBlueSky/, 'the alertable deep band is labelled');
+  assert.match(badges, /Deep band/);
+  assert.match(badges, /b\.depthPct > 35/, 'and so is the part the screen never alerts on');
+  assert.match(badges, /Too deep/);
+});
+
+test('the grade itself still stops at 25%, and the deep kind covers 25-35%', () => {
+  const logic = src('../src/tools/breakout-logic.ts');
+  assert.match(logic, /gb\.depthPct <= 25\) \{/, 'the grade cap is unchanged');
+  assert.match(logic, /gb\.depthPct > 25 &&\s*\n\s*gb\.depthPct <= 35/, 'the deep kind takes the band above it');
+});

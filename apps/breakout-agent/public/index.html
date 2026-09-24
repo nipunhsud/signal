@@ -3993,6 +3993,12 @@
             b.isBlueSky ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="This base sits at the highest price of the period — no trapped sellers overhead.">Blue Sky</span>' : '',
             b.isVcpShape ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Tightening coil on drying volume — the volatility-contraction shape.">VCP shape</span>' : '',
             b.isStaircase ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/30" data-tip="Progressive contraction: each third of the base tighter than the last — the classic staircase, and the strongest stratifier inside the VCP cohort.">Staircase</span>' : '',
+            // The grade stops at 25% depth, so a 26-35% base shows no grade
+            // anywhere and reads as if the screen ignores it. It does not: that
+            // band alerts on its own terms. Say so on the base itself, not only
+            // on the day the alert fires.
+            (b.depthPct > 25 && b.depthPct <= 35 && b.isBlueSky) ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30" data-tip="Deeper than the 25% the grade allows, and inside the 25-35% band the screen alerts on separately: it emails when the close clears the pivot by 3% or more on 1.5x volume, entered at that close rather than the pivot. Measured over forty years, this band ran a higher profit factor than the graded one (2.61 against 1.84) and reached +20% 34% of the time against 14%, while touching the fail level 52% of the time against 28%.">Deep band</span>' : '',
+            (b.depthPct > 35) ? '<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide bg-gray-700/50 text-gray-400 ring-1 ring-gray-600/40" data-tip="Deeper than 35%. Outside both the grade and the deep band — the screen tracks it but never alerts on it.">Too deep</span>' : '',
           ].filter(Boolean).join(' ');
 
           return `
