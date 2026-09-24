@@ -2373,7 +2373,12 @@
         if (!b || !b.count) why.push('No consolidation of two weeks or more in the last two years, so there is no base to grade.');
         if (p.liquidityOk === false) why.push('Average volume is under 100k shares, below the liquidity floor.');
         if (rs != null && rs < 50) why.push(`Relative strength is ${rs}, in the weaker half of the market.`);
-        if (!why.length) why.push('Nothing rules it out on these numbers. It has not closed above a graded pivot yet.');
+        // The X-ray's verdict outranks every rule above. If a base here did
+        // clear its pivot under the rules the screen alerts on, then the
+        // answer is not a property of the stock — the screen simply has no row
+        // for it, and saying anything else is wrong.
+        const missed = (p.xray && p.xray.missed) || [];
+        if (!why.length && !missed.length) why.push('Nothing rules it out on these numbers. It has not closed above a graded pivot yet.');
 
         body.className = '';
         body.innerHTML = `
@@ -2386,9 +2391,20 @@
             ${row('Bases', `<span class="text-xs">${baseHtml}</span>`)}
             ${row('On the screen', `<span class="text-xs">${lsHtml}</span>`)}
           </div>
+          ${missed.length ? `
+          <div class="border-t border-gray-700/60 pt-4 mt-5">
+            <h3 class="font-semibold text-amber-300 mb-1 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>The base X-ray found ${missed.length === 1 ? 'a breakout' : missed.length + ' breakouts'} the screen has no row for</h3>
+            <p class="text-[11px] text-gray-500 mb-2">Each one cleared its pivot under the rules the screen alerts on. No row was written, so it never reached the screener or the email. They are not back-filled: an alert dated weeks ago is not one anybody could have taken, and adding it would falsify the receipts.</p>
+            <ul class="space-y-1.5 text-[13px] text-gray-300">
+              ${missed.map((m) => `<li class="pl-3 border-l-2 border-amber-700/60">
+                <span class="font-mono text-amber-200">${m.date}</span> — cleared ${CUR}${n(m.pivot)} at ${CUR}${n(m.entryClose)},
+                ${m.grade ? `grade ${m.grade}` : 'deep band'} · ${n(m.weeks, 1)}wk · ${n(m.depthPct, 1)}% deep${m.episodicPivot ? ` · built on a ${n(m.episodicPivot.gainPct, 1)}% repricing day` : ''}
+              </li>`).join('')}
+            </ul>
+          </div>` : ''}
           <div class="border-t border-gray-700/60 pt-4 mt-5">
             <h3 class="font-semibold text-gray-200 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>Why it is not on the screen</h3>
-            <ul class="space-y-1.5 text-[13px] text-gray-300">${why.map((w) => `<li class="pl-3 border-l-2 border-gray-700">${w}</li>`).join('')}</ul>
+            <ul class="space-y-1.5 text-[13px] text-gray-300">${why.length ? why.map((w) => `<li class="pl-3 border-l-2 border-gray-700">${w}</li>`).join('') : '<li class="pl-3 border-l-2 border-gray-700">Nothing rules it out. The breakouts above are the reason — the screen did not record them.</li>'}</ul>
           </div>`;
       }
 
