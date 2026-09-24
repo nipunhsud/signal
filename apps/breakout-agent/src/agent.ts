@@ -680,6 +680,12 @@ export class BreakoutAgent {
           ? `VCP ✓ (ATR ${breakoutAnalysis.atrPercent.toFixed(1)}%, contraction ${breakoutAnalysis.contractionRatio.toFixed(2)}, expansion ${breakoutAnalysis.expansionRatio.toFixed(1)}x)`
           : null,
         breakoutAnalysis.isBlueSky ? "Blue Sky ✓ (base at 52w high)" : null,
+        // A base built on a repricing bar. 2.25 profit factor against 1.84
+        // without one, +20% reached 31.7% against 15.2%, stable in every
+        // decade — and 49.9% touched the fail level against 29.7%.
+        data.gradedBase?.ep
+          ? `Built on an ${data.gradedBase.ep.gainPct}% repricing day (${data.gradedBase.ep.date}, ${data.gradedBase.ep.volumeRatio}x volume)`
+          : null,
         rsRating != null
           ? `RS: ${rsRating}${rsRating >= 89 ? " (leader)" : rsRating >= 80 ? " (strong)" : rsRating < 50 ? " (laggard)" : ""}`
           : null,
