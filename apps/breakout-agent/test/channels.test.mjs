@@ -123,8 +123,14 @@ test('deploy: a container cannot survive on old code without the deploy failing'
   const deploy = src('../../../scripts/deploy.sh');
   assert.match(deploy, /up -d --remove-orphans/, 'a service the compose file no longer names is removed');
   assert.match(deploy, /DEPLOY INCOMPLETE/, 'a stale container fails the deploy');
-  assert.match(deploy, /docker inspect -f '\{\{\.Image\}\}'/, 'each running container is compared to the built image');
   assert.match(deploy, /exit 1/, 'and the script exits non-zero');
+  // The first version compared image ids from `compose config --images <svc>`,
+  // which ignores the service argument and lists every image — so `head -1`
+  // gave four services the same expected id and failed a deploy that had
+  // replaced everything. Creation time needs no image plumbing.
+  assert.match(deploy, /DEPLOY_STARTED="\$\(date -u/, 'the run stamps its start time before building');
+  assert.match(deploy, /\[\[ "\$created" < "\$DEPLOY_STARTED" \]\]/, 'and every container must be newer than it');
+  assert.doesNotMatch(deploy, /config --images/, 'no per-service image lookup that does not work');
 });
 
 test('email: the voice the alerts were rewritten to still holds', () => {

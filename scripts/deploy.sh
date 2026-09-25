@@ -31,6 +31,9 @@ df -h / | tail -1
 
 # migrations MUST be rebuilt too: its image bakes in prisma/migrations, and a
 # stale one makes `migrate deploy` miss new migrations (silent schema drift).
+# Stamped before the build so the replacement check below can tell which
+# containers this run actually replaced.
+DEPLOY_STARTED="$(date -u +%Y-%m-%dT%H:%M:%S)"
 AGENTS="agent-tier-1 agent-tier-2 agent-tier-3 agent-tier-4 agent-tier-5 agent-in-1 agent-in-2"
 $DC build --no-cache migrations dashboard $AGENTS
 # --remove-orphans: a container from an older compose topology (a service since
@@ -52,12 +55,19 @@ $DC up -d --remove-orphans
 $DC up -d --force-recreate --no-deps caddy
 $DC ps
 
-# Every running agent must be on the image this deploy just built. Two ways
-# that silently fails: a build error aborts before `up` and leaves the old
-# container running, and an orphan from a previous compose topology survives
-# every deploy because `up -d` only manages services the current file names.
-# Both keep scanning and emailing on old code under old rules.
-echo "--- image check ---"
+# Every agent container must have been replaced by THIS deploy. Two ways that
+# silently fails: a build error aborts before `up` and leaves the old container
+# running, and an orphan from a previous compose topology survives every deploy
+# because `up -d` only manages services the current file names.
+#
+# The first version of this check compared image ids from `compose config
+# --images <svc>`. That flag ignores the service argument on this compose
+# version and lists every image, so `head -1` handed the same "expected" id to
+# four different services and the check failed a deploy that had in fact
+# replaced everything. Container creation time is the property we actually
+# care about and needs no image plumbing: builds here are --no-cache, so every
+# image is new every run and every container is recreated.
+echo "--- replacement check ---"
 stale=0
 for svc in $AGENTS dashboard; do
   cid="$($DC ps -q "$svc" 2>/dev/null || true)"
@@ -66,27 +76,27 @@ for svc in $AGENTS dashboard; do
     stale=1
     continue
   fi
-  running="$(docker inspect -f '{{.Image}}' "$cid" 2>/dev/null || true)"
-  image="$($DC config --images "$svc" 2>/dev/null | head -1 || true)"
-  expected=""
-  [ -n "$image" ] && expected="$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null || true)"
-  if [ -z "$expected" ] || [ -z "$running" ]; then
-    echo "UNCHECKED $svc — could not resolve its image; verify by hand"
-  elif [ "$running" != "$expected" ]; then
-    echo "STALE     $svc is on ${running#sha256:}, this deploy built ${expected#sha256:}"
+  created="$(docker inspect -f '{{.Created}}' "$cid" 2>/dev/null || true)"
+  if [ -z "$created" ]; then
+    echo "UNCHECKED $svc — could not read its creation time"
+    continue
+  fi
+  # Both are RFC3339 in UTC, so a string compare is a time compare.
+  if [[ "$created" < "$DEPLOY_STARTED" ]]; then
+    echo "STALE     $svc was created $created, before this deploy started at $DEPLOY_STARTED"
     stale=1
   else
-    echo "ok        $svc"
+    echo "ok        $svc replaced at $created"
   fi
 done
 
-# Everything docker is running, newest image first. A container whose image is
-# weeks older than the rest is the one still sending the old emails.
-echo "--- running containers, by image age ---"
+# Everything docker is running, with how long each has been up. A container
+# far older than the rest is the one still on old code.
+echo "--- running containers ---"
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.RunningFor}}'
 
 if [ "$stale" = "1" ]; then
-  echo "DEPLOY INCOMPLETE — a container is not on the image just built, so it is still running old code and old alert rules." >&2
+  echo "DEPLOY INCOMPLETE — a container was not replaced by this deploy, so it is still running old code and old alert rules." >&2
   exit 1
 fi
-echo "all services on the freshly built images"
+echo "every service was replaced by this deploy"
