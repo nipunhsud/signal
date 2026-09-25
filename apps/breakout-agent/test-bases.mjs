@@ -1,7 +1,7 @@
 // Base segmentation sanity tests. Pure synthetic bars, no network.
 //   node test-bases.mjs
 // Exits non-zero on failure so it can gate a deploy.
-import { detectBases } from "./base-detect.js";
+import { detectBases, reclaimAfterFailedBreakout } from "./base-detect.js";
 
 const bars = [];
 let d = new Date("2026-01-05");
@@ -42,5 +42,28 @@ check("blue sky on ascending series", b2?.isBlueSky === true);
 // Degenerate inputs must not throw
 check("empty input → []", detectBases([]).length === 0);
 check("tiny input → []", detectBases(bars.slice(0, 5)).length === 0);
+
+// Reclaim (CRWD Sep 2026 shape): base breaks out, closes >7% under its pivot,
+// then closes back above the failed move's high after a quiet pullback.
+{
+  const rb = [];
+  let t = new Date("2026-01-05");
+  const p = (h, l, c, v) => {
+    while (t.getDay() === 0 || t.getDay() === 6) t.setDate(t.getDate() + 1);
+    rb.push({ time: t.toISOString().slice(0, 10), open: c, high: h, low: l, close: c, volume: v });
+    t.setDate(t.getDate() + 1);
+  };
+  for (let i = 0; i < 60; i++) p(51 + i * 0.8, 49 + i * 0.8, 50 + i * 0.8, 1e6); // uptrend to ~$98
+  for (let i = 0; i < 15; i++) p(100, 92, 95, 8e5); // base under $100
+  p(106, 99, 105, 3e6); // breakout
+  p(110, 104, 108, 2e6); // failed move's high $110
+  p(104, 90, 91, 2e6); // closes > 7% under $100
+  const quiet = (v) => { for (let i = 0; i < 6; i++) p(96, 92, 94, v); };
+  const withVol = (v) => { const b = rb.slice(); quiet(v); p(113, 100, 112, 3e6); const r = reclaimAfterFailedBreakout(rb, detectBases(rb)); rb.length = 0; rb.push(...b); return r; };
+  const dry = withVol(4e5);
+  check("reclaim fires on dry-up at the failed move's high", dry?.pivot === 110);
+  check("reclaim depth measured from that high", dry?.depthPct > 17 && dry?.depthPct < 19);
+  check("no reclaim on heavy pullback volume", withVol(2e6) === null);
+}
 
 process.exit(failed);

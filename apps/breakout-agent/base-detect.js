@@ -71,6 +71,49 @@ export function detectBases(bars) {
   return bases;
 }
 
+// Reclaim after a failed breakout. The last base broke out, then CLOSED 7%+
+// under its pivot, and price came back before a new 2-week base could form.
+// The failed move's high becomes the pivot; the first close above it counts,
+// but only if the last 5 bars before it ran under 0.85x the 50-day volume.
+// CRWD 2026: $226.90 base broke out Aug 27, topped $233.88 Aug 31, closed
+// $203.42 Sep 2, dried up to 0.76x, reclaimed on the Sep 14 gap after 8 bars.
+// Study (DailyBar 2021-26, graded filters, 20 bars): all reclaims n=134
+// 48.5% win; dry-up only n=40 62.5% win, +7.6% median, 68% touch -7%.
+// ponytail: n=40 — re-measure once live reclaims accumulate.
+// Returns { pivot, pivotDate, bars, depthPct, breakoutDate, dryUp } or null.
+export function reclaimAfterFailedBreakout(bars, bases) {
+  const last = bases[bases.length - 1];
+  if (!last || last.status !== 'breakout') return null;
+  const bo = bars.findIndex((b) => b.time === last.breakout.date);
+  if (bo < 0) return null;
+  const stop = last.pivot * 0.93;
+  let hi = bo;
+  let stopIdx = -1;
+  for (let k = bo; k < bars.length; k++) {
+    if (bars[k].high > bars[hi].high) hi = k;
+    if (bars[k].close <= stop) { stopIdx = k; break; }
+  }
+  if (stopIdx < 0 || hi < 50) return null;
+  const pivot = bars[hi].high;
+  let t = -1;
+  for (let k = stopIdx; k < bars.length; k++) if (bars[k].close > pivot) { t = k; break; }
+  if (t < 0) return null;
+  const avg = (from, to) => { let s = 0; for (let k = from; k < to; k++) s += bars[k].volume || 0; return s / Math.max(1, to - from); };
+  const n5 = Math.min(5, t - hi - 1);
+  const dryUp = avg(t - n5, t) / avg(hi - 49, hi + 1);
+  if (!(n5 > 0 && dryUp < 0.85)) return null;
+  let low = Infinity;
+  for (let m = hi + 1; m < t; m++) low = Math.min(low, bars[m].low);
+  return {
+    pivot: round(pivot, 2),
+    pivotDate: bars[hi].time,
+    bars: t - hi - 1,
+    depthPct: round(((pivot - low) / pivot) * 100, 1),
+    breakoutDate: bars[t].time,
+    dryUp: round(dryUp, 2),
+  };
+}
+
 function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
   const inside = bars.slice(pivotIdx + 1, endIdx);
   const n = inside.length;

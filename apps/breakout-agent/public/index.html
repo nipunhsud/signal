@@ -1346,6 +1346,70 @@
         }
       }
 
+      // The "cleared the pivot" strip and the scan-coverage figure. Riding the
+      // 5-second signals poll, throttled to once a minute.
+      async fetchClearedAndCoverage() {
+        if (this._clearedAt && Date.now() - this._clearedAt < 60000) return;
+        this._clearedAt = Date.now();
+        try {
+          const [c, v] = await Promise.all([
+            fetch(`/api/cleared?${REGION_Q}`).then(r => r.ok ? r.json() : null),
+            fetch(`/api/coverage?${REGION_Q}`).then(r => r.ok ? r.json() : null),
+          ]);
+          this.cleared = c;
+          this.coverage = v;
+          if (this.view === 'dashboard' || !this.view) this.render();
+        } catch (e) { /* the strip is extra; the list does not depend on it */ }
+      }
+
+      // Share of the universe the latest session actually analyzed. Signal rows
+      // are only written for meaningful names, so a scan that silently dropped
+      // half the market looked normal. Red under 90%.
+      coveragePill() {
+        const c = this.coverage;
+        if (!c || !c.universe) return '';
+        const pct = Math.round((c.scanned / c.universe) * 100);
+        const color = pct >= 90 ? 'text-gray-400' : pct >= 70 ? 'text-yellow-400' : 'text-red-400';
+        const tip = `The latest session analyzed ${c.scanned.toLocaleString()} of the ${c.universe.toLocaleString()} names scanned in the last five days. Last pass ${c.lastScanEt || '—'} ET. A name that is not analyzed cannot show here or be emailed.`;
+        return `<span class="inline-flex items-center gap-1 text-[11px] ${color}" data-tip="${tip}">Scanned <span class="font-medium tabular-nums">${c.scanned.toLocaleString()} of ${c.universe.toLocaleString()}</span></span>`;
+      }
+
+      // Graded bases whose close cleared the pivot in the last two sessions,
+      // loudest volume first. Emailed or not, so a close the email gate or the
+      // late-entry ceiling held back is still on the screen.
+      clearedStrip() {
+        const list = this.cleared?.cleared || [];
+        if (!list.length) return '';
+        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        const day = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const money = (v) => '$' + Number(v).toFixed(2);
+        const cards = list.slice(0, 12).map(c => {
+          const power = c.volRatio != null && c.volRatio >= 2;
+          const vol = c.volRatio != null ? `<span class="${power ? 'text-orange-300 font-semibold' : 'text-gray-400'}">${c.volRatio.toFixed(1)}× volume</span>` : '';
+          const mail = c.alertedAt
+            ? `<span class="text-emerald-400">emailed ${day(String(c.alertedAt).slice(0, 10))}</span>`
+            : `<span class="text-gray-500">not emailed</span>`;
+          return `
+            <button onclick="dashboard.openAsset('${esc(c.asset)}')"
+              class="text-left bg-gray-800 hover:bg-gray-750 rounded-lg px-3 py-2 ring-1 ${power ? 'ring-orange-500/50' : 'ring-gray-700'} min-w-[210px]">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="font-mono font-bold text-blue-400">${esc(c.asset)}</span>
+                <span class="text-[11px] text-gray-400">grade ${esc(c.grade)}${c.rs != null ? ' · RS ' + c.rs : ''}${c.reclaim ? ' · reclaim' : ''}</span>
+              </div>
+              <div class="text-[12px] text-gray-300 mt-0.5">Cleared ${money(c.pivot)} ${day(c.clearedOn)}, now ${c.pctPast >= 0 ? '+' : ''}${c.pctPast.toFixed(1)}%</div>
+              <div class="text-[11px] mt-0.5 flex gap-2">${vol}${mail}</div>
+            </button>`;
+        }).join('');
+        return `
+          <div class="mb-5">
+            <div class="flex items-baseline gap-2 mb-2">
+              <h2 class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">Cleared the pivot</h2>
+              <span class="text-[11px] text-gray-500">graded bases, last two sessions, loudest volume first · orange = 2× or more</span>
+            </div>
+            <div class="flex gap-2 overflow-x-auto pb-1" data-keep-scroll="cleared-x">${cards}</div>
+          </div>`;
+      }
+
       freshnessDot() {
         if (!this.lastFetchAt) return '';
         const mostRecent = this.signals.reduce((max, s) => {
@@ -1909,6 +1973,7 @@
           }
           this.trackingSignals = Array.isArray(data.tracking) ? data.tracking : [];
           this.breadth = data.stats?.breadth || null;
+          this.fetchClearedAndCoverage();
 
           this.lastFetchAt = Date.now();
           this.loading = false;
@@ -2559,8 +2624,9 @@
                 const cohort = this.cohortChipHtml(signal);
                 const vcp = signal.isVcp ? '<span class="badge bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/30" data-tip="Volatility Contraction Pattern: tight base, volatility contracting into the pivot, breakout bar expanding upward"><span class="badge-dot"></span>VCP</span>' : '';
                 const sky = signal.isBlueSky ? '<span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : '';
+                const reclaim = signal.isReclaim ? '<span class="badge bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30" data-tip="The last base broke out, closed more than 7% back under its pivot, then closed above the failed move\'s high after a light-volume pullback. That high is the pivot here."><span class="badge-dot"></span>Reclaim</span>' : '';
                 // Graded rows: the fuller sentence here (the header carries the chips).
-                const sig = `<span class="inline-flex items-center gap-1.5 flex-wrap justify-end">${signal.baseGrade ? this.gradeBadgeHtml(signal) : c.signalLabel}${this.alertChipHtml(signal)}${vcp}${sky}${cohort}</span>`;
+                const sig = `<span class="inline-flex items-center gap-1.5 flex-wrap justify-end">${signal.baseGrade ? this.gradeBadgeHtml(signal) : c.signalLabel}${this.alertChipHtml(signal)}${reclaim}${vcp}${sky}${cohort}</span>`;
                 const rs = signal.rsRating != null
                   ? `<span class="font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}">${signal.rsRating}${signal.rsRating >= 80 ? ' <span class="text-[10px] font-sans font-normal text-gray-500">leader</span>' : signal.rsRating < 50 ? ' <span class="text-[10px] font-sans font-normal text-gray-500">laggard</span>' : ''}</span>`
                   : dash;
@@ -5834,9 +5900,12 @@
                 </div>
                 <div class="flex flex-col items-end gap-1 text-xs">
                   ${this.freshnessDot()}
+                  ${this.coveragePill()}
                   ${this.renderMarketStatus()}
                 </div>
               </div>
+
+              ${this.clearedStrip()}
 
               <!-- Stats strip: clickable, doubles as quick filter -->
               ${(() => {
