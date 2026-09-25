@@ -66,16 +66,27 @@ if (IMMEDIATE_SCAN) {
   const timezone = process.env.TZ || 'America/New_York'; // Default to ET
 
   // Schedule with explicit timezone enforcement (node-cron v3+)
+  // One pass at a time. The full universe (~3.5k stocks + ETFs since the
+  // liquidity filter moved off the screener's intraday volume) makes the
+  // day's first pass long; an overlapping pass would double every FMP call.
+  let passRunning = false;
   const runScans = async () => {
     const mkt = marketStatus(new Date(), REGION);
     if (!mkt.open && !isAlertWindow(new Date(), REGION)) {
       console.log(`⊘ Skip scan: Outside market hours (${mkt.label})`);
       return;
     }
+    if (passRunning) {
+      console.warn("⊘ Skip scan: the previous pass is still running");
+      return;
+    }
+    passRunning = true;
     try {
       for (const m of SCAN_MODES) await scan(m);
     } catch (err) {
       console.error("Scheduled scans failed:", err);
+    } finally {
+      passRunning = false;
     }
     // What this pass cost on FMP's historical endpoint, by kind — the number
     // to compare with FMP's bandwidth dashboard.

@@ -3,7 +3,7 @@ import { globalRateLimiter } from "./rate-limiter.js";
 import { db } from "../db.js";
 // @ts-ignore — plain-JS base segmentation at the app root, shared with the
 // dashboard's /api/bases so scanner and chart X-ray agree on what "the base" is.
-import { detectBases } from "../../base-detect.js";
+import { detectBases, reclaimAfterFailedBreakout } from "../../base-detect.js";
 // @ts-ignore — plain JS at the app root, shared with the study and the tests
 import { computeActivity } from "../../activity.js";
 
@@ -610,6 +610,9 @@ export interface MarketData {
     status: "breakout" | "forming";
     breakoutDate?: string;
     brokeOutToday: boolean;
+    reclaim?: boolean; // pivot is a failed breakout's high, reclaimed on dry-up volume
+    sessionsSinceBreakout?: number; // 0 = today's bar cleared the pivot
+    breakoutVolRatio?: number; // breakout bar volume / the 50 sessions before it
     dryUp?: number; // base average volume / the 50 bars before it
     coil?: number; // 2nd-half range / 1st-half range
   };
@@ -1252,8 +1255,13 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       const isExtension =
         priorBreakoutResult.priorBreakoutBarsAgo > 0 &&
         currentClose > priorBreakoutResult.priorBreakoutResistance;
+      // priorBreakoutBarsAgo counts from the end of detectPriorBreakout's
+      // window, which stops 6 bars short of today; +6 makes it bars-ago-from-
+      // today, which the dashboard turns into "Day N · broke out <date>" (CRWD
+      // 2026-09-21 showed Sep 9, a quiet red bar; the breakout was Aug 31).
+      // Logic only tests this for > 0, so the shift is display-only.
       const extensionPriorBreakoutBarsAgo = isExtension
-        ? priorBreakoutResult.priorBreakoutBarsAgo
+        ? priorBreakoutResult.priorBreakoutBarsAgo + 6
         : 0;
       const extensionConsolidationRangePercent = isExtension
         ? priorBreakoutResult.priorBreakoutConsolRangePercent
@@ -1272,22 +1280,34 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       let gradedBase: MarketData["gradedBase"];
       let activity: MarketData["activity"] = null;
       try {
-        const xray = detectBases(
-          allBars.map((b: any) => ({
-            time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
-          })),
-        );
-        const lastBase = xray[xray.length - 1];
+        const xbars = allBars.map((b: any) => ({
+          time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume,
+        }));
+        const xray = detectBases(xbars);
         try {
-          activity = computeActivity(
-            allBars.map((b: any) => ({ time: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume })),
-            lastBase || null,
-          );
+          activity = computeActivity(xbars, xray[xray.length - 1] || null);
         } catch {}
+        // A failed breakout reclaimed on dried-up volume grades off the
+        // failed move's high instead (reclaimAfterFailedBreakout, base-detect.js).
+        const reclaim = reclaimAfterFailedBreakout(xbars, xray);
+        const lastBase = reclaim
+          ? { ...reclaim, status: "breakout" as const, breakout: { date: reclaim.breakoutDate } }
+          : xray[xray.length - 1];
         if (lastBase) {
           const pIdx = allBars.findIndex((b: any) => b.date === lastBase.pivotDate);
           const beforePivot = allBars.slice(Math.max(0, pIdx - 251), pIdx + 1);
           const priorHigh = Math.max(...beforePivot.map((b: any) => b.high));
+          // The bar that cleared the pivot: how many sessions ago, and its
+          // volume against the 50 sessions before it. The dashboard's
+          // "cleared the pivot" strip and the email subject read these.
+          const boIdx = lastBase.breakout ? allBars.findIndex((b: any) => b.date === lastBase.breakout.date) : -1;
+          let boVol: number | undefined;
+          if (boIdx >= 50) {
+            let av = 0;
+            for (let k = boIdx - 50; k < boIdx; k++) av += allBars[k].volume || 0;
+            av /= 50;
+            if (av > 0) boVol = Math.round((allBars[boIdx].volume / av) * 100) / 100;
+          }
           gradedBase = {
             pivot: lastBase.pivot,
             pivotDate: lastBase.pivotDate,
@@ -1296,6 +1316,9 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             sky: lastBase.pivot >= priorHigh * 0.98,
             status: lastBase.status,
             breakoutDate: lastBase.breakout?.date,
+            reclaim: !!reclaim,
+            sessionsSinceBreakout: boIdx >= 0 ? allBars.length - 1 - boIdx : undefined,
+            breakoutVolRatio: boVol,
             dryUp: lastBase.volumeDryUp,
             coil: lastBase.coilRatio,
             // See brokeOutNow.

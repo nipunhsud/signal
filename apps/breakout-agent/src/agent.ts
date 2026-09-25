@@ -148,6 +148,13 @@ export class BreakoutAgent {
   private breadthBaseCount = 0;
   private breadthHandleCount = 0;
   private breadthTotalScanned = 0;
+  // Why names dropped out of this pass, by reason. A pass that silently lost
+  // half its universe looked normal until this was counted (Sep 2026: TWLO's
+  // 21 Sep close never evaluated; ~55% of US stocks unscanned on 23 Sep).
+  private scanMisses = new Map<string, number>();
+  private noteMiss(reason: string) {
+    this.scanMisses.set(reason, (this.scanMisses.get(reason) || 0) + 1);
+  }
 
   // Screener universe cached per trading day: membership churns daily at most,
   // yet the uncached ~2-3MB screener payload was re-downloaded on every
@@ -187,8 +194,8 @@ export class BreakoutAgent {
       console.log(`  [FMP] Querying actively-traded ${assetType} with isEtf=${isEtf} filter...`);
 
       const screenerUrl = isEtf
-        ? `https://financialmodelingprep.com/stable/company-screener?volumeMoreThan=10000&isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`
-        : `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&volumeMoreThan=${MIN_VOLUME}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=${EXCHANGES}&limit=10000&apikey=${apiKey}`;
+        ? `https://financialmodelingprep.com/stable/company-screener?isEtf=true&isFund=false&isActivelyTrading=true&limit=10000&apikey=${apiKey}`
+        : `https://financialmodelingprep.com/stable/company-screener?marketCapMoreThan=${MIN_MARKET_CAP}&isEtf=false&isFund=false&isActivelyTrading=true&exchange=${EXCHANGES}&limit=10000&apikey=${apiKey}`;
       const assetsRes = await globalRateLimiter.execute(() => fetch(screenerUrl));
 
       let stockSymbols: string[] = [];
@@ -217,10 +224,31 @@ export class BreakoutAgent {
         }
       }
 
+      // Liquidity on our own stored average, not the screener's volume. The
+      // screener's volumeMoreThan tests TODAY's volume so far, and the universe
+      // is fetched at the 10:00 scan and cached for the day: on 23 Sep 2026 it
+      // dropped 1,559 of 2,766 US stocks (median 709k shares/day, all liquid)
+      // for the whole session. Names with no stored bars stay in, get seeded,
+      // and are judged on their average from the next day.
+      const minAvgVol = mode === "etfs" ? 10_000 : MIN_VOLUME;
+      try {
+        const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const avgs = await db.$queryRaw<{ symbol: string; av: number }[]>`
+          SELECT symbol, AVG(volume)::float AS av FROM (
+            SELECT symbol, volume, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+            FROM "DailyBar" WHERE symbol = ANY(${allAssets}) AND date > ${since}
+          ) x WHERE rn <= 20 GROUP BY symbol`;
+        const thin = new Set(avgs.filter((r) => r.av < minAvgVol).map((r) => r.symbol));
+        console.log(`[FMP] Liquidity: ${thin.size} of ${allAssets.length} ${assetType} under ${minAvgVol.toLocaleString()} avg shares (stored 20-day); ${allAssets.length - avgs.length} unseeded kept`);
+        allAssets = allAssets.filter((sym) => !thin.has(sym));
+      } catch (e: any) {
+        console.warn(`[FMP] Liquidity filter skipped (${e?.message}); scanning the unfiltered screener list`);
+      }
+
       console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} ${assetType} (${mode === "stocks" ? "added " + (MEGACAP_WATCH.filter(m => !stockSymbols.includes(m)).length || 0) + " missing megacaps" : "no filtering"})`);
 
       const elapsed = Date.now() - startTime;
-      const filterDesc = mode === "etfs" ? "vol >10k" : `market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, vol >${MIN_VOLUME}k`;
+      const filterDesc = mode === "etfs" ? "avg vol >10k" : `market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, avg vol >${MIN_VOLUME.toLocaleString()}`;
       console.log(
         `[FMP] Fetched ${allAssets.length} US ${assetType} (${filterDesc}) in ${elapsed}ms`,
       );
@@ -275,6 +303,7 @@ export class BreakoutAgent {
     this.breadthBaseCount = 0;
     this.breadthHandleCount = 0;
     this.breadthTotalScanned = 0;
+    this.scanMisses.clear();
 
     // Sort assets for consistent order across all tiers (fixes sharding when FMP returns different order)
     const sortedAssets = [...assets].sort();
@@ -328,6 +357,13 @@ export class BreakoutAgent {
       console.warn(`[Breadth ${mode}] persist failed:`, err?.message);
     }
 
+    const misses = [...this.scanMisses.entries()].sort((a, b) => b[1] - a[1]);
+    const missed = misses.reduce((n, [, c]) => n + c, 0);
+    console.log(
+      `[Coverage ${mode}] ${this.breadthTotalScanned}/${shardedAssets.length} analyzed, ${missed} missed` +
+        (missed ? `: ${misses.map(([r, c]) => `${c}× ${r}`).join(" · ")}` : ""),
+    );
+
     return results;
   }
 
@@ -348,6 +384,7 @@ export class BreakoutAgent {
           errorMsg.includes("No data found")
         ) {
           console.warn(`⊘ ${asset}: ${errorMsg}`);
+          this.noteMiss(errorMsg.match(/\[[A-Z]+\]/)?.[0] || "no data");
           return null;
         }
         // Re-throw other errors
@@ -905,8 +942,17 @@ export class BreakoutAgent {
       // can carry breakoutType "unknown" (IBIT 2026-09-01: real base breakout,
       // MA stack still inverted) — it must still persist or sendAlert finds no
       // record. Green-cone signals failing both systems are dropped as before.
+      // The session after a graded base cleared its pivot, still above it.
+      // Persisted even when no email goes out (the grace window's 2% ceiling,
+      // or a pivot close the scans never saw): TWLO cleared $258.35 on 21 Sep
+      // and the dashboard had no row for it until the late email.
+      const gbNow = data.gradedBase;
+      const clearedLastSession =
+        breakoutAnalysis.baseGrade != null &&
+        gbNow?.sessionsSinceBreakout === 1 &&
+        data.close > (gbNow?.pivot ?? Infinity);
       const isMeaningfulBreakout =
-        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout || isCheatBreakout || isDeepBreakout;
+        breakoutAnalysis.breakoutType !== "unknown" || isGradedBreakout || isCheatBreakout || isDeepBreakout || clearedLastSession;
 
       if (isMeaningfulBreakout) {
         const latestBreakout = await db.breakoutSignal.findFirst({
@@ -974,6 +1020,9 @@ export class BreakoutAgent {
               isBlueSky: breakoutAnalysis.isBlueSky,
               coilRatio: breakoutAnalysis.coilRatio || null,
               isStaircase: breakoutAnalysis.isStaircase,
+              isReclaim: !!data.gradedBase?.reclaim,
+              baseBreakoutDate: data.gradedBase?.status === "breakout" ? data.gradedBase.breakoutDate ?? null : null,
+              baseBreakoutVolRatio: data.gradedBase?.status === "breakout" ? data.gradedBase.breakoutVolRatio ?? null : null,
               cohort: breakoutAnalysis.cohort,
               baseGrade: breakoutAnalysis.baseGrade,
               volumeTag: breakoutAnalysis.volumeTag,
@@ -1187,6 +1236,9 @@ export class BreakoutAgent {
       return result;
     } catch (error) {
       console.error(`Error analyzing ${asset}:`, error);
+      // Symbols and prices stripped so one cause buckets as one reason.
+      const msg = String((error as any)?.message || error).replace(/\b[A-Z]{1,5}(\.[A-Z]{1,3})?\b/g, "X").replace(/[\d.]+/g, "N");
+      this.noteMiss(msg.slice(0, 60));
       return null;
     }
   }
@@ -1295,10 +1347,16 @@ export class BreakoutAgent {
       ? "repriced on a catalyst"
       : shelfNow
         ? "closed above a shelf inside its base"
+        : rec.isReclaim
+          ? "closed back above a failed breakout's high on light volume"
         : isExt
           ? "is holding past its pivot"
           : "closed above its pivot";
-    const subject = `${result.asset} ${what}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
+    // The breakout bar's volume rides in the subject once it is 1.5x or more:
+    // RS and the clearing bar's volume are what the studies found predictive.
+    const boVol = rec.baseBreakoutVolRatio as number | null;
+    const volBit = boVol != null && boVol >= 1.5 && !isEp ? ` on ${boVol.toFixed(1)}× volume` : "";
+    const subject = `${result.asset} ${what}${volBit}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
     const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Levels: the frozen pivot and its fail level (7% below), snapshotted when

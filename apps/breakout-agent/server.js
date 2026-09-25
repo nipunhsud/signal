@@ -961,6 +961,9 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
           bs."isBlueSky",
           bs."coilRatio",
           bs."isStaircase",
+          bs."isReclaim",
+          bs."baseBreakoutDate",
+          bs."baseBreakoutVolRatio",
           bs."cohort",
           bs."baseGrade",
           bs."volumeTag",
@@ -1029,6 +1032,9 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         "isBlueSky",
         "coilRatio",
         "isStaircase",
+        "isReclaim",
+        "baseBreakoutDate",
+        "baseBreakoutVolRatio",
         "cohort",
         "baseGrade",
         "volumeTag",
@@ -1205,6 +1211,9 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         isBlueSky: s.isBlueSky === true,
         coilRatio: s.coilRatio != null ? Number(s.coilRatio) : null,
         isStaircase: s.isStaircase === true,
+        isReclaim: s.isReclaim === true,
+        baseBreakoutDate: s.baseBreakoutDate || null,
+        baseBreakoutVolRatio: s.baseBreakoutVolRatio != null ? Number(s.baseBreakoutVolRatio) : null,
         // Institutional activity from the tape (label + ranking; see activity.js)
         deepBase: s.deepBase === true,
         activity: s.activityScore != null ? { score: Number(s.activityScore), acc: Number(s.activityAcc ?? 0), dist: Number(s.activityDist ?? 0), bigUp: Number(s.activityBigUp ?? 0), udv: s.activityUdv != null ? Number(s.activityUdv) : null, obv: s.activityObv != null ? Number(s.activityObv) : null } : null,
@@ -2564,6 +2573,76 @@ async function computeSectorStrength(region) {
 // The dashboard prefetches sector strength on every page load, and the
 // roll-up reads the whole fresh universe. Cache it like market health.
 const sectorStrengthCache = new Map(); // region -> { data, expiresAt }
+// Graded bases that closed above their pivot in the last few sessions, the
+// latest row per name, whatever its confidence or type. The dashboard's
+// "cleared the pivot" strip: TWLO cleared $258.35 on 4.2x volume on 7 Aug and
+// again on 21 Sep, and neither surfaced until an email that came late or not
+// at all. Emailed = any row of the same pivot carries an alert stamp.
+app.get('/api/cleared', async (req, res) => {
+  try {
+    const region = req.query.region === 'in' ? 'in' : 'us';
+    const rows = await db.$queryRaw`
+      SELECT DISTINCT ON (bs.asset)
+        bs.asset, bs."basePivot", bs."baseBreakoutDate", bs."baseBreakoutVolRatio",
+        bs."currentPrice", bs."baseGrade", bs."rsRating", bs."isReclaim", bs."createdAt",
+        (SELECT MAX(COALESCE(a."lastAlertAt", a."alertSentAt")) FROM "BreakoutSignal" a
+          WHERE a.asset = bs.asset AND a."basePivot" = bs."basePivot"
+            AND COALESCE(a."lastAlertAt", a."alertSentAt") IS NOT NULL) AS "alertedAt"
+      FROM "BreakoutSignal" bs
+      WHERE bs."createdAt" > NOW() - INTERVAL '5 days'
+        AND bs."baseBreakoutDate" IS NOT NULL AND bs."baseGrade" IS NOT NULL
+        ${regionSql(region)}
+      ORDER BY bs.asset, bs."createdAt" DESC`;
+    // Two sessions: the one that cleared, and the one after (the grace day).
+    const dates = [...new Set(rows.map((r) => r.baseBreakoutDate))].sort().reverse().slice(0, 2);
+    const out = rows
+      .filter((r) => dates.includes(r.baseBreakoutDate) && Number(r.currentPrice) > Number(r.basePivot))
+      .map((r) => ({
+        asset: r.asset,
+        pivot: Number(r.basePivot),
+        clearedOn: r.baseBreakoutDate,
+        volRatio: r.baseBreakoutVolRatio != null ? Number(r.baseBreakoutVolRatio) : null,
+        price: Number(r.currentPrice),
+        pctPast: Math.round(((Number(r.currentPrice) - Number(r.basePivot)) / Number(r.basePivot)) * 1000) / 10,
+        grade: r.baseGrade,
+        rs: r.rsRating,
+        reclaim: r.isReclaim === true,
+        alertedAt: r.alertedAt,
+        asOf: r.createdAt,
+      }))
+      .sort((a, b) => (b.volRatio ?? 0) - (a.volRatio ?? 0));
+    res.json({ region, sessions: dates, cleared: out });
+  } catch (err) {
+    console.error('[/api/cleared]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Scan coverage: how much of the universe the latest session actually
+// analyzed. Signal rows are written only for meaningful names, so a pass that
+// drops half its universe is invisible there; AssetReturn is upserted for
+// every name the scan reaches, which makes it the heartbeat. Universe = names
+// seen in the last 5 days. 23 Sep 2026: 1,207 of 2,717 US stocks.
+app.get('/api/coverage', async (req, res) => {
+  try {
+    const region = req.query.region === 'in' ? 'IN' : 'US';
+    const [row] = await db.$queryRaw`
+      WITH r AS (
+        SELECT ("updatedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/New_York') AS et
+        FROM "AssetReturn"
+        WHERE region = ${region} AND "assetType" = 'stock' AND "updatedAt" > NOW() - INTERVAL '5 days'
+      )
+      SELECT COUNT(*)::int AS universe,
+             COUNT(*) FILTER (WHERE et::date = (SELECT MAX(et)::date FROM r))::int AS scanned,
+             to_char(MAX(et), 'YYYY-MM-DD HH24:MI') AS "lastScanEt"
+      FROM r`;
+    res.json({ region, ...row });
+  } catch (err) {
+    console.error('[/api/coverage]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sector-strength', async (req, res) => {
   try {
     const region = req.query.region === 'in' ? 'IN' : 'US';
