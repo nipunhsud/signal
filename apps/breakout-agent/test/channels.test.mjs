@@ -20,9 +20,14 @@ test('email: the alert gate is the graded pivot close and nothing else', () => {
   assert.match(between(agent, 'const isMeaningfulBreakout =', ';'), /isDeepBreakout/);
   assert.match(agent, /deepBase: breakoutAnalysis\.deepBase/, 'persisted');
   assert.match(agent, /This one is a deep base/, 'the email names the kind and its rates');
-  // Quality floor: RS 89+ AND confidence 80%+ (Sep 2026). Both, not either —
-  // Type 1 confidence is floored at 80% upstream, so an OR let everything through.
-  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && confidence >= 0\.8;/);
+  // Quality floor: RS 89+ AND 1.5x volume on the bar that cleared the level.
+  // Confidence was measured over 97,563 graded breakouts and removed from the
+  // gate: no graded breakout can score under 0.84, what it really gated was
+  // the Type1 shape (78% of the pool cut for 0.15 of profit factor), and where
+  // the number varies it runs backwards. See docs/confidence-study.md.
+  assert.match(agent, /const volumeOkForAlert = data\.avgVolume > 0 && data\.volume >= data\.avgVolume \* 1\.5;/);
+  assert.match(agent, /const qualityOk = rsRating != null && rsRating >= 89 && volumeOkForAlert;/);
+  assert.doesNotMatch(between(agent, 'const qualityOk =', ';'), /confidence/, 'confidence no longer decides an email');
   const gate = between(agent, 'const isGradedBreakout =', ';');
   assert.match(gate, /baseGrade !== null/);
   assert.match(gate, /gradedBreakoutToday/);
@@ -105,4 +110,153 @@ test('dashboard: the grade filter reads the base grade, not the cohort', () => {
   const f = between(dash, "if (this.gradeFilter && this.gradeFilter !== 'all') {", '}');
   assert.match(f, /s\.baseGrade && s\.baseGrade !== 'X'/, 'ungraded and unqualified rows are dropped');
   assert.doesNotMatch(f, /cohort/, 'the cohort is not a grade');
+});
+
+// A BUG alert arrived on 2026-09-23 in the email format deleted on 2026-09-09:
+// rocket emoji in the subject, "Weak-Vol Breakout" for a Type1b, a TRADE SETUP
+// block with a Buy Point, and "Source: Signal Forge". None of that is in the
+// tree, so a container on the droplet had been scanning and emailing on
+// two-week-old code, under none of the gates added since. The deploy now
+// removes orphans and fails loudly when a running container is not on the
+// image it just built.
+test('deploy: a container cannot survive on old code without the deploy failing', () => {
+  const deploy = src('../../../scripts/deploy.sh');
+  assert.match(deploy, /up -d --remove-orphans/, 'a service the compose file no longer names is removed');
+  assert.match(deploy, /DEPLOY INCOMPLETE/, 'a stale container fails the deploy');
+  assert.match(deploy, /docker inspect -f '\{\{\.Image\}\}'/, 'each running container is compared to the built image');
+  assert.match(deploy, /exit 1/, 'and the script exits non-zero');
+});
+
+test('email: the voice the alerts were rewritten to still holds', () => {
+  const body = between(agent, 'const subject =', 'await sendEmail(');
+  for (const banned of ['TRADE SETUP', 'Buy Point', 'Stop Loss', 'Risk/Reward', 'Signal Forge', '🚀']) {
+    assert.ok(!body.includes(banned), `no "${banned}" in an alert email`);
+  }
+  assert.doesNotMatch(agent, /Weak-Vol Breakout/, 'Type1b does not label an email; it does not email at all');
+});
+
+// The alert email sent the reader to TradingView for the chart, which is a bare
+// chart on a site we cannot annotate. Our own ticker page carries the same
+// chart with the base boxes and depth drawn, the grade and its evidence, and
+// the alert history for the name — everything the mail summarises.
+test('email: the chart link goes to our own page, with a scheme', () => {
+  const body = between(agent, 'const body = `', 'await sendEmail(');
+  assert.doesNotMatch(body, /tradingview/i, 'no TradingView link in an alert');
+  assert.match(body, /\$\{dqUrl\(result\.asset\)\}/, 'the ticker page instead');
+  assert.match(agent, /const dqUrl = \(asset: string\) => `https:\/\/\$\{dqLink\(asset\)\}`;/,
+    'as an absolute URL — mail clients autolink a bare host inconsistently');
+  assert.doesNotMatch(agent, /tradingViewSymbol/, 'and the exchange-prefix helper it needed is gone');
+});
+
+// Confidence was the other half of the email gate until it was measured.
+// Replicated over 97,563 graded breakouts, 1985-2026: no graded breakout can
+// score below 0.84, so it never filtered on the number; what it filtered on
+// was the Type1 five-bar shape, which scores 0.10 when absent, cutting 78% of
+// the pool to buy 0.15 of profit factor; and where the number does vary it
+// runs backwards, because its largest term penalises a loose five-bar range
+// and a loose range measured better. docs/confidence-study.md.
+test('email: confidence does not gate an email, and volume does', () => {
+  const q = between(agent, 'const qualityOk =', ';');
+  assert.doesNotMatch(q, /confidence/);
+  assert.match(q, /rsRating >= 89/, 'RS holds up: under 89 runs 1.73, 89-95 runs 2.04, 95+ runs 2.45');
+  assert.match(q, /volumeOkForAlert/);
+  // The floor is the breakout bar's own volume, not the five bars before it —
+  // which is what confidence read, and why it missed this entirely.
+  assert.match(agent, /data\.volume >= data\.avgVolume \* 1\.5/);
+});
+
+test('the gate still refuses a name with no RS rank', () => {
+  assert.match(between(agent, 'const qualityOk =', ';'), /rsRating != null/);
+});
+
+// Confidence drove the dashboard's quality signals too, and every one of them
+// marked the worse half. Measured over 97,563 graded breakouts, by profit
+// factor: the elite tint (0.99+) ran 1.72 against 2.14 for the yellow band,
+// and the star (0.90+) ran 1.81 against 2.09 for the rows without one. The
+// minimum-confidence slider defaulted to 85, which hid every row scoring 0.10
+// — the 78% of graded breakouts that are not Type1, and the better-performing
+// majority. All of it is gone; RS took the slider and the sort.
+test('dashboard: confidence no longer colours, stars, tints, filters or sorts', () => {
+  assert.doesNotMatch(dash, /minConfidence/, 'the confidence floor filter is gone');
+  assert.doesNotMatch(dash, /tier-elite|tier-strong/, 'rows are not tinted by confidence');
+  assert.doesNotMatch(dash, /★ High/, 'no high-confidence star');
+  assert.doesNotMatch(dash, /confTextColor|confColor/, 'no confidence colour ramp');
+  assert.doesNotMatch(dash, /\$\{signal\.confidence\}/, 'confidence is not rendered on a row or card');
+  assert.doesNotMatch(dash, /toggleSort\('confidence'/, 'no confidence column to sort');
+  assert.doesNotMatch(between(dash, 'const sortVal = {', '};'), /confidence/, 'not a sort key either');
+  // Three tables render signals. The first pass removed the cell from one of
+  // them and left the header, which silently shifted every column in the
+  // Tracking table one to the left.
+  assert.doesNotMatch(dash, />Confidence</, 'no table anywhere still has the column header');
+  assert.doesNotMatch(dash, /\$\{item\.confidence\}/, 'nor the Shortlist tab');
+  assert.doesNotMatch(dash, /By confidence tier/, 'the backtest splits on RS now');
+  // A preset saved before the change can still name the old key, and the
+  // comparator skips keys it does not know rather than complaining.
+  assert.match(dash, /k\.key !== 'confidence'/, 'stored confidence sort keys are dropped on load');
+});
+
+test('dashboard: RS took its place, on the key the sort map actually uses', () => {
+  assert.match(dash, /minRs/, 'the slider filters on relative strength');
+  assert.match(dash, /this\.minRs = prefs\.minRs \?\? 0;/, 'and starts at 0, hiding nothing');
+  const sortVal = between(dash, 'const sortVal = {', '};');
+  assert.match(sortVal, /rs: \(s\) => s\.rsRating/, "RS is keyed 'rs'");
+  // The default sort must name a key sortVal knows, or it silently does nothing.
+  const dflt = between(dash, 'const keys = this.sortKeys?.length ? this.sortKeys :', ';');
+  for (const k of dflt.match(/key: '([^']+)'/g).map((m) => m.slice(6, -1))) {
+    assert.match(sortVal, new RegExp(`\\b${k}: \\(s\\)`), `the default sort key '${k}' exists in the map`);
+  }
+});
+
+// A 30%-deep base showed no grade and no explanation, reading as though the
+// screen ignored it. The grade does stop at 25%, but the 25-35% band has its
+// own alert kind, and over forty years it ran a higher profit factor than the
+// graded one. The base card now says which side of the line a base is on.
+test('dashboard: a base outside the grade says which band it is in', () => {
+  const badges = between(dash, 'const badges = [', '].filter(Boolean)');
+  assert.match(badges, /b\.depthPct > 25 && b\.depthPct <= 35 && b\.isBlueSky/, 'the alertable deep band is labelled');
+  assert.match(badges, /Deep band/);
+  assert.match(badges, /b\.depthPct > 35/, 'and so is the part the screen never alerts on');
+  assert.match(badges, /Too deep/);
+});
+
+test('the grade itself still stops at 25%, and the deep kind covers 25-35%', () => {
+  const logic = src('../src/tools/breakout-logic.ts');
+  assert.match(logic, /gb\.depthPct <= 25\) \{/, 'the grade cap is unchanged');
+  assert.match(logic, /gb\.depthPct > 25 &&\s*\n\s*gb\.depthPct <= 35/, 'the deep kind takes the band above it');
+});
+
+// A base built on a repricing bar reaches the screen and the email together,
+// the standing rule for anything that changes how a breakout is judged.
+test('the repricing bar travels from the detector to the card and the email', () => {
+  const detect = src('../base-detect.js');
+  assert.match(detect, /episodicPivot/, 'the detector produces it');
+  assert.match(src('../src/tools/market-data.ts'), /ep: lastBase\.episodicPivot/, 'the scanner carries it onto gradedBase');
+  assert.match(agent, /Built on an \$\{data\.gradedBase\.ep\.gainPct\}% repricing day/, 'the reasoning line names it, so the email does too');
+  assert.match(dash, /b\.episodicPivot \?/, 'and the base card shows it');
+  assert.match(dash, /Repriced \+\$\{b\.episodicPivot\.gainPct\}%/);
+});
+
+// TWLO cleared a 24.9%-deep blue-sky base at 241.28 on 2026-08-07, on 4.22x
+// volume above a rising 200-day, and the screen holds no row for that date.
+// The drawer reported that as a property of the stock: "it has not closed
+// above a graded pivot yet". It had. The X-ray's verdict now outranks the
+// rule list, and the panel names the miss instead.
+test('profile: the X-ray is reconciled against the rows the scanner wrote', () => {
+  assert.match(server, /const qualified = \[\]/, 'every resolved base is judged by the alert rules');
+  assert.match(server, /xray: \{ qualified:.*missed:/, 'and returned with the ones no row covers');
+  // A row counts if it names the same pivot or lands in the five sessions after.
+  assert.match(server, /Math\.abs\(r\.basePivot - q\.pivot\) \/ q\.pivot < 0\.01/);
+  assert.match(server, /5 \* 864e5/);
+  // Only a row written on or after the breakout can have recorded it. TWLO's
+  // 238.48 base had tracking rows naming that pivot for weeks before 7 August
+  // and none after, so matching on the pivot alone called the miss covered.
+  assert.match(server, /if \(r\.createdAt\.getTime\(\) < t\) return false;/);
+});
+
+test('profile: a missed breakout outranks "nothing rules it out"', () => {
+  assert.match(dash, /const missed = \(p\.xray && p\.xray\.missed\) \|\| \[\]/);
+  assert.match(dash, /if \(!why\.length && !missed\.length\) why\.push\('Nothing rules it out/,
+    'the old sentence only survives when the X-ray agrees');
+  assert.match(dash, /the screen has no row for/, 'and the miss is named');
+  assert.match(dash, /not back-filled/, 'with why it is not silently invented');
 });

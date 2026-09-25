@@ -119,10 +119,10 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.keyboard.press('Escape');
 
   // Grade sort + filter (Signals view)
-  await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minConfidence', 85); });
-  await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'confidence', dir: 'desc' }]));
+  await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minRs', 0); });
+  await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }]));
   const order = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
-  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'DEEP', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded › X (${order.join(',')})`);
+  check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'DEEP', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded by RS 95/91/90 › X (${order.join(',')})`);
   await page.evaluate(() => dashboard.setFilter('gradeFilter', 'A+'));
   const aplus = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
   check(JSON.stringify(aplus) === JSON.stringify(['MSFT', 'AAPL']), `grade ≥ A+ keeps S and A+ only (${aplus.join(',')})`);

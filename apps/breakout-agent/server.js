@@ -1688,7 +1688,6 @@ app.get('/api/unusual-volume', async (req, res) => {
           breakoutType: c.breakoutType,
           confidence: c.confidence,
           displayConfidence,
-          lowConfidence: displayConfidence < 80, // below the actionable Signals bar
           createdAt: c.createdAt,
         };
       })
@@ -2809,6 +2808,66 @@ app.get('/api/profile/:symbol', async (req, res) => {
     const ma20 = ma(20), ma50 = ma(50), ma200 = ma(200);
     const bases = detectBases(bars);
     const newest = bases.length ? bases[bases.length - 1] : null;
+
+    // Every resolved base the X-ray finds, judged by the rules the screen
+    // actually alerts on, then reconciled against the rows the scanner wrote.
+    //
+    // These two populations can disagree, and the drawer used to report the
+    // disagreement as a property of the stock: "it has not closed above a
+    // graded pivot yet". TWLO had. On 2026-08-07 it cleared a 24.9%-deep
+    // blue-sky base at 241.28 on 4.22x volume, above a rising 200-day, and the
+    // screen holds no row for that date at all. The X-ray knew; the screener
+    // never heard. Saying which of the two is true is the whole point of the
+    // panel, so it now says "the screen has no row for this" rather than
+    // implying nothing happened.
+    const barIdx = new Map(bars.map((b, i) => [b.time, i]));
+    const cum = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) cum[i + 1] = cum[i] + bars[i].close;
+    const smaAt = (i, k) => (i + 1 >= k ? (cum[i + 1] - cum[i + 1 - k]) / k : null);
+    const qualified = [];
+    for (const b of bases) {
+      if (!b.breakout) continue;
+      const i = barIdx.get(b.breakout.date);
+      if (i == null || i < 200) continue;
+      const ma200At = smaAt(i, 200), ma200Before = smaAt(i - 1, 200);
+      if (ma200At == null || ma200Before == null) continue;
+      const shapeOk = b.isBlueSky && bars[i].close > ma200At && ma200At > ma200Before;
+      if (!shapeOk) continue;
+      const grade = b.depthPct <= 25
+        ? (b.depthPct <= 15 && b.bars >= 80 ? 'S' : b.depthPct <= 15 && b.bars >= 25 ? 'A+' : 'A')
+        : null;
+      const deep = b.depthPct > 25 && b.depthPct <= 35 && b.bars >= 40;
+      if (!grade && !deep) continue;
+      qualified.push({
+        date: b.breakout.date, pivot: b.pivot, entryClose: b.breakout.entryClose,
+        grade, deep, depthPct: b.depthPct, weeks: b.weeks,
+        episodicPivot: b.episodicPivot || null,
+      });
+    }
+    // A row counts as covering a breakout when it names the same pivot, or
+    // when the scanner wrote anything for this asset in the five sessions
+    // after it. Rows are only written when something changed, so an exact
+    // date match is too strict.
+    let missed = [];
+    if (qualified.length) {
+      const earliest = new Date(qualified[0].date + 'T00:00:00Z');
+      const near = await db.breakoutSignal.findMany({
+        where: { asset: symbol, createdAt: { gte: earliest } },
+        select: { createdAt: true, basePivot: true },
+      });
+      missed = qualified.filter((q) => {
+        const t = new Date(q.date + 'T00:00:00Z').getTime();
+        return !near.some((r) => {
+          // Only a row written ON OR AFTER the breakout can have recorded it.
+          // TWLO's 238.48 base had tracking rows naming that pivot for weeks
+          // beforehand and none once it cleared on 7 August, so matching on
+          // the pivot alone would have called that covered.
+          if (r.createdAt.getTime() < t) return false;
+          const samePivot = r.basePivot != null && q.pivot > 0 && Math.abs(r.basePivot - q.pivot) / q.pivot < 0.01;
+          return samePivot || r.createdAt.getTime() <= t + 5 * 864e5;
+        });
+      });
+    }
     const ret = await db.assetReturn.findUnique({ where: { asset: symbol } });
     const lastSignal = await db.breakoutSignal.findFirst({
       where: { asset: symbol },
@@ -2825,6 +2884,9 @@ app.get('/api/profile/:symbol', async (req, res) => {
       rs: ret ? { rating: await rsRatingFor(ret), score: ret.rsScore, sector: ret.sector, updatedAt: ret.updatedAt } : null,
       base: newest ? { status: newest.status, weeks: newest.weeks, depthPct: newest.depthPct, pivot: newest.pivot, low: newest.low, start: newest.start, end: newest.end, count: bases.length } : { count: 0 },
       lastSignal,
+      // Breakouts the X-ray finds that would have graded, newest first, with
+      // the ones the screener has no row for called out.
+      xray: { qualified: qualified.slice(-6).reverse(), missed: missed.slice(-6).reverse() },
       liquidityOk: vol20 != null ? vol20 >= 100000 : null,
     };
     profileCache.set(symbol, { payload, expiresAt: Date.now() + PROFILE_TTL_MS });
@@ -3176,6 +3238,7 @@ app.get('/api/backtest', async (req, res) => {
         "createdAt",
         "currentPrice",
         confidence,
+        "rsRating",
         sector,
         "lastAlertAt" AS "signalDate"
       FROM "BreakoutSignal"
@@ -3191,6 +3254,7 @@ app.get('/api/backtest', async (req, res) => {
         "createdAt",
         "currentPrice",
         confidence,
+        "rsRating",
         sector,
         "signalDate"
       FROM "BreakoutSignal"
@@ -3242,6 +3306,7 @@ app.get('/api/backtest', async (req, res) => {
               exitDate: closes[targetIdx].date,
               returnPct,
               confidence: Number(sig.confidence) * 100,
+              rsRating: sig.rsRating != null ? Number(sig.rsRating) : null,
               sector: sig.sector || 'Unknown',
             });
           }
@@ -3264,15 +3329,20 @@ app.get('/api/backtest', async (req, res) => {
     const bestReturn = evaluated.length ? Math.max(...evaluated.map((e) => e.returnPct)) : 0;
     const worstReturn = sortedReturns.length ? sortedReturns[0] : 0;
 
-    // By confidence tier
+    // By relative strength. This used to split on confidence, which was
+    // measured over 97,563 graded breakouts and found to separate nothing: no
+    // graded breakout can even score below 0.84, and where the number varies
+    // it runs backwards. RS is the axis the gate uses and the one that holds
+    // up — under 89 ran a 1.73 profit factor, 89-95 ran 2.04, 95+ ran 2.45.
+    // docs/confidence-study.md.
     const tiers = [
-      { label: '95-99%', min: 95, max: 100 },
-      { label: '90-94%', min: 90, max: 95 },
-      { label: '85-89%', min: 85, max: 90 },
-      { label: '80-84%', min: 80, max: 85 },
+      { label: 'RS 95-99', min: 95, max: 100 },
+      { label: 'RS 89-94', min: 89, max: 95 },
+      { label: 'RS 80-88', min: 80, max: 89 },
+      { label: 'RS under 80', min: 0, max: 80 },
     ];
     const byTier = tiers.map((t) => {
-      const rows = evaluated.filter((e) => e.confidence >= t.min && e.confidence < t.max);
+      const rows = evaluated.filter((e) => e.rsRating != null && e.rsRating >= t.min && e.rsRating < t.max);
       if (!rows.length) return { ...t, count: 0, avgReturn: 0, medianReturn: 0, winRate: 0 };
       // Capped (8% stop) for magnitude; raw for win rate — matches the headline.
       const rs = rows.map((r) => Math.max(-8, r.returnPct)).sort((a, b) => a - b);

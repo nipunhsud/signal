@@ -170,6 +170,42 @@ function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
     breakout = { date: bars[endedIdx].time, volumeRatio: round(boVolRatio, 2), runPct: 0, gapPct: 0, entryClose: round(bo.close, 2), runEnd: null };
   }
 
+  // Episodic pivot: the base was built on a repricing bar. One session where
+  // the market changed its mind about the company — earnings, guidance, a
+  // catalyst — closing far up on volume nothing like its own average, with the
+  // base then forming on top of it.
+  //
+  // Measured over 105,840 breakouts, 1985-2026 (docs/episodic-pivot-study.md):
+  // a base carrying one ran a 2.25 profit factor against 1.84 without, and
+  // reached +20% 31.7% of the time against 15.2%. It holds inside the graded
+  // band (2.25 vs 1.83), inside the deep band (2.29 vs 1.94), and in every
+  // decade. It costs what everything that pays here costs: the fail level is
+  // touched 49.9% of the time against 29.7%.
+  //
+  // Thresholds are the edge of the measured effect, not round numbers: below
+  // 8% the bar is an ordinary up day, and below 3x the volume does not confirm
+  // that anything was repriced.
+  let episodicPivot = null;
+  for (let k = Math.max(21, pivotIdx - 15); k <= pivotIdx; k++) {
+    const prev = bars[k - 1];
+    if (!prev || !(prev.close > 0)) continue;
+    const gainPct = ((bars[k].close - prev.close) / prev.close) * 100;
+    if (gainPct < 8) continue;
+    let av = 0;
+    for (let j = k - 20; j < k; j++) av += bars[j].volume || 0;
+    av /= 20;
+    const volumeRatio = av > 0 ? (bars[k].volume || 0) / av : 0;
+    if (volumeRatio < 3) continue;
+    if (!episodicPivot || gainPct > episodicPivot.gainPct) {
+      episodicPivot = {
+        date: bars[k].time,
+        gainPct: round(gainPct, 1),
+        volumeRatio: round(volumeRatio, 1),
+        barsBeforePivot: pivotIdx - k,
+      };
+    }
+  }
+
   return {
     start: inside[0].time,
     end: inside[n - 1].time,
@@ -189,6 +225,7 @@ function buildBase(bars, pivotIdx, endIdx, endedIdx, pivot, low, depth) {
     isBlueSky,
     // VCP-ish: tightening into the pivot on drying volume
     isVcpShape: coilRatio > 0 && coilRatio < 0.8 && volumeDryUp > 0 && volumeDryUp < 0.9,
+    episodicPivot,
   };
 }
 

@@ -615,6 +615,10 @@ export interface MarketData {
     breakoutVolRatio?: number; // breakout bar volume / the 50 sessions before it
     dryUp?: number; // base average volume / the 50 bars before it
     coil?: number; // 2nd-half range / 1st-half range
+    // The repricing bar the base was built on, if there was one: a session
+    // closing 8%+ up on 3x+ its own average volume, within 15 bars of the
+    // base high. See base-detect.js and docs/episodic-pivot-study.md.
+    ep?: { date: string; gainPct: number; volumeRatio: number; barsBeforePivot: number } | null;
   };
   // Gap retest (DE Aug 2026 shape, full-history study Sep 2026: n=9,474,
   // PF 3.69, 41.3% reach +20% in 60 bars, 46% stop-touch): a 4%+ gap up on
@@ -1321,6 +1325,7 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
             breakoutVolRatio: boVol,
             dryUp: lastBase.volumeDryUp,
             coil: lastBase.coilRatio,
+            ep: lastBase.episodicPivot ?? null,
             // See brokeOutNow.
             brokeOutToday: brokeOutNow({
               breakoutDate: lastBase.breakout?.date,

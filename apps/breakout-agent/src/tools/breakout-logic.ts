@@ -326,13 +326,31 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     // - Blue sky: 53.0% win / 28% stopped vs 35.0% / 55% for buried bases —
     //   the strongest single factor. Context matters more than shape.
     // - Base age ≥16 weeks (~80 bars): best bucket in the study, 58.8% win.
-    // - 10-20% depth: the worst pocket (39.3% win) — shallower is safe,
-    //   deeper is boom-or-bust, this middle band is just bad.
     if (isBlueSky) confidence = Math.min(0.99, confidence + 0.04);
     if (priorBaseDays >= 80) confidence = Math.min(0.99, confidence + 0.04);
-    if (priorBaseRangePercent >= 10 && priorBaseRangePercent < 20) {
-      confidence = Math.max(0.5, confidence - 0.05);
-    }
+    // A 10-20% deep base used to lose 0.05 here, on a 2,074-base finding that
+    // it was the worst pocket at 39.3% win. That holds, but only in the
+    // population the grade already throws away. Re-measured on 200,212
+    // breakouts split by whether they grade (blue sky, <=25% deep, above a
+    // rising 200-day):
+    //
+    //   ungraded, 10-20% deep   n=29,941  win 21.9%  fail 78.2%  PF 0.52
+    //   ungraded, everything else        win 35.4%  fail 67.7%  PF 6.05
+    //   GRADED, 10-20% deep     n=34,703  win 54.2%  fail 37.4%  PF 1.96
+    //   GRADED, everything else n=62,177  win 55.4%  fail 26.9%  PF 1.79
+    //
+    // Inside the graded population the band is the better half, and profit
+    // factor rises monotonically with depth across it: 1.58 at 0-5%, 1.75 at
+    // 5-10%, 1.91 at 10-15%, 2.03 at 15-20%, 2.24 at 20-25%. The penalty was
+    // measured before the grade existed and was then subtracted from the
+    // survivors, which is the same mistake the 25% depth cut made.
+    //
+    // It was not free. TWLO on 2026-09-23 carried RS 97, sector 1 of 12, a
+    // grade-A 16.5%-deep base, and confidence 79 against an 80 gate: 0.99
+    // minus 0.196 for a loose 24.6% range floors at 0.80, plus 0.04 for blue
+    // sky, minus this 0.05. One point, 349 scans, three entries, no email.
+    // Every near-miss on the screen that day (DELL, CLMT, OMER, TWLO, IOVA,
+    // all RS 94+) sat in this band. See docs/depth-penalty-study.md.
     // Shallow is contextual, not good per se: shallow AT blue sky wins 56.5%,
     // but shallow-and-buried wins just 26.0% (median -8) — a tight base far
     // below the highs is usually a weak bounce, not quiet accumulation.
