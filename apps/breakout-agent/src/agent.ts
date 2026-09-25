@@ -1380,7 +1380,6 @@ export class BreakoutAgent {
     const boVol = rec.baseBreakoutVolRatio as number | null;
     const volBit = boVol != null && boVol >= 1.5 && !isEp ? ` on ${boVol.toFixed(1)}× volume` : "";
     const subject = `${result.asset} ${what}${volBit}${baseBits.length ? " · " + baseBits.join(" · ") : ""}`;
-    const tradingViewUrl = `https://www.tradingview.com/chart/WgVJPfij/?symbol=${encodeURIComponent(tradingViewSymbol(result.asset))}`;
 
     // Levels: the frozen pivot and its fail level (7% below), snapshotted when
     // the close first cleared it. Never the rolling Donchian value.
