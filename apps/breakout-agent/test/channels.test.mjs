@@ -301,3 +301,20 @@ test('book: a price that is not from the latest session says so', () => {
   assert.match(dash, /p\.lastAsOf !== \(this\.book && this\.book\.latestSession\)/, 'and the row compares against it');
   assert.match(dash, /as of \$\{p\.lastAsOf\}/, 'showing the date rather than a bare number');
 });
+
+// The little letter pills on a row say which other tabs a ticker also appears
+// in: W winners, B beat & raise, V unusual volume, L sector top name. They
+// were read-only; these filter on the same membership.
+test('screener: the cross-list pills can be filtered on', () => {
+  const applied = between(dash, '// Quality filters — each active chip is a hard AND requirement', '// Minimum base grade');
+  assert.match(applied, /const inList = \(asset, key\) => this\.listsFor\(asset\)\.some/,
+    'the filter reuses listsFor, so a pill and its filter cannot drift');
+  for (const [k, key] of [['winners', 'winners'], ['beatRaise', 'beat-raise'], ['unusualVol', 'unusual-volume'], ['sectorTop', 'sectors']]) {
+    assert.match(applied, new RegExp(`q\\.${k}\\) filtered = filtered\\.filter\\(s => inList\\(s\\.asset, '${key}'\\)\\)`), `${k} filters on the ${key} list`);
+  }
+  // every key the filter reads must exist in the defaults, or a stored pref
+  // silently resurrects a filter nobody can clear
+  const defaults = between(dash, 'this.qualityFilters = prefs.qualityFilters ??', ';');
+  for (const k of ['winners', 'beatRaise', 'unusualVol', 'sectorTop']) assert.match(defaults, new RegExp(`${k}: false`));
+  assert.match(dash, /Also in Winners/, 'and an active filter shows a clearable chip');
+});

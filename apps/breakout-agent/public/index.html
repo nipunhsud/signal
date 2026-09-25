@@ -646,7 +646,7 @@
         this._isResizing = false;
         this.signalTypeFilter = prefs.signalTypeFilter ?? 'breakout';
         // Quality filters (AND semantics): VCP shape, blue-sky base, RS leaders
-        this.qualityFilters = prefs.qualityFilters ?? { vcp: false, blueSky: false, leaders: false, cheat: false, deep: false };
+        this.qualityFilters = prefs.qualityFilters ?? { vcp: false, blueSky: false, leaders: false, cheat: false, deep: false, winners: false, beatRaise: false, unusualVol: false, sectorTop: false };
         this.gradeFilter = prefs.gradeFilter ?? 'all'; // minimum base grade: 'all' | 'S' | 'A+' | 'A'
         this.statusFilter = prefs.statusFilter ?? 'all'; // 'all' | 'live' (power+confirmed) | 'quiet' | 'forming' | 'extended'
         this.minBaseWeeks = prefs.minBaseWeeks ?? 0;    // 0 = any; else only bases at least this many weeks long
@@ -4365,6 +4365,14 @@
         if (q.leaders) filtered = filtered.filter(s => s.rsRating != null && s.rsRating >= 70);
         if (q.cheat) filtered = filtered.filter(s => s.shelf); // cheat / low cheat / handle entries inside a forming base
         if (q.deep) filtered = filtered.filter(s => s.deepBase === true);
+        // The little letter pills on a row say which other tabs a ticker also
+        // appears in. These filter on the same membership, through the same
+        // listsFor(), so a pill and its filter cannot drift apart.
+        const inList = (asset, key) => this.listsFor(asset).some(l => l.key === key);
+        if (q.winners) filtered = filtered.filter(s => inList(s.asset, 'winners'));
+        if (q.beatRaise) filtered = filtered.filter(s => inList(s.asset, 'beat-raise'));
+        if (q.unusualVol) filtered = filtered.filter(s => inList(s.asset, 'unusual-volume'));
+        if (q.sectorTop) filtered = filtered.filter(s => inList(s.asset, 'sectors'));
 
         // Minimum base grade (S ⊂ A+ ⊂ A). Ungraded rows (setups, EPs) and
         // unqualified bases drop out whenever a minimum is set.
@@ -4507,7 +4515,7 @@
         this.signalTypeFilter = 'breakout';
         this.assetTypeFilter = 'all';
         this.sectorFilter = 'all';
-        this.qualityFilters = { vcp: false, blueSky: false, leaders: false, cheat: false, deep: false };
+        this.qualityFilters = { vcp: false, blueSky: false, leaders: false, cheat: false, deep: false, winners: false, beatRaise: false, unusualVol: false, sectorTop: false };
         this.gradeFilter = 'all';
         this.statusFilter = 'all';
         this.minBaseWeeks = 0;
@@ -6068,6 +6076,12 @@
                     <button onclick="dashboard.toggleQualityFilter('leaders')" data-tip="Only leaders: relative strength 70+, i.e. outperforming at least 70% of the scanned market — O'Neil and Minervini's minimum bar. Hides signals whose RS isn't computed yet."
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.leaders ? 'bg-green-500/20 text-green-300 ring-green-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">RS ≥ 70</button>
                     <span class="w-px h-4 bg-gray-700 mx-0.5"></span>
+                    <!-- Cross-list filters. Same letters, same colours as the
+                         pills on each row, so the control and the badge match. -->
+                    ${[['winners','W','Winners','green'],['beatRaise','B','Beat & Raise','purple'],['unusualVol','V','Unusual Vol','orange'],['sectorTop','L','Sector top name','yellow']].map(([k,short,label,hue]) => `
+                    <button onclick="dashboard.toggleQualityFilter('${k}')" data-tip="Only names that also appear in ${label}."
+                      class="px-2 py-1 rounded text-xs font-bold transition ring-1 ${this.qualityFilters?.[k] ? `bg-${hue}-500/20 text-${hue}-300 ring-${hue}-500/40` : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">${short}</button>`).join('')}
+                    <span class="w-px h-4 bg-gray-700 mx-0.5"></span>
                     <!-- Minimum base grade: S ⊂ A+ ⊂ A. Picking A+ shows S and A+. -->
                     <div class="inline-flex items-center rounded ring-1 ring-gray-700/60 bg-gray-800 overflow-hidden" data-tip="Minimum base grade. S = 16wk+ tight blue-sky base (62.6% historical win) · A+ = 5wk+ (57.7%) · A = any blue-sky base (54.8%). Picking A+ shows S and A+; ungraded setups and unqualified bases drop out.">
                       <span class="pl-2 pr-1.5 text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Grade</span>
@@ -6105,6 +6119,9 @@
                 if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
                 if (this.qualityFilters?.cheat) chips.push({ label: 'Cheat entries only', clear: `dashboard.toggleQualityFilter('cheat')` });
                 if (this.qualityFilters?.deep) chips.push({ label: 'Deep bases only', clear: `dashboard.toggleQualityFilter('deep')` });
+                for (const [k, label] of [['winners', 'Also in Winners'], ['beatRaise', 'Also in Beat & Raise'], ['unusualVol', 'Also in Unusual Vol'], ['sectorTop', 'Sector top name']]) {
+                  if (this.qualityFilters?.[k]) chips.push({ label, clear: `dashboard.toggleQualityFilter('${k}')` });
+                }
                 if (this.gradeFilter && this.gradeFilter !== 'all') chips.push({ label: `Grade ≥ ${this.gradeFilter}`, clear: `dashboard.setFilter('gradeFilter', 'all')` });
                 if (this.statusFilter && this.statusFilter !== 'all') chips.push({ label: `Status: ${this.statusFilter}`, clear: `dashboard.setFilter('statusFilter', 'all')` });
                 if (this.minBaseWeeks > 0) chips.push({ label: `Base ≥ ${this.minBaseWeeks}wk`, clear: `dashboard.setFilter('minBaseWeeks', 0)` });
