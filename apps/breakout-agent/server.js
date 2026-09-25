@@ -1719,24 +1719,46 @@ async function ownedList(req, listId) {
 // from the signal rows first (one query for the whole book) and the shared
 // candle cache only for names the screen has no row for, so opening the tab
 // costs one database read and usually no market data at all.
+// What a position is worth right now.
+//
+// This used to read currentPrice off the newest BreakoutSignal row and only
+// fall back to real bars when there was no row at all. A signal row is a scan
+// artifact: it holds whatever the quote said the last time the scanner looked
+// at that name, which can be months ago for anything that has since stopped
+// producing rows. MXL showed $109.88 against a $93.84 close on 2026-09-25 —
+// no bar has closed within $0.50 of $109.88 in two years.
+//
+// Bars first now. They are Yahoo-backed, cached, and free, and the book holds
+// a handful of open names. A signal row is only consulted when the bars fail,
+// and only when it was written in the last two sessions. Each price carries
+// the session it came from so the table can say when it is not today's.
 async function bookPrices(assets) {
   const out = {};
   if (!assets.length) return out;
-  try {
-    const rows = await db.breakoutSignal.findMany({
-      where: { asset: { in: assets } },
-      orderBy: { createdAt: 'desc' },
-      distinct: ['asset'],
-      select: { asset: true, currentPrice: true },
-    });
-    for (const r of rows) if (r.currentPrice > 0) out[r.asset] = Number(r.currentPrice);
-  } catch (e) { console.warn('[book] signal prices:', e.message); }
-  const missing = assets.filter((a) => out[a] == null).slice(0, 25);
-  for (const a of missing) {
+  const stillMissing = [];
+  for (const a of assets.slice(0, 40)) {
     try {
       const bars = await getDailyCandles(a);
-      if (bars && bars.length) out[a] = Number(bars[bars.length - 1].close);
-    } catch { /* a name with no data simply shows no price */ }
+      if (bars && bars.length) {
+        const last = bars[bars.length - 1];
+        if (Number(last.close) > 0) { out[a] = { price: Number(last.close), asOf: last.time }; continue; }
+      }
+    } catch { /* fall through to the scan row */ }
+    stillMissing.push(a);
+  }
+  if (stillMissing.length) {
+    try {
+      const cutoff = new Date(Date.now() - 4 * 864e5);
+      const rows = await db.breakoutSignal.findMany({
+        where: { asset: { in: stillMissing }, createdAt: { gte: cutoff } },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['asset'],
+        select: { asset: true, currentPrice: true, createdAt: true },
+      });
+      for (const r of rows) {
+        if (r.currentPrice > 0) out[r.asset] = { price: Number(r.currentPrice), asOf: r.createdAt.toISOString().slice(0, 10) };
+      }
+    } catch (e) { console.warn('[book] fallback prices:', e.message); }
   }
   return out;
 }
@@ -1746,7 +1768,10 @@ app.get('/api/book', requireAuth(), async (req, res) => {
     const user = await reqUser(req);
     const rows = await db.bookTrade.findMany({ where: { userId: user.id }, orderBy: [{ status: 'asc' }, { openedAt: 'desc' }] });
     const prices = await bookPrices([...new Set(rows.filter((r) => r.status !== 'closed').map((r) => r.asset))]);
-    const positions = rows.map((r) => gradePosition(r, prices[r.asset] ?? null));
+    const positions = rows.map((r) => {
+      const p = prices[r.asset];
+      return { ...gradePosition(r, p ? p.price : null), lastAsOf: p ? p.asOf : null };
+    });
     const win = weekWindowOf();
     // Names the screen emailed this week, so the running list can ask about
     // the ones that never made it into the book.
@@ -1755,8 +1780,13 @@ app.get('/api/book', requireAuth(), async (req, res) => {
       const led = await alertLedger({ since: win.since, until: win.until, region: regionOf(req) });
       emailed = (led.alerts || []).map((a) => a.asset);
     } catch (e) { console.warn('[book] ledger:', e.message); }
+    // The newest session any open position priced from. A position whose own
+    // price is older than this is stale, and the table says so rather than
+    // printing a months-old quote as if it were today's.
+    const latestSession = positions.reduce((m, p) => (p.lastAsOf && p.lastAsOf > m ? p.lastAsOf : m), '');
     res.json({
       positions,
+      latestSession: latestSession || null,
       open: positions.filter((p) => !p.closed),
       closed: positions.filter((p) => p.closed),
       stats: bookStats(positions),
@@ -1789,7 +1819,8 @@ app.patch('/api/book/:id', requireAuth(), async (req, res) => {
     if (!r.count) return res.status(404).json({ error: 'not found' });
     const row = await db.bookTrade.findUnique({ where: { id: req.params.id } });
     const prices = row.status === 'closed' ? {} : await bookPrices([row.asset]);
-    res.json(gradePosition(row, prices[row.asset] ?? null));
+    const p = prices[row.asset];
+    res.json({ ...gradePosition(row, p ? p.price : null), lastAsOf: p ? p.asOf : null });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
