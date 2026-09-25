@@ -260,3 +260,16 @@ test('profile: a missed breakout outranks "nothing rules it out"', () => {
   assert.match(dash, /the screen has no row for/, 'and the miss is named');
   assert.match(dash, /not back-filled/, 'with why it is not silently invented');
 });
+
+// The droplet deploy failed on 2026-09-25 with TS6133 and TS2304 on one line:
+// a tradingViewUrl declaration reading a helper that no longer exists. #38
+// removed both when the email moved to our own ticker page; a conflict
+// resolution in #43 brought the declaration back without the helper. tsc runs
+// inside the image build, so every deploy failed and production stopped
+// updating. Nothing may reference TradingView from the agent again.
+test('agent: nothing references TradingView, so the build cannot break on it again', () => {
+  assert.doesNotMatch(agent, /tradingViewUrl/, 'the dead declaration stays gone');
+  assert.doesNotMatch(agent, /tradingViewSymbol/, 'and the helper it needed');
+  assert.doesNotMatch(agent, /tradingview\.com/i, 'the alert email links to our own page');
+  assert.match(agent, /\$\{dqUrl\(result\.asset\)\}/);
+});
