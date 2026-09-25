@@ -4838,7 +4838,7 @@
             <td class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${dt(p.openedAt)} · ${p.days}d</td>
             <td class="px-3 py-2.5 text-right">${n2(p.entry)}</td>
             <td class="px-3 py-2.5 text-right">${p.stop == null ? '<button onclick="dashboard.editStop(\'' + p.id + '\', \'' + esc(p.asset) + '\', null)" class="text-[11px] px-1.5 py-0.5 rounded ring-1 ring-amber-500/40 text-amber-300">set a stop</button>' : `<button onclick="dashboard.editStop('${p.id}', '${esc(p.asset)}', ${p.stop})" class="hover:underline">${CUR}${this.safeNum(p.stop, 2)}</button>`}</td>
-            <td class="px-3 py-2.5 text-right">${n2(p.last)}</td>
+            <td class="px-3 py-2.5 text-right">${n2(p.last)}${p.lastAsOf && p.lastAsOf !== (this.book && this.book.latestSession) ? `<div class="text-[9px] text-amber-400/80 font-normal" title="This is the newest price we have for ${p.asset}, not today's.">as of ${p.lastAsOf}</div>` : ''}</td>
             <td class="px-3 py-2.5 text-right">${pFmt(p.pct)}</td>
             <td class="px-3 py-2.5 text-right">${rFmt(p.r)}</td>
             <td class="px-3 py-2.5 text-right text-xs text-gray-400">${p.openRisk != null ? CUR + this.safeNum(p.openRisk, 0) : '—'}</td>

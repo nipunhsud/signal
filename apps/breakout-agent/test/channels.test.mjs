@@ -279,3 +279,25 @@ test('agent: nothing references TradingView, so the build cannot break on it aga
   assert.doesNotMatch(agent, /tradingview\.com/i, 'the alert email links to our own page');
   assert.match(agent, /\$\{dqUrl\(result\.asset\)\}/);
 });
+
+// The trade book showed MXL at $109.88 on 2026-09-25 against a $93.84 close.
+// No bar has closed within $0.50 of that in two years: it was currentPrice off
+// the newest BreakoutSignal row, which is whatever the quote said the last
+// time the scanner looked at that name — months ago for anything that has
+// stopped producing rows. Bars are the source of truth now.
+test('book: a position is priced from bars, not from a scan row', () => {
+  const fn = between(server, 'async function bookPrices(assets) {', '\n}');
+  const barsAt = fn.indexOf('getDailyCandles');
+  const rowAt = fn.indexOf('breakoutSignal.findMany');
+  assert.ok(barsAt > -1 && rowAt > -1, 'both sources are present');
+  assert.ok(barsAt < rowAt, 'bars are tried first');
+  assert.match(fn, /stillMissing/, 'the scan row is only for names bars could not price');
+  assert.match(fn, /createdAt: \{ gte: cutoff \}/, 'and only when it is recent');
+  assert.match(fn, /asOf/, 'every price carries the session it came from');
+});
+
+test('book: a price that is not from the latest session says so', () => {
+  assert.match(server, /latestSession: latestSession \|\| null/, 'the payload names the newest session');
+  assert.match(dash, /p\.lastAsOf !== \(this\.book && this\.book\.latestSession\)/, 'and the row compares against it');
+  assert.match(dash, /as of \$\{p\.lastAsOf\}/, 'showing the date rather than a bare number');
+});
