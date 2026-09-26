@@ -450,3 +450,31 @@ test('the odds describe the path, never the payoff', () => {
     assert.ok(!chip.toLowerCase().includes(banned), `no "${banned}" in the chip`);
   }
 });
+
+// A duplicate column in the signals CTE took the whole screener down with
+// Postgres 42702, "column reference volumeRatio is ambiguous". volumeRatio was
+// already selected; a second copy was added for the retest odds, and the outer
+// SELECT could no longer resolve it. The query is long enough that reading a
+// twenty-line window around the insertion point missed the original.
+test('the signals query selects no column twice', () => {
+  // Output columns only. A bare bs."col" in the select list counts; a
+  // reference inside a window function, a predicate or a subquery does not,
+  // and four columns legitimately appear in both places.
+  const i = server.indexOf('ranked AS (');
+  const j = server.indexOf('FROM "BreakoutSignal" bs', i);
+  const cte = server.slice(i, j);
+  let flat = '', depth = 0;
+  for (let k = cte.indexOf('SELECT'); k < cte.length; k++) {
+    const c = cte[k];
+    if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (depth === 0) flat += c;
+  }
+  const cols = flat.split(',').map((t) => (t.match(/^\s*bs\."([A-Za-z_][A-Za-z0-9_]*)"\s*$/) || [])[1]).filter(Boolean);
+  const seen = new Map();
+  for (const c of cols) seen.set(c, (seen.get(c) || 0) + 1);
+  const dupes = [...seen].filter(([, n]) => n > 1).map(([c, n]) => `${c} x${n}`);
+  assert.deepEqual(dupes, [], `each column once, found: ${dupes.join(', ')}`);
+  assert.ok(cols.includes('volumeRatio'), 'and volumeRatio is there for the retest odds');
+  assert.ok(cols.length > 40, `the select list was found (${cols.length} columns)`);
+});

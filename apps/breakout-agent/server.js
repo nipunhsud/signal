@@ -967,7 +967,6 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
           bs."isReclaim",
           bs."baseBreakoutDate",
           bs."baseBreakoutVolRatio",
-          bs."volumeRatio",
           bs."cohort",
           bs."baseGrade",
           bs."volumeTag",
