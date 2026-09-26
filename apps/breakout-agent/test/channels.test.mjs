@@ -429,3 +429,24 @@ test('profile: the activity score is computed for names with no signal row', () 
   assert.match(dash, /\$\{tile\('Activity'/, 'and the drawer has a tile');
   assert.match(dash, /heavy up · \$\{p\.activity\.dist\} heavy down/, 'with the same words the signal drawer uses');
 });
+
+// The retest odds reach the screener, the drawer and the email together —
+// the standing rule for anything that changes how a breakout is judged.
+test('the retest odds travel to every channel', () => {
+  assert.match(src('../src/tools/breakout-logic.ts'), /const holdPath = gb && gb\.pivot > 0/, 'the analysis computes it');
+  assert.match(agent, /holdOddsWords\(breakoutAnalysis\.holdPath\)/, 'the reasoning line carries it, so the email does');
+  assert.match(server, /const holdPath = holdOdds\(/, 'the screener payload computes it from the stored volume ratio');
+  assert.match(server, /bs\."volumeRatio",/, 'which the query now selects');
+  assert.match(dash, /holdPathChipHtml\(signal\)/, 'the row shows a chip');
+  assert.match(dash, /What clears like this do/, 'and the drawer spells it out');
+});
+
+test('the odds describe the path, never the payoff', () => {
+  // Buying the breakout pays in every cell and waiting for the retest gains
+  // nothing, so the label must not read as a recommendation to wait.
+  const chip = between(dash, 'holdPathChipHtml(signal) {', '\n      }');
+  assert.match(chip, /Waiting for the retest does not pay/, 'the tooltip says so outright');
+  for (const banned of ['buy ', 'entry', 'stop loss', 'target']) {
+    assert.ok(!chip.toLowerCase().includes(banned), `no "${banned}" in the chip`);
+  }
+});

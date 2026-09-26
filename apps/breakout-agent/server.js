@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { mergeGapBars } from './candle-gaps.js';
+import { holdOdds } from './hold-odds.js';
 import { classifyShelf } from './shelf.js';
 import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
@@ -966,6 +967,7 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
           bs."isReclaim",
           bs."baseBreakoutDate",
           bs."baseBreakoutVolRatio",
+          bs."volumeRatio",
           bs."cohort",
           bs."baseGrade",
           bs."volumeTag",
@@ -1141,6 +1143,13 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
       // the rolling Donchian while +16-21% extended past pivots they broke
       // weeks earlier). Forming/fresh graded rows stay in the breakout list;
       // the badge carries the state.
+      // What a clear of this size on this volume did next, measured. Computed
+      // here rather than on the client so the screener, the drawer and the
+      // email all read the same table.
+      const holdPath = holdOdds(
+        s.basePivot > 0 && s.currentPrice > 0 ? ((s.currentPrice - s.basePivot) / s.basePivot) * 100 : null,
+        s.volumeRatio,
+      );
       const pctFromPivot = s.basePivot > 0 && s.currentPrice > 0
         ? ((s.currentPrice - s.basePivot) / s.basePivot) * 100 : null;
       const gradeState = !s.baseGrade ? null
@@ -1240,6 +1249,7 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         baseDepthPct: s.baseDepthPct != null ? Number(s.baseDepthPct) : null,
         gradeState,
         pctFromPivot: pctFromPivot != null ? Math.round(pctFromPivot * 10) / 10 : null,
+        holdPath,
         displayType: signalType === 'extension' ? 'extension' : s.pineScriptGreen ? 'green' : s.confidence >= 90 ? 'orange' : 'yellow',
         firstGreenAt: firstGreenAt ? firstGreenAt.toISOString() : null,
         entryResistance,

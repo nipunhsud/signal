@@ -2671,6 +2671,7 @@
                 ${row('Signal', sig)}
                 ${row('RS', rs)}
                 ${signal.deepBase === true ? row('Deep base', `<span class="text-xs">${this.deepBaseChipHtml(signal)} <span class="text-gray-400">the grade stops at 25% depth; this one cleared its pivot decisively on real volume, so the level is the close, not the pivot. 34% of these ran 20%+ against 14% for graded, and 52% touched the fail level against 28%.</span></span>`) : ''}
+                ${signal.holdPath ? row('What clears like this do', `<span class="text-xs">${this.holdPathChipHtml(signal)} <span class="text-gray-400">${signal.holdPath.holds}% held · ${signal.holdPath.retests}% came back and cleared again · ${signal.holdPath.fails}% never recovered, over ${signal.holdPath.n.toLocaleString()} measured</span></span>`) : ''}
                 ${signal.activity ? row('Activity', `<span class="text-xs">${this.activityChipHtml(signal)} <span class="text-gray-400">${signal.activity.acc} heavy up · ${signal.activity.dist} heavy down · ${signal.activity.bigUp} print${signal.activity.bigUp === 1 ? '' : 's'} at the high${signal.activity.udv != null ? ` · up÷down vol ${signal.activity.udv}x` : ''}</span></span>`) : ''}
                 ${(() => { const sr = this.sectorRankNow(signal); return sr ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${sr.count}${sr.rank <= Math.ceil(sr.count / 3) ? ' · leading sector' : ''}${signal.sectorRank != null && signal.sectorRank !== sr.rank ? ` · was #${signal.sectorRank} when this row was written` : ''}</span></span>`) : ''; })()}
                 ${signal.trendTemplate != null || signal.pivotTightPct != null ? row('Trend', `<span class="text-xs">${signal.trendTemplate == null ? '' : signal.trendTemplate ? '<span class="text-green-400" data-tip="Minervini trend template: close above a rising 200-day, 50 > 150 > 200, 30%+ off the 52-week low, within 25% of the high. Historically 16.7% of these reach +20% in 60 bars vs 6.6% without.">template ✓</span>' : '<span class="text-gray-400" data-tip="Fails the Minervini trend template — usually the prior run is under 30% off the 52-week low. Historically 6.6% reach +20% in 60 bars.">template ✗</span>'}${signal.pivotTightPct != null ? ` <span class="text-gray-500">·</span> <span class="font-mono" data-tip="Range of the 10 bars before the breakout, % of pivot. Under 5%: 9-18% fail rate but small moves. 12%+: 48% fail rate, 32% reach +20%.">pivot ${this.safeNum(signal.pivotTightPct, 1)}%${signal.pivotTightPct < 5 ? ' tight' : signal.pivotTightPct >= 12 ? ' loose' : ''}</span>` : ''}</span>`) : ''}
@@ -5797,6 +5798,20 @@
         return `<span class="badge bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30" data-tip="Deep base${d ? ` — ${d} deep` : ''}, blue sky, 8 weeks or longer, and the close cleared the pivot by 3% or more on 1.5x volume. The level on this kind is the close it cleared at, not the pivot the price has already left. Over 1,057 of these since 1985, 53% were positive 20 bars on, 52% touched the fail level and 34% ran 20%+ within 60 bars, against 14% for graded breakouts. Bigger winners, more failures — the 20% trail matters most here."><span class="badge-dot"></span>deep base${d ? ' · ' + d : ''}</span>`;
       }
 
+      // What a clear of this size on this volume did next, measured over 98,427
+      // breakouts. A description of the path, not of the payoff: buying the
+      // breakout pays in every cell, and waiting for the retest gains nothing.
+      holdPathChipHtml(signal) {
+        const h = signal && signal.holdPath;
+        if (!h) return '';
+        const cls = h.likeliest === 'holds' ? 'bg-green-500/15 text-green-300 ring-green-500/30'
+          : h.likeliest === 'retests' ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
+          : 'bg-red-500/15 text-red-300 ring-red-500/30';
+        const word = h.likeliest === 'holds' ? 'holds' : h.likeliest === 'retests' ? 'retests' : 'fails';
+        const tip = `A clear of this size on this volume: ${h.holds}% held the pivot, ${h.retests}% came back to it and cleared again, ${h.fails}% never recovered — over ${h.n.toLocaleString()} measured breakouts. Buying the breakout ran a ${h.pf} profit factor here. Waiting for the retest does not pay: entering at the re-clear scores the same as entering at the breakout, on 55% as many trades.`;
+        return `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 whitespace-nowrap ${cls}" data-tip="${tip}">${word} ${h.pct}%</span>`;
+      }
+
       activityChipHtml(signal) {
         const a = signal && signal.activity;
         if (!a || a.score == null) return '';
@@ -5972,6 +5987,7 @@
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
                                 ${this.deepBaseChipHtml(signal)}
                                 ${this.activityChipHtml(signal)}
+                                ${this.holdPathChipHtml(signal)}
                                 ${this.sectorChipHtml(signal)}
                                 <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>
                                 <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">
