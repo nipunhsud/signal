@@ -155,7 +155,10 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     isStaircase = false,
   } = data;
   const MIN_STRUCTURE_BARS = 5;
-  const MIN_AVG_VOLUME = 100_000; // Liquidity filter
+  // Liquidity in dollars, matching the universe filter. A share count decides
+  // membership by price: 100,000 shares passed LFT at $1.82 ($194k a day) and
+  // failed NVR at $8,500 ($187M a day). See docs/universe-floor-study.md.
+  const MIN_DAILY_TURNOVER = 750_000;
 
   // Donchian resistance/support (highest high / lowest low of last 20 bars)
   const resistance = Math.max(...highs);
@@ -165,7 +168,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const volumeOk = volume >= avgVolume * 1.2;
 
   // Liquidity check: 20-day avg volume >= 100k shares
-  const liquidityOk = avgVolume >= MIN_AVG_VOLUME;
+  const liquidityOk = avgVolume * close >= MIN_DAILY_TURNOVER;
 
   // Proper uptrend: 200 < 150 < 50 < 20 (ascending MAs)
   const maStack = ma200 < ma150 && ma150 < ma50 && ma50 < ma20;
