@@ -318,3 +318,33 @@ test('screener: the cross-list pills can be filtered on', () => {
   for (const k of ['winners', 'beatRaise', 'unusualVol', 'sectorTop']) assert.match(defaults, new RegExp(`${k}: false`));
   assert.match(dash, /Also in Winners/, 'and an active filter shows a clearable chip');
 });
+
+// The screener's date column showed how long ago the SCANNER last wrote the
+// row — a fact about the scan, not the stock. A breakout three weeks old read
+// "1d ago" because the row was rewritten yesterday. It shows the market
+// session the signal fired on now, and sorts on it.
+test('screener: the date column is the breakout session, not the scan time', () => {
+  assert.match(dash, /breakoutWhenHtml\(signal\)/, 'the cell asks when the breakout was');
+  const fn = between(dash, 'breakoutWhenHtml(signal) {', '\n      }');
+  assert.match(fn, /signal\.signalDate/, 'from signalDate, the market candle date');
+  assert.match(fn, /sessionsAgo/, 'with sessions, not calendar days');
+  assert.doesNotMatch(dash, /data-label="Updated"/, 'the old column is gone');
+  const sortVal = between(dash, 'const sortVal = {', '};');
+  assert.match(sortVal, /breakoutOn: \(s\) => \(s\.signalDate/, 'and it is sortable on the real date');
+});
+
+test('screener: the lookback is a calendar, not a count of days', () => {
+  assert.doesNotMatch(dash, /id="lookback-slider"/, 'no days slider');
+  assert.match(dash, /type="date"\s*\n?\s*id="since-date"/, 'a date input instead');
+  assert.match(dash, /setSinceDate\(ymd\) \{/, 'which converts back to the days the server takes');
+  assert.match(dash, /max="\$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}"/, 'and cannot ask for the future');
+});
+
+test('pool: the latest session is its own window, so a weekend shows Friday', () => {
+  assert.match(server, /req\.query\.window === 'session'/, 'the pool takes a session window');
+  assert.match(server, /orderBy: \{ lastAlertAt: 'desc' \}/, 'anchored on the newest alert, not on today');
+  assert.match(server, /etDayOf/, 'and grouped by ET day, since sessions are ET');
+  const widget = src('../public/chat-widget.js');
+  assert.match(widget, /<option value="session">Latest session<\/option>/);
+  assert.match(widget, /window=session/);
+});

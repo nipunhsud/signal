@@ -4406,6 +4406,7 @@
           sector: (s) => s.sector || null,
           price: (s) => s.currentPrice || null,
           updated: (s) => new Date(s.createdAt).getTime() || null,
+          breakoutOn: (s) => (s.signalDate ? new Date(String(s.signalDate).slice(0, 10) + 'T00:00:00Z').getTime() : null),
           weeks: (s) => baseWeeks(s),
           status: (s) => { const st = baseStatus(s); return st ? BASE_STATUS[st].rank : null; },
         };
@@ -4439,7 +4440,7 @@
 
       toggleSort(field, additive = false) {
         // Numeric columns start descending (best first); Asset starts A→Z.
-        const defaults = { asset: 'asc', rs: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc', weeks: 'desc', status: 'desc' };
+        const defaults = { asset: 'asc', rs: 'desc', breakoutOn: 'desc', earnings: 'desc', grade: 'desc', sector: 'asc', price: 'desc', updated: 'desc', weeks: 'desc', status: 'desc' };
         const keys = [...(this.sortKeys || [])];
         const i = keys.findIndex(k => k.key === field);
         if (additive) {
@@ -4497,6 +4498,21 @@
       }
 
       // Lookback widens the server-side window, so it must refetch.
+      // The slider spoke in days; the control speaks in dates. Both end at the
+      // same lookbackDays the server already takes.
+      lookbackSinceDate() {
+        const d = new Date();
+        d.setDate(d.getDate() - (this.lookbackDays - 1));
+        return d.toISOString().slice(0, 10);
+      }
+
+      setSinceDate(ymd) {
+        if (!ymd) return;
+        const from = new Date(ymd + 'T00:00:00Z').getTime();
+        const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').getTime();
+        this.setLookback(Math.round((today - from) / 864e5) + 1);
+      }
+
       setLookback(v) {
         this.lookbackDays = Math.min(90, Math.max(1, parseInt(v, 10) || 3));
         this.savePrefs();
@@ -5105,6 +5121,35 @@
           </div>
           <div class="text-gray-500 mt-0.5">${nextScan} · live refresh ${new Date().toLocaleTimeString()}</div>
         `;
+      }
+
+      // When the breakout was, as a date. The column used to show how long ago
+      // the SCANNER last wrote the row, which is a fact about the scan and not
+      // about the stock — "1d ago" on a row whose breakout was three weeks
+      // back. signalDate is the market session the signal fired on.
+      breakoutWhenHtml(signal) {
+        const sd = signal.signalDate ? String(signal.signalDate).slice(0, 10) : null;
+        if (!sd) return `<span class="text-gray-600" title="No breakout session recorded; scanned ${this.formatRelative(signal.createdAt)}">—</span>`;
+        const d = new Date(sd + 'T00:00:00Z');
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+        const sessions = this.sessionsAgo(sd);
+        const cls = sessions === 0 ? 'text-green-400' : sessions <= 3 ? 'text-gray-300' : 'text-gray-500';
+        const when = sessions === 0 ? 'today' : sessions === 1 ? 'yesterday' : `${sessions} sessions ago`;
+        return `<span class="${cls}" title="Broke out ${sd} (${when}) · row last written ${this.formatRelative(signal.createdAt)}">${label}<span class="text-gray-600 ml-1">${sessions === 0 ? '·today' : ''}</span></span>`;
+      }
+
+      // Trading sessions between a date and today, weekends excluded. Holidays
+      // are not, so this can read one high across a long weekend; it is a
+      // label, not arithmetic anything depends on.
+      sessionsAgo(ymd) {
+        const from = new Date(ymd + 'T00:00:00Z');
+        const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+        let n = 0;
+        for (const d = new Date(from); d < today; d.setUTCDate(d.getUTCDate() + 1)) {
+          const wd = d.getUTCDay();
+          if (wd !== 0 && wd !== 6) n++;
+        }
+        return n;
       }
 
       formatRelative(iso) {
@@ -5881,7 +5926,7 @@
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
                             <td data-label="Detail" class="px-3 py-2.5 text-xs whitespace-nowrap tabular-nums">${detail}</td>
-                            <td data-label="Updated" class="px-3 py-2.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">${this.formatRelative(signal.createdAt)}</td>
+                            <td data-label="Breakout" class="px-3 py-2.5 text-[11px] font-mono whitespace-nowrap">${this.breakoutWhenHtml(signal)}</td>
                           </tr>
                         `;
       }
@@ -6047,19 +6092,19 @@
 
                   <!-- Lookback window slider — surfaces older breakout alerts -->
                   ${this.signalTypeFilter === 'breakout' ? `
-                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap" title="How far back to pull breakout alerts (default 3 days)">
-                    Lookback
+                  <!-- A date, not a count of days. "6d" makes you work out
+                       what day that was; a calendar says it. -->
+                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap" title="Show breakouts from this session onward.">
+                    Since
                     <input
-                      type="range"
-                      id="lookback-slider"
-                      min="1"
-                      max="30"
-                      value="${this.lookbackDays}"
-                      oninput="document.getElementById('lookback-label').textContent = this.value + 'd';"
-                      onchange="dashboard.setLookback(this.value);"
-                      class="w-24 accent-green-500"
+                      type="date"
+                      id="since-date"
+                      value="${this.lookbackSinceDate()}"
+                      max="${new Date().toISOString().slice(0, 10)}"
+                      onchange="dashboard.setSinceDate(this.value);"
+                      class="bg-gray-800 text-gray-200 text-xs rounded px-1.5 py-0.5 ring-1 ring-gray-700/60 font-mono"
                     />
-                    <span id="lookback-label" class="w-8 text-right font-mono text-gray-300">${this.lookbackDays}d</span>
+                    <button onclick="dashboard.setLookback(1)" data-tip="Just the latest session" class="px-1.5 py-0.5 rounded text-[11px] font-semibold ring-1 ${this.lookbackDays === 1 ? 'bg-green-500/20 text-green-300 ring-green-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">Today</button>
                   </label>
                   ` : ''}
 
@@ -6113,7 +6158,7 @@
                 if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
                 if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
                 if (this.minRs > 0) chips.push({ label: `RS ≥ ${this.minRs}`, clear: `dashboard.setFilter('minRs', 0)` });
-                if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Lookback: ${this.lookbackDays}d`, clear: `dashboard.setLookback(3)` });
+                if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Since ${this.lookbackSinceDate()}`, clear: `dashboard.setLookback(3)` });
                 if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
                 if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
                 if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
@@ -6206,7 +6251,7 @@
                         <th style="min-width:170px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">
                           <span data-tip="Handle = tight late-stage consolidation before breakout. Base = broader flat consolidation zone. 'from MA20' = % distance from 20-day moving average.">Detail</span>
                         </th>
-                        <th style="min-width:80px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('updated', event.shiftKey);">Updated ${this.sortIndicator('updated')}</th>
+                        <th style="min-width:80px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('breakoutOn', event.shiftKey);"><span data-tip="The market session the breakout fired on, not when the scanner last wrote the row.">Breakout</span> ${this.sortIndicator('breakoutOn')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -6243,7 +6288,7 @@
                             <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
                             <th style="min-width:150px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Levels</th>
                             <th style="min-width:170px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Detail</th>
-                            <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Updated</th>
+                            <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Breakout</th>
                           </tr>
                         </thead>
                         <tbody>
