@@ -348,3 +348,53 @@ test('pool: the latest session is its own window, so a weekend shows Friday', ()
   assert.match(widget, /<option value="session">Latest session<\/option>/);
   assert.match(widget, /window=session/);
 });
+
+// Sector ranks, market breadth and every RS percentile are computed against
+// "stocks whose returns refreshed recently". That window was 24 hours, which
+// made the denominator a function of scan health: when 180 of 455 names went
+// unscanned on 2026-09-22 they simply left the universe, ranks were taken
+// against a fraction of the market, and the only visible effect was a smaller
+// number in a header.
+test('coverage: nothing ranks against a 24-hour window any more', () => {
+  assert.doesNotMatch(server, /updatedAt: \{ gte: dayAgo \}/, 'no ranking query left on a one-day window');
+  assert.match(server, /const UNIVERSE_WINDOW_MS = 3 \* 24 \* 60 \* 60 \* 1000;/, 'three days, so one missed run cannot collapse it');
+  for (const site of ['rankingUniverse', 'breadthSince', 'rsSince']) {
+    assert.match(server, new RegExp(site), `${site} uses the wider window`);
+  }
+});
+
+test('coverage: a short universe is reported, not absorbed', () => {
+  const fn = between(server, 'async function rankingUniverse(', '\n}');
+  assert.match(fn, /fresh24h/, 'how much refreshed today is still reported');
+  assert.match(fn, /expected/, 'against a high-water mark');
+  assert.match(fn, /short: coverage < COVERAGE_OK/, 'and short coverage is flagged');
+  assert.match(server, /universe: rows\.length, coverage, sectors/, 'the sector payload carries it');
+  assert.match(dash, /coverage short/, 'and the header shouts when it is short');
+});
+
+test('coverage: the high-water mark cannot be pinned by a spike or eroded by an outage', () => {
+  const fn = between(server, 'async function universeHighWater(', '\n}');
+  assert.match(fn, /14 \* 864e5/, 'a fortnight-old mark is reset');
+  assert.match(fn, /seen > \(prev\?\.n \?\? 0\)/, 'and it rises with a genuinely larger universe');
+});
+
+test('gate: a collapsed universe produces no RS rank, so no email', () => {
+  // RS 89 is half the email gate. Ranking against a few hundred names would
+  // not just mis-rank a row, it would change who gets mailed. No rating is the
+  // safe failure.
+  assert.match(agent, /const MIN_RS_UNIVERSE = 500;/);
+  assert.match(agent, /if \(total >= MIN_RS_UNIVERSE\) \{/);
+  assert.match(agent, /no rank, so no alert/);
+  assert.match(agent, /const rsSince = new Date\(Date\.now\(\) - 3 \* 24 \* 60 \* 60 \* 1000\);/);
+});
+
+// The universe filter itself: FMP's screener volumeMoreThan tests TODAY's
+// volume so far, and the list is cached for the session, so on 2026-09-23 it
+// dropped 1,559 of 2,766 liquid US stocks for a whole day. Liquidity is judged
+// on our own stored 20-day average instead.
+test('universe: the screener does not pre-filter on a single session of volume', () => {
+  const url = between(agent, 'const screenerUrl = isEtf', ';');
+  assert.doesNotMatch(url, /volumeMoreThan/, "FMP's same-day volume never narrows the universe");
+  assert.match(url, /marketCapMoreThan/, 'market cap still does');
+  assert.match(agent, /rn <= 20 GROUP BY symbol/, 'and liquidity is our own stored 20-day average');
+});

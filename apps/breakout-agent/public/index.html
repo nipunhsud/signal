@@ -5557,7 +5557,18 @@
                   <p class="text-sm text-gray-500">${d.note || 'No sectors with enough stocks in the fresh universe.'}</p>
                 </div>
               ` : `
-                <div class="mb-3 text-[11px] text-gray-500 font-mono">${d.universe} stocks in the fresh universe${d.asOf ? ' · as of ' + new Date(d.asOf).toLocaleTimeString() : ''}</div>
+                <!-- Coverage, not just a count. The number here used to be
+                     "stocks refreshed in the last 24 hours", so a shard that
+                     missed its run silently removed its names from the
+                     universe, from every sector total and from the RS
+                     percentiles — and the header just showed a smaller number.
+                     It now says how much of the expected universe is present
+                     and shouts when it is short. -->
+                <div class="mb-3 text-[11px] font-mono flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">${d.universe} stocks${d.coverage ? ` · ${d.coverage.pct}% of the ${d.coverage.expected} expected` : ''}${d.asOf ? ' · as of ' + new Date(d.asOf).toLocaleTimeString() : ''}</span>
+                  ${d.coverage && d.coverage.short ? `<span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30" data-tip="Only ${d.coverage.used} of the ${d.coverage.expected} stocks normally in this universe have refreshed returns. Sector ranks, market breadth and every RS percentile are computed against what is here, so they are measured against a smaller field than usual. A scan is behind.">⚠ coverage short — ${d.coverage.used} of ${d.coverage.expected}</span>` : ''}
+                  ${d.coverage ? `<span class="text-gray-600" data-tip="Returns refreshed in the last 24 hours. The ranking universe is a ${d.coverage.windowDays}-day window so one missed run cannot collapse it.">${d.coverage.fresh24h} refreshed today</span>` : ''}
+                </div>
                 <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="sectors-x">
                   <table class="w-full signals-responsive" style="min-width:900px;">
                     <thead class="sticky-head">

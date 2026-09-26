@@ -466,9 +466,11 @@ async function isAdmin(req) {
 // Idempotent (touches only nulls); runs at boot and every 6h as self-healing.
 async function backfillRecentRs() {
   try {
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Three days, not one: a percentile taken against half the market because
+    // a shard missed its run is worse than one taken against yesterday's peers.
+    const rsSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const universe = await db.assetReturn.findMany({
-      where: { updatedAt: { gte: dayAgo } },
+      where: { updatedAt: { gte: rsSince } },
       select: { asset: true, assetType: true, region: true, rsScore: true, sector: true },
     });
     if (universe.length < 50) return;
@@ -2262,9 +2264,12 @@ async function computeMarketHealth(region) {
     // last week reacts faster (10 pts). The 1w-vs-1m gap is the direction cue —
     // a week meaningfully weaker than the month means breadth is deteriorating
     // before the monthly number shows it.
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Same three-day window as the sector table: breadth measured against
+    // whatever happened to scan in the last 24 hours moves with scan health,
+    // not with the market.
+    const breadthSince = new Date(Date.now() - UNIVERSE_WINDOW_MS);
     const universe = await db.assetReturn.findMany({
-      where: { region, assetType: 'stock', updatedAt: { gte: dayAgo }, return1mPct: { not: null } },
+      where: { region, assetType: 'stock', updatedAt: { gte: breadthSince }, return1mPct: { not: null } },
       select: { return1mPct: true, return1wPct: true },
     });
     const pctPos = (f) => {
@@ -2547,12 +2552,67 @@ setInterval(() => {
 // Sector strength: roll the cross-sectional returns store up by sector.
 // Same fresh-24h window RS ranks on; per-market via ?region=in|us. Leaders =
 // stocks in the top quintile of the whole market's rsScore.
+// The ranking universe, and how much of it is actually there.
+//
+// Sector strength, market breadth and every RS percentile are computed against
+// "stocks whose returns were refreshed recently". That window used to be 24
+// hours, which makes the denominator a function of scan health: when 180 of
+// 455 names went unscanned on 2026-09-22, every one of them silently left the
+// universe. The sector table just showed a smaller number, RS percentiles were
+// taken against a fraction of the market, and nothing said so.
+//
+// Two changes. The window is three days, so one missed run cannot collapse it
+// — a peer's returns from yesterday rank far better than no peer at all. And
+// the result carries its own coverage, measured against the high-water mark of
+// the last fortnight, so a real outage is visible instead of absorbed.
+const UNIVERSE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const COVERAGE_OK = 0.85;
+
+async function universeHighWater(region, assetType, seen) {
+  const key = `universe_max:${region}:${assetType}`;
+  try {
+    const row = await db.runtimeFlag.findUnique({ where: { key } });
+    const prev = row ? JSON.parse(row.value) : null;
+    const stale = !prev || !prev.at || Date.now() - new Date(prev.at).getTime() > 14 * 864e5;
+    // A fortnight-old high-water mark stops a one-off spike pinning the bar
+    // forever, and stops a long outage quietly becoming the new normal.
+    if (stale || seen > (prev?.n ?? 0)) {
+      const next = { n: Math.max(seen, stale ? 0 : prev?.n ?? 0), at: new Date().toISOString() };
+      await db.runtimeFlag.upsert({ where: { key }, create: { key, value: JSON.stringify(next) }, update: { value: JSON.stringify(next) } });
+      return next.n;
+    }
+    return prev.n;
+  } catch { return seen; }
+}
+
+// rows updated inside the window, plus what that means about coverage.
+async function rankingUniverse(region, assetType, select) {
+  const since = new Date(Date.now() - UNIVERSE_WINDOW_MS);
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rows = await db.assetReturn.findMany({
+    where: { region, assetType, updatedAt: { gte: since } },
+    select: { ...select, updatedAt: true },
+  });
+  const fresh24h = rows.filter((r) => r.updatedAt >= dayAgo).length;
+  const expected = await universeHighWater(region, assetType, rows.length);
+  const coverage = expected > 0 ? rows.length / expected : 1;
+  return {
+    rows,
+    coverage: {
+      used: rows.length,
+      fresh24h,
+      expected,
+      pct: Math.round(coverage * 100),
+      short: coverage < COVERAGE_OK,
+      windowDays: UNIVERSE_WINDOW_MS / 864e5,
+    },
+  };
+}
+
 async function computeSectorStrength(region) {
   {
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const rows = await db.assetReturn.findMany({
-      where: { region, assetType: 'stock', updatedAt: { gte: dayAgo } },
-      select: { asset: true, sector: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true },
+    const { rows, coverage } = await rankingUniverse(region, 'stock', {
+      asset: true, sector: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true,
     });
     if (rows.length < 20) {
       return { region, asOf: new Date().toISOString(), universe: rows.length, sectors: [], note: 'universe still populating — sector data appears after the next scan cycles' };
@@ -2601,7 +2661,7 @@ async function computeSectorStrength(region) {
         for (const s of sectors) s.rank4wDate = dated.date;
       }
     } catch (e) { console.warn('[sector-strength] rank history:', e.message); }
-    return { region, asOf: new Date().toISOString(), universe: rows.length, sectors, leadingCount: Math.ceil(sectors.length / 3) };
+    return { region, asOf: new Date().toISOString(), universe: rows.length, coverage, sectors, leadingCount: Math.ceil(sectors.length / 3) };
   }
 }
 
@@ -2828,8 +2888,10 @@ let rsUniverseCache = { at: 0, groups: null };
 async function rsRatingFor(row) {
   if (!row) return null;
   if (Date.now() - rsUniverseCache.at > 30 * 60 * 1000) {
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const universe = await db.assetReturn.findMany({ where: { updatedAt: { gte: dayAgo } }, select: { region: true, assetType: true, rsScore: true } });
+    // Same three-day window as everywhere else that ranks. A percentile is
+    // only meaningful against a stable field.
+    const rsSince = new Date(Date.now() - UNIVERSE_WINDOW_MS);
+    const universe = await db.assetReturn.findMany({ where: { updatedAt: { gte: rsSince } }, select: { region: true, assetType: true, rsScore: true } });
     const groups = new Map();
     for (const r of universe) {
       const k = `${r.region}:${r.assetType}`;

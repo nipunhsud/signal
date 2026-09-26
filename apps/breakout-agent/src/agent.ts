@@ -55,6 +55,11 @@ export function regionOf(symbol: string): Region {
 }
 
 // Returns `label` so callers can log the checked exchange-local time.
+// Below this many names a relative-strength percentile is not reported. The
+// US universe runs around 2,400 stocks; a few hundred means a scan outage, and
+// a rank taken against that field would be fiction. See docs on coverage.
+const MIN_RS_UNIVERSE = 500;
+
 export function marketStatus(date: Date = new Date(), region: Region = "US"): {
   open: boolean;
   label: string;
@@ -685,12 +690,19 @@ export class BreakoutAgent {
         setupAnalysis.qualifiesAsTradableHandle
       ) {
         try {
-          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          // Three days, not one. The percentile's denominator was "stocks
+          // scanned in the last 24 hours", which makes RS a function of scan
+          // health: on 2026-09-22, 180 of 455 names went unscanned, and every
+          // survivor's rank was taken against a fraction of the market. RS 89
+          // is the email gate, so a shrunken field does not just mis-rank a
+          // row, it changes who gets mailed. A peer priced yesterday ranks far
+          // better than no peer at all.
+          const rsSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
           // Per-market percentile: an NSE stock ranks vs the Indian universe
           const whereFresh = {
             assetType: data.assetType || "stock",
             region: regionOf(asset),
-            updatedAt: { gte: dayAgo },
+            updatedAt: { gte: rsSince },
           };
           const [below, total] = await Promise.all([
             db.assetReturn.count({
@@ -698,9 +710,16 @@ export class BreakoutAgent {
             }),
             db.assetReturn.count({ where: whereFresh }),
           ]);
-          // Need a real universe before a percentile means anything
-          if (total >= 20) {
+          // A percentile needs a real field behind it. MIN_RS_UNIVERSE is the
+          // floor below which a rank is not reported at all: no rating means
+          // no email, which is the safe failure. Silently emitting RS 93 off a
+          // few hundred names is the unsafe one.
+          if (total >= MIN_RS_UNIVERSE) {
             rsRating = Math.min(99, Math.max(1, Math.round((below / total) * 99)));
+          } else if (total > 0) {
+            console.warn(
+              `[RS] ${asset}: universe is only ${total} names (floor ${MIN_RS_UNIVERSE}) — no rank, so no alert`,
+            );
           }
         } catch (e: any) {
           console.warn(`[RS] rank ${asset} failed:`, e?.message);
