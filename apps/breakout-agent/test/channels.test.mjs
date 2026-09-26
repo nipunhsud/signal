@@ -398,3 +398,34 @@ test('universe: the screener does not pre-filter on a single session of volume',
   assert.match(url, /marketCapMoreThan/, 'market cap still does');
   assert.match(agent, /rn <= 20 GROUP BY symbol/, 'and liquidity is our own stored 20-day average');
 });
+
+// The Shortlist showed "on deck is empty" beside a tab badge reading 7. The
+// two numbers came from different requests: the badge from the lists call,
+// the body from a per-list items call that had failed. fetchShortlist turned
+// any non-ok response into an empty array, so a dead session and an empty list
+// rendered identically. Opening the tab also never refetched, so whatever was
+// in memory at boot was what you saw.
+test('shortlist: a failed fetch is not an empty list', () => {
+  const fn = between(dash, 'async fetchShortlist() {', '\n      }');
+  assert.match(fn, /this\.shortlistError = /, 'a failure is recorded as one');
+  assert.doesNotMatch(fn, /res\.ok \? await res\.json\(\) : \[\]/, 'not silently turned into emptiness');
+  assert.match(fn, /res\.status === 401/, 'an expired session sends you to sign in');
+  assert.match(fn, /if \(this\.activeListId !== wanted\) return;/, 'a slow reply cannot overwrite a newer list');
+});
+
+test('shortlist: opening the tab re-syncs, and the body says when it disagrees with the badge', () => {
+  assert.match(dash, /\} else if \(name === 'shortlist'\) \{/, 'the view fetches on entry');
+  assert.match(dash, /const expectedCount = activeList\?\.count \?\? null;/, 'the panel knows what the badge claims');
+  assert.match(dash, /Could not load "\$\{activeName\}"/, 'and shows an error card rather than the empty one');
+  assert.match(dash, /so something is out of step/, 'or flags the mismatch when it really is empty');
+});
+
+// The tape score lives on signal rows, so the profile drawer — which exists
+// precisely for names with no current row — showed nothing. MXL had no row at
+// all, so there was nowhere to see it.
+test('profile: the activity score is computed for names with no signal row', () => {
+  assert.match(server, /activity: \(\(\) => \{/, 'the profile endpoint computes it');
+  assert.match(server, /return computeActivity\(bars, newest\)/, 'from the bars it already loaded');
+  assert.match(dash, /\$\{tile\('Activity'/, 'and the drawer has a tile');
+  assert.match(dash, /heavy up · \$\{p\.activity\.dist\} heavy down/, 'with the same words the signal drawer uses');
+});

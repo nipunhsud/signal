@@ -3003,6 +3003,13 @@ app.get('/api/profile/:symbol', async (req, res) => {
       rs: ret ? { rating: await rsRatingFor(ret), score: ret.rsScore, sector: ret.sector, updatedAt: ret.updatedAt } : null,
       base: newest ? { status: newest.status, weeks: newest.weeks, depthPct: newest.depthPct, pivot: newest.pivot, low: newest.low, start: newest.start, end: newest.end, count: bases.length } : { count: 0 },
       lastSignal,
+      // The tape score. It lives on signal rows, so a name with no current row
+      // — which is most of what this drawer is opened for — showed nothing at
+      // all. Same computation the screener chip uses, over the same bars this
+      // endpoint already loaded.
+      activity: (() => {
+        try { return computeActivity(bars, newest); } catch { return null; }
+      })(),
       // Breakouts the X-ray finds that would have graded, newest first, with
       // the ones the screener has no row for called out.
       xray: { qualified: qualified.slice(-6).reverse(), missed: missed.slice(-6).reverse() },
