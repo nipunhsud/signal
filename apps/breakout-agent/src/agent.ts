@@ -58,6 +58,14 @@ export function regionOf(symbol: string): Region {
 // Below this many names a relative-strength percentile is not reported. The
 // US universe runs around 2,400 stocks; a few hundred means a scan outage, and
 // a rank taken against that field would be fiction. See docs on coverage.
+// Daily turnover a name must average over 20 sessions to be scanned. Dollars,
+// not shares: see the note on the liquidity filter below. $750k holds the
+// universe the size the old 100k-share rule did.
+const MIN_DOLLAR_VOL = parseInt(process.env.MIN_DOLLAR_VOL || "750000");
+// ETFs keep their own, looser floor. Translated from the old 10k-share rule at
+// a typical low ETF price rather than measured, so it is deliberately modest.
+const MIN_ETF_DOLLAR_VOL = parseInt(process.env.MIN_ETF_DOLLAR_VOL || "100000");
+
 const MIN_RS_UNIVERSE = 500;
 
 export function marketStatus(date: Date = new Date(), region: Region = "US"): {
@@ -170,7 +178,6 @@ export class BreakoutAgent {
     }
 
     const MIN_MARKET_CAP = parseInt(process.env.MIN_MARKET_CAP || "300000000"); // $300M default
-    const MIN_VOLUME = parseInt(process.env.MIN_VOLUME || "100000"); // 100k shares default
     const MEGACAP_WATCH = ["NVDA", "MSFT", "ASML", "AMAT", "OPEN", "NBIS"];
     // REGION selects the exchange universe. IN = NSE (symbols come back .NS-suffixed).
     const region = (process.env.REGION || "US") as Region;
@@ -227,16 +234,36 @@ export class BreakoutAgent {
       // dropped 1,559 of 2,766 US stocks (median 709k shares/day, all liquid)
       // for the whole session. Names with no stored bars stay in, get seeded,
       // and are judged on their average from the next day.
-      const minAvgVol = mode === "etfs" ? 10_000 : MIN_VOLUME;
+      // Liquidity in dollars, not shares (docs/universe-floor-study.md).
+      //
+      // A share count is not a liquidity measure. 100,000 shares admitted LFT
+      // at $1.82 — $194k of turnover a day — and rejected AutoZone at $3,493
+      // and NVR at $8,500, which trade $330M and $187M. The unit decided
+      // membership by price, which is not what anyone meant.
+      //
+      // The names a dollar floor removes do score better on paper: profit
+      // factor 2.57 against 1.71 for the ones it admits, and the difference is
+      // real (Welch t=-6.50, p<0.0001). They are also 96% under $5, median
+      // price $1.50, median turnover $407k a day, where a $25k position is
+      // 6.1% of a session. That edge dies at a 1.3% round trip, and a single
+      // penny of spread on a $1.50 stock is 1.33% — it is smaller than the
+      // minimum tick. Every return in that study is a closing price nobody
+      // could get.
+      //
+      // At $750k a day the universe is the same size as before (77% of the
+      // measured pool against 76%), so this is a change of unit rather than a
+      // change of strictness. Measured profit factor falls 1.85 to 1.80, which
+      // is the fill fiction leaving rather than an edge.
+      const minDollarVol = mode === "etfs" ? MIN_ETF_DOLLAR_VOL : MIN_DOLLAR_VOL;
       try {
         const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         const avgs = await db.$queryRaw<{ symbol: string; av: number }[]>`
-          SELECT symbol, AVG(volume)::float AS av FROM (
-            SELECT symbol, volume, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+          SELECT symbol, AVG(volume * close)::float AS av FROM (
+            SELECT symbol, volume, close, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
             FROM "DailyBar" WHERE symbol = ANY(${allAssets}) AND date > ${since}
           ) x WHERE rn <= 20 GROUP BY symbol`;
-        const thin = new Set(avgs.filter((r) => r.av < minAvgVol).map((r) => r.symbol));
-        console.log(`[FMP] Liquidity: ${thin.size} of ${allAssets.length} ${assetType} under ${minAvgVol.toLocaleString()} avg shares (stored 20-day); ${allAssets.length - avgs.length} unseeded kept`);
+        const thin = new Set(avgs.filter((r) => r.av < minDollarVol).map((r) => r.symbol));
+        console.log(`[FMP] Liquidity: ${thin.size} of ${allAssets.length} ${assetType} under $${(minDollarVol / 1e3).toFixed(0)}k avg daily turnover (stored 20-day); ${allAssets.length - avgs.length} unseeded kept`);
         allAssets = allAssets.filter((sym) => !thin.has(sym));
       } catch (e: any) {
         console.warn(`[FMP] Liquidity filter skipped (${e?.message}); scanning the unfiltered screener list`);
@@ -245,7 +272,7 @@ export class BreakoutAgent {
       console.log(`[FMP AUDIT] Before delisting filter: ${allAssets.length} ${assetType} (${mode === "stocks" ? "added " + (MEGACAP_WATCH.filter(m => !stockSymbols.includes(m)).length || 0) + " missing megacaps" : "no filtering"})`);
 
       const elapsed = Date.now() - startTime;
-      const filterDesc = mode === "etfs" ? "avg vol >10k" : `market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, avg vol >${MIN_VOLUME.toLocaleString()}`;
+      const filterDesc = mode === "etfs" ? `avg turnover >$${(MIN_ETF_DOLLAR_VOL / 1e3).toFixed(0)}k/day` : `market cap >$${(MIN_MARKET_CAP / 1e6).toFixed(0)}M, avg turnover >$${(MIN_DOLLAR_VOL / 1e3).toFixed(0)}k/day`;
       console.log(
         `[FMP] Fetched ${allAssets.length} US ${assetType} (${filterDesc}) in ${elapsed}ms`,
       );
