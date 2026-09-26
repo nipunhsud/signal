@@ -1,4 +1,6 @@
 import { MarketData } from "./market-data";
+// @ts-ignore — plain JS module, shared with the dashboard and the studies
+import { holdOdds } from "../../hold-odds.js";
 
 export interface BreakoutAnalysis {
   resistance: number;
@@ -97,6 +99,9 @@ export interface BreakoutAnalysis {
   pivotTightPct: number;
   deepBase: boolean; // 25-35% deep blue-sky base, 8wk+, cleared by 3%+ on 1.5x volume
   pivotClearancePct: number; // today's close vs the base pivot, %
+  // holds / retests / fails percentages for a clear of this size on this
+  // volume, from 98,427 measured breakouts. See hold-odds.js.
+  holdPath: { holds: number; retests: number; fails: number; pf: number; n: number; likeliest: string; pct: number } | null;
   deepBasePremium: boolean; // the same with a tight coil and a dry base (label only)
   activity: MarketData["activity"] | null; // tape activity 0-10 (activity.js); label + ranking, never a gate
 }
@@ -501,6 +506,12 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
   const deepTrigger =
     avgVolume > 0 && volume >= avgVolume * 1.5 && pivotClearancePct >= 3;
   const deepBase = deepShape && deepTrigger;
+  // What a clear like this one did next, measured. Not a gate and not a
+  // payoff: buying the breakout is profitable in every cell, and waiting for
+  // the retest gains nothing. It says whether to expect the pivot back.
+  const holdPath = gb && gb.pivot > 0 && avgVolume > 0
+    ? holdOdds(pivotClearancePct, volume / avgVolume)
+    : null;
   // A label, not a gate: the same slice with a tight coil and a dry base ran
   // PF 3.39, on only 189 cases in forty years.
   const deepBasePremium =
@@ -564,6 +575,7 @@ export function analyzeBreakout(data: MarketData): BreakoutAnalysis {
     deepBase,
     deepBasePremium,
     pivotClearancePct,
+    holdPath,
     activity: data.activity ?? null,
   };
 }

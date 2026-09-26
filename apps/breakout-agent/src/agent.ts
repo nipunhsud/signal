@@ -1,4 +1,6 @@
 import { fetchMarketData, fetchEarningsSurprise, fetchRecentEarnings, primeQuotes, setFmpDisabled } from "./tools/market-data.js";
+// @ts-ignore — plain JS module shared with the dashboard
+import { holdOddsWords } from "../hold-odds.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
@@ -769,6 +771,8 @@ export class BreakoutAgent {
         data.gradedBase?.ep
           ? `Built on an ${data.gradedBase.ep.gainPct}% repricing day (${data.gradedBase.ep.date}, ${data.gradedBase.ep.volumeRatio}x volume)`
           : null,
+        // What a clear of this size on this volume did next, measured.
+        breakoutAnalysis.holdPath ? holdOddsWords(breakoutAnalysis.holdPath) : null,
         rsRating != null
           ? `RS: ${rsRating}${rsRating >= 89 ? " (leader)" : rsRating >= 80 ? " (strong)" : rsRating < 50 ? " (laggard)" : ""}`
           : null,
