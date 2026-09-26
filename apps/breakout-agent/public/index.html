@@ -710,6 +710,12 @@
           this.fetchUnusualVolume();
         } else if (name === 'sectors' && !this.sectorStrength && !this.sectorStrengthLoading) {
           this.fetchSectorStrength();
+        } else if (name === 'shortlist') {
+          // The items were only ever fetched at boot and on a list change, so
+          // opening the tab showed whatever was in memory — nothing, if the
+          // boot fetch had failed. Re-sync on entry like every other view.
+          this.render();
+          this.fetchShortlistLists();
         } else {
           this.render();
         }
@@ -2006,20 +2012,47 @@
         }
       }
 
+      // A failed fetch is not an empty list.
+      //
+      // This used to set shortlist = [] on any non-ok response, so an expired
+      // session or a dropped request rendered the "is empty" card — next to a
+      // tab badge still reading 7 from the last successful lists call. The two
+      // numbers came from different requests and only one of them had failed.
       async fetchShortlist() {
+        this.shortlistError = null;
         if (!this.activeListId) { this.shortlist = []; if (!this.showBacktest) this.render(); return; }
+        const wanted = this.activeListId;
+        this.shortlistLoading = true;
         try {
-          const res = await fetch(`/api/shortlist?listId=${encodeURIComponent(this.activeListId)}`);
-          this.shortlist = res.ok ? await res.json() : [];
-          if (!this.showBacktest) this.render();
+          const res = await fetch(`/api/shortlist?listId=${encodeURIComponent(wanted)}`);
+          if (res.status === 401) { location.href = '/?ref=shortlist&next=' + encodeURIComponent(location.pathname); return; }
+          if (!res.ok) throw new Error(res.status === 404 ? 'that list is gone' : `HTTP ${res.status}`);
+          const items = await res.json();
+          // A slower earlier request must not overwrite a newer list's items.
+          if (this.activeListId !== wanted) return;
+          this.shortlist = items;
         } catch (error) {
+          if (this.activeListId !== wanted) return;
           console.error('Failed to fetch shortlist:', error);
+          this.shortlistError = error.message || 'could not load this list';
+        } finally {
+          if (this.activeListId === wanted) {
+            this.shortlistLoading = false;
+            if (!this.showBacktest) this.render();
+          }
         }
       }
 
       selectList(id) {
         this.activeListId = id;
         localStorage.setItem('activeListId', id);
+        // Render straight away so the tab highlights and the body shows a
+        // loading state, instead of the previous list's rows sitting under the
+        // newly selected tab until the fetch lands.
+        this.shortlist = [];
+        this.shortlistLoading = true;
+        this.shortlistError = null;
+        if (!this.showBacktest) this.render();
         this.fetchShortlist();
       }
 
@@ -2407,11 +2440,12 @@
         const stackWord = p.mas.stack == null ? '—' : p.mas.above50 && p.mas.above200 && p.mas.stack ? 'up' : !p.mas.above200 ? 'down' : 'mixed';
         tiles.className = 'px-5 pb-3';
         tiles.innerHTML = `
-          <div class="grid grid-cols-4 gap-3">
+          <div class="grid grid-cols-5 gap-3">
             ${tile('Price', money(p.price.close), pctHtml(p.price.changePct))}
             ${tile('52-wk high', money(p.range52.high), pctHtml(p.range52.pctFromHigh))}
             ${tile('RS', `<span class="${rsCls}">${rs == null ? '—' : rs}</span>`, p.returns.m3 != null ? `3m ${p.returns.m3 >= 0 ? '+' : ''}${n(p.returns.m3, 0)}%` : '')}
             ${tile('MA stack', `<span class="${stackWord === 'up' ? 'text-green-400' : stackWord === 'down' ? 'text-red-400' : 'text-yellow-400'}">${stackWord}</span>`, p.mas.above200 == null ? '' : p.mas.above200 ? 'above the 200-day' : 'below the 200-day')}
+            ${tile('Activity', p.activity ? `<span class="${p.activity.score >= 7 ? 'text-green-400' : p.activity.score >= 4 ? 'text-yellow-400' : 'text-gray-400'}">${p.activity.score}<span class="text-gray-600 text-xs">/10</span></span>` : '<span class="text-gray-600">—</span>', p.activity ? `${p.activity.acc} up · ${p.activity.dist} down` : '')}
           </div>
           <div class="mt-3 flex items-center gap-1.5 text-[11px]">
             <span class="bg-gray-800/60 text-gray-300 ring-1 ring-gray-700/60 px-2 py-0.5 rounded">${(p.rs && p.rs.sector) || (p.lastSignal && p.lastSignal.sector) || 'Sector unknown'}</span>
@@ -2453,6 +2487,7 @@
             ${row('52-week', `<span class="font-mono text-xs">${money(p.range52.low)} – ${money(p.range52.high)}</span> · ${pctHtml(p.range52.pctFromHigh)} from the high`)}
             ${row('Averages', `<span class="text-xs">${maCell('20', p.mas.ma20, p.mas.above20)}${maCell('50', p.mas.ma50, p.mas.above50)}${maCell('200', p.mas.ma200, p.mas.above200)}</span>`)}
             ${row('Volume', `<span class="font-mono text-xs">${(p.price.volume / 1e6).toFixed(2)}M</span> · ${p.price.volumeRatio != null ? n(p.price.volumeRatio, 1) + 'x the 20-day average' : '—'}`)}
+            ${p.activity ? row('Activity', `<span class="text-xs"><span class="${p.activity.score >= 7 ? 'text-green-400' : p.activity.score >= 4 ? 'text-yellow-400' : 'text-gray-400'} font-semibold">${p.activity.score}/10</span> <span class="text-gray-400">${p.activity.acc} heavy up · ${p.activity.dist} heavy down · ${p.activity.bigUp} print${p.activity.bigUp === 1 ? '' : 's'} at the high${p.activity.udv != null ? ` · up÷down vol ${p.activity.udv}x` : ''}</span></span>`) : ''}
             ${row('Bases', `<span class="text-xs">${baseHtml}</span>`)}
             ${row('On the screen', `<span class="text-xs">${lsHtml}</span>`)}
           </div>
@@ -4970,7 +5005,12 @@
 
       renderShortlistPanel() {
         const activeId = this.activeListId;
-        const activeName = this.lists.find(l => l.id === activeId)?.name || '';
+        const activeList = this.lists.find(l => l.id === activeId);
+        const activeName = activeList?.name || '';
+        // What the tab badge claims. If the body disagrees with it, the two
+        // came from different requests and one of them failed — say so rather
+        // than rendering an empty list over a badge that reads 7.
+        const expectedCount = activeList?.count ?? null;
         const signalsByAsset = new Map(this.signals.map(s => [s.asset, s]));
         const items = this.shortlist.map(item => {
           const signal = signalsByAsset.get(item.asset);
@@ -5011,11 +5051,21 @@
               </div>
 
               <!-- Content -->
-              ${items.length === 0 ? `
+              ${this.shortlistError ? `
+                <div class="bg-gray-800/60 ring-1 ring-amber-700/50 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">⚠</div>
+                  <h3 class="text-lg font-semibold text-amber-300 mb-1">Could not load "${activeName}"</h3>
+                  <p class="text-sm text-gray-500 mb-3">${this.shortlistError}. The tab still shows ${expectedCount == null ? 'a count' : expectedCount + ' item' + (expectedCount === 1 ? '' : 's')} for this list, so this is a failed request rather than an empty list.</p>
+                  <button onclick="dashboard.fetchShortlistLists()" class="px-3 py-1.5 rounded text-xs font-semibold bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/40 hover:bg-blue-500/30">Try again</button>
+                </div>
+              ` : this.shortlistLoading ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6 text-sm text-gray-500">Loading ${activeName ? `"${activeName}"` : 'the list'}…</div>
+              ` : items.length === 0 ? `
                 <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
                   <div class="text-4xl mb-3 opacity-40">◎</div>
                   <h3 class="text-lg font-semibold text-gray-200 mb-1">${activeName ? `"${activeName}" is empty` : 'No lists yet'}</h3>
                   <p class="text-sm text-gray-500">${activeName ? 'Click the ☆ star next to any asset to add it to this list' : 'Create a list to get started'}</p>
+                  ${expectedCount ? `<p class="text-xs text-amber-400/90 mt-3">The tab says ${expectedCount}, so something is out of step. <button onclick="dashboard.fetchShortlistLists()" class="underline hover:text-amber-300">Reload</button></p>` : ''}
                 </div>
               ` : `
                 <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="shortlist-x">
