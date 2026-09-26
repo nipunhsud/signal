@@ -887,6 +887,13 @@ app.get('/api/signals', async (req, res) => {
         .finally(() => signalsInFlight.delete(key));
       signalsInFlight.set(key, pending);
     }
+    // Stale-while-revalidate: the query takes ~6s cold (Sep 2026), and with a
+    // 20s TTL the first visitor after any quiet spell waited all of it. Serve
+    // the last result now; the refresh above lands for the next poll.
+    if (hit) {
+      pending.catch(() => {});
+      return res.json(hit.data);
+    }
     res.json(await pending);
   } catch (error) {
     console.error('[/api/signals] failed:', error.message);
@@ -927,8 +934,10 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         WHERE fg."pineScriptGreen" = true
         ORDER BY fg.asset, fg."createdAt" ASC
       ),
-      episode_alerts AS (
-        -- One grouped pass over the emailed rows of those assets.
+      episode_alerts AS MATERIALIZED (
+        -- One grouped pass over the emailed rows of those assets. MATERIALIZED
+        -- because Postgres otherwise inlines this into the lookup below and
+        -- re-runs it per row: 4,976 times, 5.1 of the query's 5.5s (Sep 2026).
         SELECT ea.asset, ea."entryPrice", ea."basePivot", MAX(ea."lastAlertAt") AS "alertedAt"
         FROM "BreakoutSignal" ea
         JOIN win_assets w ON w.asset = ea.asset
@@ -994,10 +1003,6 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
           -- own high became the Donchian resistance — MRNA 2026-08-19) and the
           -- row is tracking, not a trade: it must not read as "stopped out".
           MAX(bs."currentPrice") OVER (PARTITION BY bs.asset, bs."entryPrice") AS "streakHigh",
-          -- When this episode (same frozen entry or base pivot) was emailed, if ever.
-          (SELECT MAX(ea."alertedAt") FROM episode_alerts ea
-            WHERE ea.asset = bs.asset
-              AND (ea."entryPrice" = bs."entryPrice" OR ea."basePivot" = bs."basePivot")) AS "episodeAlertedAt",
           ROW_NUMBER() OVER (PARTITION BY bs.asset ORDER BY bs."createdAt" DESC) as rn
         FROM "BreakoutSignal" bs
         LEFT JOIN first_green fg ON fg.asset = bs.asset
@@ -1060,7 +1065,11 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         "earningsYear",
         "firstGreenAt",
         "entryResistance",
-        "episodeAlertedAt"
+        -- When this episode (same frozen entry or base pivot) was emailed, if
+        -- ever. Out here it runs for the latest row per asset only.
+        (SELECT MAX(ea."alertedAt") FROM episode_alerts ea
+          WHERE ea.asset = ranked.asset
+            AND (ea."entryPrice" = ranked."entryPrice" OR ea."basePivot" = ranked."basePivot")) AS "episodeAlertedAt"
       FROM ranked
       WHERE rn = 1
         AND confidence >= 0.80
