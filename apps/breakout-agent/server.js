@@ -2407,6 +2407,11 @@ const etParts = () => {
     .formatToParts(new Date()).reduce((a, x) => (a[x.type] = x.value, a), {});
   return { day: p.weekday, hhmm: `${p.hour}:${p.minute}`, date: `${p.year}-${p.month}-${p.day}` };
 };
+// The ET calendar day a moment falls in. Sessions are ET, so grouping alerts
+// by UTC day splits an afternoon in two.
+const etDayOf = (d) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+
 async function oncePerDay(flagKey, date, fn) {
   try {
     const row = await db.runtimeFlag.findUnique({ where: { key: flagKey } });
@@ -2703,12 +2708,33 @@ async function paywallApi(req, res, next) {
 // The pool the chat sidebar shows: emailed breakouts over the window.
 app.get('/api/chat/pool', paywallApi, async (req, res) => {
   try {
-    const days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 14));
     const region = req.query.region === 'in' ? 'in' : 'us';
     const until = new Date();
-    const since = new Date(until.getTime() - days * 24 * 60 * 60 * 1000);
+    let since, days = null, session = null;
+    if (req.query.window === 'session') {
+      // The last session that actually produced alerts. A fixed days=1 window
+      // is empty every weekend and every holiday, which is exactly when
+      // someone wants to see what Friday did.
+      const newest = await db.breakoutSignal.findFirst({
+        where: { lastAlertAt: { not: null }, region },
+        orderBy: { lastAlertAt: 'desc' },
+        select: { lastAlertAt: true },
+      });
+      if (newest?.lastAlertAt) {
+        session = etDayOf(newest.lastAlertAt);
+        // The ET day that alert fell in, in full.
+        since = new Date(newest.lastAlertAt.getTime() - 18 * 60 * 60 * 1000);
+        const ledger = await alertLedger({ since, until, region });
+        const sameDay = (ledger.alerts || []).filter((a) => a.lastAlertAt && etDayOf(new Date(a.lastAlertAt)) === session);
+        return res.json({ days: null, session, region, since, until, ...ledger, alerts: sameDay, summary: summarize(sameDay) });
+      }
+      since = new Date(until.getTime() - 24 * 60 * 60 * 1000);
+    } else {
+      days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 14));
+      since = new Date(until.getTime() - days * 24 * 60 * 60 * 1000);
+    }
     const ledger = await alertLedger({ since, until, region });
-    res.json({ days, region, since, until, ...ledger });
+    res.json({ days, session, region, since, until, ...ledger });
   } catch (e) {
     console.error('[/api/chat/pool] failed:', e);
     res.status(500).json({ error: e.message });

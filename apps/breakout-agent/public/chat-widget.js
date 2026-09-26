@@ -110,6 +110,7 @@
           <div class="px-3 py-2 border-b border-gray-800 flex items-center gap-2 flex-wrap ${compact ? 'cursor-pointer select-none' : ''}" ${compact ? 'onclick="this.parentElement.classList.toggle(\'collapsed\')"' : ''}>
             <span class="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">The pool</span>
             <select id="days" class="bg-gray-800 text-gray-300 text-xs rounded px-1.5 py-0.5 ring-1 ring-gray-700" onclick="event.stopPropagation()">
+              <option value="session">Latest session</option>
               <option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option><option value="60">60 days</option>
             </select>
             <span id="pool-summary" class="text-[11px] text-gray-500 ml-auto mono"></span>
@@ -165,19 +166,23 @@
       history: [],   // [{role, content}] sent to the server
       busy: false,
       setRegion(v) { this.region = v; this.selected.clear(); this.loadPool(); },
-      setDays(v) { this.days = parseInt(v, 10) || 14; this.loadPool(); },
+      // "session" is the last day that actually produced alerts, not the last
+      // 24 hours — on a Saturday that is Friday, which is when you want it.
+      setDays(v) { this.days = v === 'session' ? 'session' : (parseInt(v, 10) || 14); this.loadPool(); },
       togglePool() { $('pool').classList.toggle(compact ? 'collapsed' : 'open'); },
       async loadPool() {
         const el = $('pool-list');
         try {
-          const r = await fetch(`/api/chat/pool?days=${this.days}&region=${this.region}`);
+          const q = this.days === 'session' ? `window=session` : `days=${this.days}`;
+          const r = await fetch(`/api/chat/pool?${q}&region=${this.region}`);
           if (r.status === 401) { location.href = '/?ref=chat&next=' + encodeURIComponent(location.pathname); return; }
           if (r.status === 402) { location.href = '/upgrade'; return; }
           if (!r.ok) throw new Error('HTTP ' + r.status);
           const d = await r.json();
           this.pool = d.alerts || [];
           const s = d.summary || {};
-          $('pool-summary').textContent = s.count ? `${s.count} · ${s.past} past · ${s.fell} fell` : '';
+          const head = s.count ? `${s.count} · ${s.past} past · ${s.fell} fell` : '';
+          $('pool-summary').textContent = d.session ? `${d.session} · ${head || 'nothing'}` : head;
           this.renderPool();
         } catch (e) {
           el.innerHTML = '<div class="p-3 text-xs text-gray-500">The pool is not available right now.</div>';
