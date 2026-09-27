@@ -3384,6 +3384,11 @@ app.get('/api/backtest', async (req, res) => {
         confidence,
         "rsRating",
         sector,
+        "baseGrade",
+        "basePivot",
+        "entryPrice",
+        "deepBase",
+        "volumeRatio",
         "lastAlertAt" AS "signalDate"
       FROM "BreakoutSignal"
       WHERE "lastAlertAt" IS NOT NULL
@@ -3451,6 +3456,17 @@ app.get('/api/backtest', async (req, res) => {
               returnPct,
               confidence: Number(sig.confidence) * 100,
               rsRating: sig.rsRating != null ? Number(sig.rsRating) : null,
+              baseGrade: sig.baseGrade || null,
+              // Which entry kind the screen emailed: a shelf inside the base,
+              // a deep-band clear, or the base pivot itself.
+              kind: sig.deepBase === true ? 'deep'
+                : sig.entryPrice != null && sig.basePivot > 0 && sig.entryPrice < sig.basePivot * 0.999 ? 'cheat'
+                : 'pivot',
+              // How decisively it cleared, on what volume — the axes behind
+              // the retest odds, so the backtest and the chip agree.
+              clearPct: sig.basePivot > 0 && sig.currentPrice > 0
+                ? ((Number(sig.currentPrice) - Number(sig.basePivot)) / Number(sig.basePivot)) * 100 : null,
+              volumeRatio: sig.volumeRatio != null ? Number(sig.volumeRatio) : null,
               sector: sig.sector || 'Unknown',
             });
           }
@@ -3502,6 +3518,47 @@ app.get('/api/backtest', async (req, res) => {
       };
     });
 
+    // Break the emailed population down every way the screen labels it, so
+    // "did it work" can be asked of a grade, an entry kind, or how decisively
+    // the pivot was cleared — not only of the whole inbox at once.
+    const statsOf = (rows) => {
+      if (!rows.length) return { count: 0, avgReturn: 0, medianReturn: 0, winRate: 0 };
+      const rs = rows.map((r) => Math.max(-8, r.returnPct)).sort((a, b) => a - b);
+      return {
+        count: rows.length,
+        avgReturn: rs.reduce((a, b) => a + b, 0) / rs.length,
+        medianReturn: rs[Math.floor(rs.length / 2)],
+        winRate: (rows.filter((r) => r.returnPct > 0).length / rows.length) * 100,
+      };
+    };
+    const groupBy = (buckets) => buckets
+      .map(({ label, pick }) => ({ label, ...statsOf(evaluated.filter(pick)) }))
+      .filter((b) => b.count > 0);
+
+    const byGrade = groupBy([
+      { label: 'S', pick: (e) => e.baseGrade === 'S' },
+      { label: 'A+', pick: (e) => e.baseGrade === 'A+' },
+      { label: 'A', pick: (e) => e.baseGrade === 'A' },
+      { label: 'ungraded', pick: (e) => !e.baseGrade || e.baseGrade === 'X' },
+    ]);
+    const byKind = groupBy([
+      { label: 'pivot close', pick: (e) => e.kind === 'pivot' },
+      { label: 'cheat / shelf', pick: (e) => e.kind === 'cheat' },
+      { label: 'deep band', pick: (e) => e.kind === 'deep' },
+    ]);
+    // The same bands the retest odds use, so the two read together.
+    const byClearance = groupBy([
+      { label: 'under 1%', pick: (e) => e.clearPct != null && e.clearPct < 1 },
+      { label: '1 to 3%', pick: (e) => e.clearPct >= 1 && e.clearPct < 3 },
+      { label: '3 to 6%', pick: (e) => e.clearPct >= 3 && e.clearPct < 6 },
+      { label: '6% and up', pick: (e) => e.clearPct >= 6 },
+    ]);
+    const byVolume = groupBy([
+      { label: 'under 1.5x', pick: (e) => e.volumeRatio != null && e.volumeRatio < 1.5 },
+      { label: '1.5 to 3x', pick: (e) => e.volumeRatio >= 1.5 && e.volumeRatio < 3 },
+      { label: '3x and up', pick: (e) => e.volumeRatio >= 3 },
+    ]);
+
     // By sector
     const sectorMap = {};
     for (const e of evaluated) {
@@ -3539,6 +3596,10 @@ app.get('/api/backtest', async (req, res) => {
         worstReturn,
       },
       byTier,
+      byGrade,
+      byKind,
+      byClearance,
+      byVolume,
       bySector,
       recent,
       cached: false,

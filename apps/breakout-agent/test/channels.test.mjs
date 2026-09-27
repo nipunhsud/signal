@@ -478,3 +478,41 @@ test('the signals query selects no column twice', () => {
   assert.ok(cols.includes('volumeRatio'), 'and volumeRatio is there for the retest odds');
   assert.ok(cols.length > 40, `the select list was found (${cols.length} columns)`);
 });
+
+// The Backtest tab scored the whole inbox at once. "Emailed breakouts" is the
+// right population — it is the same rows as the Saturday receipts, so the
+// public record is the inbox record — but one number over every alert cannot
+// say which kind of alert worked.
+test('backtest: the emailed population is broken down by what the screen labels it', () => {
+  for (const g of ['byGrade', 'byKind', 'byClearance', 'byVolume']) {
+    assert.match(server, new RegExp(`const ${g} = groupBy\\(\\[`), `${g} is computed`);
+    assert.match(server, new RegExp(`      ${g},`), `${g} is returned`);
+  }
+  // One statistics helper, so a bucket cannot be scored differently from the rest.
+  assert.match(server, /const statsOf = \(rows\) => \{/);
+  assert.match(server, /const groupBy = \(buckets\) =>/);
+  assert.match(server, /\.filter\(\(b\) => b\.count > 0\)/, 'empty buckets are dropped, not drawn as zero');
+});
+
+test('backtest: the clearance bands match the retest odds', () => {
+  // The two read together on the same page, so they cannot use different cuts.
+  const bt = between(server, 'const byClearance = groupBy([', ']);');
+  for (const edge of ['< 1', '>= 1 && e.clearPct < 3', '>= 3 && e.clearPct < 6', '>= 6']) {
+    assert.ok(bt.includes(edge), `clearance band ${edge}`);
+  }
+  const vol = between(server, 'const byVolume = groupBy([', ']);');
+  for (const edge of ['< 1.5', '>= 1.5 && e.volumeRatio < 3', '>= 3']) {
+    assert.ok(vol.includes(edge), `volume band ${edge}`);
+  }
+  const odds = src('../hold-odds.js');
+  assert.match(odds, /const CLEARANCE_BANDS = \[1, 3, 6, Infinity\]/);
+  assert.match(odds, /const VOLUME_BANDS = \[1\.5, 3, Infinity\]/);
+});
+
+test('backtest: every panel renders from one template', () => {
+  const block = between(dash, '<!-- Breakdowns of the emailed population -->', '</div>`).join(\'\')}');
+  for (const t of ['By relative strength', 'By base grade', 'By entry kind', 'By how far it cleared', 'By volume on the bar']) {
+    assert.ok(block.includes(t), `${t} is one of them`);
+  }
+  assert.match(block, /alert\$\{t\.count === 1 \? '' : 's'\}/, 'and counts read as alerts, which is what they are');
+});
