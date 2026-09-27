@@ -2753,10 +2753,15 @@ async function rankingUniverse(region, assetType, select) {
   };
 }
 
-async function computeSectorStrength(region) {
+// `by` = 'sector' (default) or 'industry': the same roll-up at FMP's finer
+// grouping (~150 industries vs 11 sectors). O'Neil puts 37% of a move on
+// the industry group. The rows keep the `sector` field name either way so
+// the tab and the chat read one shape. Measured in PR #36: sector rank adds
+// little once RS is applied, so both stay labels, never gates.
+async function computeSectorStrength(region, by = 'sector') {
   {
     const { rows, coverage } = await rankingUniverse(region, 'stock', {
-      asset: true, sector: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true,
+      asset: true, sector: true, industry: true, rsScore: true, return1wPct: true, return1mPct: true, return3mPct: true,
     });
     if (rows.length < 20) {
       return { region, asOf: new Date().toISOString(), universe: rows.length, sectors: [], note: 'universe still populating — sector data appears after the next scan cycles' };
@@ -2769,7 +2774,7 @@ async function computeSectorStrength(region) {
     };
     const bySector = new Map();
     for (const r of rows) {
-      const key = r.sector || 'Unclassified';
+      const key = (by === 'industry' ? r.industry : r.sector) || 'Unclassified';
       if (!bySector.has(key)) bySector.set(key, []);
       bySector.get(key).push(r);
     }
@@ -2793,11 +2798,11 @@ async function computeSectorStrength(region) {
     // are on top. One RuntimeFlag row per region per day.
     const today = etParts().date;
     try {
-      const key = `sector_ranks:${region}:${today}`;
+      const key = `${by}_ranks:${region}:${today}`;
       const value = JSON.stringify(Object.fromEntries(sectors.map((s) => [s.sector, s.rank])));
       await db.runtimeFlag.upsert({ where: { key }, create: { key, value }, update: { value } });
       const cutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const old = await db.runtimeFlag.findMany({ where: { key: { startsWith: `sector_ranks:${region}:` } } });
+      const old = await db.runtimeFlag.findMany({ where: { key: { startsWith: `${by}_ranks:${region}:` } } });
       const dated = old.map((r) => ({ date: r.key.split(':')[2], r })).filter((x) => x.date <= cutoff).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
       if (dated) {
         const prev = JSON.parse(dated.r.value);
@@ -2805,13 +2810,32 @@ async function computeSectorStrength(region) {
         for (const s of sectors) s.rank4wDate = dated.date;
       }
     } catch (e) { console.warn('[sector-strength] rank history:', e.message); }
-    return { region, asOf: new Date().toISOString(), universe: rows.length, coverage, sectors, leadingCount: Math.ceil(sectors.length / 3) };
+    return { region, by, asOf: new Date().toISOString(), universe: rows.length, coverage, sectors, leadingCount: Math.ceil(sectors.length / 3) };
   }
 }
 
 // The dashboard prefetches sector strength on every page load, and the
 // roll-up reads the whole fresh universe. Cache it like market health.
 const sectorStrengthCache = new Map(); // region -> { data, expiresAt }
+// Near Pivot: graded bases still forming, closest to their pivot first. Read
+// from BaseWatch (one row per asset, refreshed each scan); rows older than a
+// session and a half are bases the scanner stopped seeing. ?within=N caps
+// the distance below the pivot in percent (default 5).
+app.get('/api/near-pivot', async (req, res) => {
+  try {
+    const region = req.query.region === 'in' ? 'IN' : 'US';
+    const within = Math.min(25, Math.max(0.5, parseFloat(req.query.within) || 5));
+    const rows = await db.baseWatch.findMany({
+      where: { region, updatedAt: { gte: new Date(Date.now() - 36 * 60 * 60 * 1000) }, pctToPivot: { lte: within } },
+      orderBy: { pctToPivot: 'asc' },
+    });
+    res.json({ generatedAt: new Date().toISOString(), region, within, count: rows.length, stocks: rows });
+  } catch (err) {
+    console.error('[/api/near-pivot]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Graded bases that closed above their pivot in the last few sessions, the
 // latest row per name, whatever its confidence or type. The dashboard's
 // "cleared the pivot" strip: TWLO cleared $258.35 on 4.2x volume on 7 Aug and
@@ -2885,10 +2909,11 @@ app.get('/api/coverage', async (req, res) => {
 app.get('/api/sector-strength', async (req, res) => {
   try {
     const region = req.query.region === 'in' ? 'IN' : 'US';
-    const hit = sectorStrengthCache.get(region);
+    const by = req.query.by === 'industry' ? 'industry' : 'sector';
+    const hit = sectorStrengthCache.get(`${region}:${by}`);
     if (hit && hit.expiresAt > Date.now()) return res.json(hit.data);
-    const data = await computeSectorStrength(region);
-    sectorStrengthCache.set(region, { data, expiresAt: Date.now() + 15 * 60 * 1000 });
+    const data = await computeSectorStrength(region, by);
+    sectorStrengthCache.set(`${region}:${by}`, { data, expiresAt: Date.now() + 15 * 60 * 1000 });
     res.json(data);
   } catch (err) {
     console.error('[/api/sector-strength]', err.message);

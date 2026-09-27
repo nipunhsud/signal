@@ -542,6 +542,7 @@
       { key: 'winners',        label: 'Winners',        path: '/winners',        group: 'screens', desc: 'Strongest movers over the window' },
       { key: 'beat-raise',     label: 'Beat & Raise',   path: '/beat-raise',     group: 'screens', desc: 'Beat EPS and raised guidance last quarter' },
       { key: 'unusual-volume', label: 'Unusual Volume', path: '/unusual-volume', group: 'screens', desc: '100%+ above-average volume on a bullish candle' },
+      { key: 'near-pivot',     label: 'Near Pivot',     path: '/near-pivot',     group: 'screens', desc: 'Graded bases still forming, closest to the pivot first' },
       { key: 'sectors',        label: 'Sectors',        path: '/sectors',        group: 'screens', desc: 'Sector strength ranked by trailing returns' },
       { key: 'shortlist',      label: 'Shortlist',      path: '/shortlist',      group: 'tools',   desc: 'Your saved tickers' },
       { key: 'book',           label: 'Book',           path: '/book',           group: 'tools',   desc: 'Your own trades: what you hold, what you closed, and what needs a look' },
@@ -677,6 +678,10 @@
         this.sectorStrengthLoading = false;
         this.unusualVolume = null;
         this.unusualVolumeLoading = false;
+        this.nearPivot = null;         // /api/near-pivot payload
+        this.nearPivotLoading = false;
+        this.nearPivotWithin = 5;      // % below the pivot the tab shows
+        this.sectorBy = 'sector';      // Sectors tab roll-up: 'sector' | 'industry'
         this.unusualVolumeDate = null; // null = latest scan day
         this.winnersFilter = { tier: 'all', screen: 'setup', window: '1m', asset: '' }; // screen: 'setup' | 'moving'; window: '1w' | '1m' | '3m'; asset: substring filter
         this.init();
@@ -708,6 +713,8 @@
           this.fetchBeatRaise();
         } else if (name === 'unusual-volume' && !this.unusualVolume && !this.unusualVolumeLoading) {
           this.fetchUnusualVolume();
+        } else if (name === 'near-pivot' && !this.nearPivot && !this.nearPivotLoading) {
+          this.fetchNearPivot();
         } else if (name === 'sectors' && !this.sectorStrength && !this.sectorStrengthLoading) {
           this.fetchSectorStrength();
         } else if (name === 'shortlist') {
@@ -870,11 +877,12 @@
         }
       }
 
-      async fetchSectorStrength() {
+      async fetchSectorStrength(by) {
+        if (by) this.sectorBy = by;
         this.sectorStrengthLoading = true;
         this.render();
         try {
-          const res = await fetch(`/api/sector-strength?${REGION_Q}`);
+          const res = await fetch(`/api/sector-strength?by=${this.sectorBy}&${REGION_Q}`);
           if (!res.ok) throw new Error('sector strength fetch failed');
           this.sectorStrength = await res.json();
         } catch (err) {
@@ -950,6 +958,24 @@
           this.unusualVolume = null;
         } finally {
           this.unusualVolumeLoading = false;
+          this.render();
+        }
+      }
+
+      async fetchNearPivot(within) {
+        if (within !== undefined) this.nearPivotWithin = within;
+        this.nearPivotLoading = true;
+        this.render();
+        try {
+          const res = await fetch(`/api/near-pivot?within=${this.nearPivotWithin}&${REGION_Q}`);
+          if (!res.ok) throw new Error('near-pivot fetch failed');
+          this.nearPivot = await res.json();
+        } catch (err) {
+          console.error('Near pivot fetch failed:', err);
+          this.toast('Near pivot fetch failed', { kind: 'warn' });
+          this.nearPivot = null;
+        } finally {
+          this.nearPivotLoading = false;
           this.render();
         }
       }
@@ -4396,6 +4422,9 @@
         if (navView === 'unusual-volume') {
           return fromAssets((this.unusualVolume?.stocks || []).map(s => s.asset));
         }
+        if (navView === 'near-pivot') {
+          return fromAssets((this.nearPivot?.stocks || []).map(s => s.asset));
+        }
         if (navView === 'backtest') {
           return fromAssets((this.backtest?.recent || []).map(r => r.asset));
         }
@@ -5327,6 +5356,8 @@
           this.renderBeatRaisePanel();
         } else if (this.view === 'unusual-volume') {
           this.renderUnusualVolumePanel();
+        } else if (this.view === 'near-pivot') {
+          this.renderNearPivotPanel();
         } else if (this.view === 'sectors') {
           this.renderSectorsPanel();
         } else {
@@ -5490,6 +5521,73 @@
         `;
       }
 
+      // Graded bases still forming, closest to the pivot first: what is about
+      // to clear. The pair to the screener's "cleared the pivot" strip.
+      renderNearPivotPanel() {
+        const d = this.nearPivot;
+        const stocks = d?.stocks || [];
+        const dist = (p) => p == null ? '—' : p <= 0 ? `<span class="text-amber-300">${(-p).toFixed(1)}% over, no close yet</span>` : `${p.toFixed(1)}% below`;
+        const row = (s, idx) => `
+          <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50 hover:bg-gray-800/40 transition cursor-pointer" onclick="dashboard.openAsset('${s.asset}')">
+            <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono font-semibold text-white">${s.asset}</td>
+            <td data-label="Grade" class="px-3 py-2.5 whitespace-nowrap"><span class="badge ${GRADE_CHIP[s.grade] || ''}">${s.grade}</span></td>
+            <td data-label="Pivot" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums">${CUR}${this.safeNum(s.pivot, 2)}</td>
+            <td data-label="Price" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-gray-300">${CUR}${this.safeNum(s.price, 2)}</td>
+            <td data-label="To pivot" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums text-right ${s.pctToPivot <= 2 ? 'text-green-400 font-semibold' : 'text-gray-300'}">${dist(s.pctToPivot)}</td>
+            <td data-label="Base" class="px-3 py-2.5 whitespace-nowrap text-right text-gray-400 text-xs">${Math.round(s.baseBars / 5)} wk · ${this.safeNum(s.depthPct, 0)}% deep</td>
+            <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums ${s.rsRating >= 89 ? 'text-green-400' : 'text-gray-400'}">${s.rsRating ?? '—'}</td>
+            <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap text-gray-400 text-xs">${s.sector || '—'}</td>
+          </tr>
+        `;
+        document.getElementById('app').innerHTML = `
+          <div class="flex-1 overflow-auto p-8 bg-gray-900">
+            <div class="max-w-7xl mx-auto">
+              <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
+                <div>
+                  <h1 class="text-2xl font-bold tracking-tight">Near Pivot</h1>
+                  <p class="text-gray-500 text-sm">Graded bases still forming, closest to the pivot first. A close above the pivot moves a name to the screener.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Within</span>
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[2, 5, 10].map(v => `<button onclick="dashboard.fetchNearPivot(${v})" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded transition ${this.nearPivotWithin === v ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}">${v}%</button>`).join('')}
+                  </div>
+                  <button onclick="dashboard.fetchNearPivot()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+                </div>
+              </div>
+              ${this.nearPivotLoading || !d ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6 text-gray-500 text-sm">Reading the forming bases…</div>
+              ` : stocks.length === 0 ? `
+                <div class="bg-gray-800/60 ring-1 ring-gray-700/60 rounded-lg text-center py-16 px-6">
+                  <div class="text-4xl mb-3 opacity-40">◎</div>
+                  <h3 class="text-lg font-semibold text-gray-200 mb-1">Nothing within ${this.nearPivotWithin}% of a pivot</h3>
+                  <p class="text-sm text-gray-500">No graded base is forming that close to its pivot in the latest session. Widen the range, or check back after the next scan.</p>
+                </div>
+              ` : `
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="np-x">
+                  <table class="w-full signals-responsive" style="min-width:860px;">
+                    <thead class="sticky-head">
+                      <tr class="border-b border-gray-600">
+                        <th style="min-width:100px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Symbol</th>
+                        <th style="min-width:70px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Base grade: S = blue sky, 16+ weeks, under 15% deep · A+ = 5+ weeks, under 15% · A = blue sky, under 25% deep">Grade</span></th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Pivot</th>
+                        <th style="min-width:90px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Price</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">To pivot</th>
+                        <th style="min-width:110px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Base</th>
+                        <th style="min-width:60px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
+                        <th style="min-width:130px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                      </tr>
+                    </thead>
+                    <tbody>${stocks.map(row).join('')}</tbody>
+                  </table>
+                </div>
+                <p class="text-[11px] text-gray-600 mt-3">${stocks.length} base${stocks.length === 1 ? '' : 's'} within ${d.within}% of the pivot · as of ${d.generatedAt ? new Date(d.generatedAt).toLocaleTimeString() : ''}</p>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
       renderWinnersPanel() {
         const w = this.winners;
         const { tier: filterTier, screen, window: win, asset: assetFilter } = this.winnersFilter;
@@ -5646,10 +5744,15 @@
             <div class="max-w-7xl mx-auto">
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
                 <div>
-                  <h1 class="text-2xl font-bold tracking-tight">Sector Strength</h1>
-                  <p class="text-gray-500 text-sm">Every scanned stock's trailing returns, rolled up by sector — strongest first. Leaders = stocks in the market's top quintile.</p>
+                  <h1 class="text-2xl font-bold tracking-tight">${this.sectorBy === 'industry' ? 'Industry Strength' : 'Sector Strength'}</h1>
+                  <p class="text-gray-500 text-sm">Every scanned stock's trailing returns, rolled up by ${this.sectorBy === 'industry' ? 'industry' : 'sector'} — strongest first. Leaders = stocks in the market's top quintile.</p>
                 </div>
-                <button onclick="dashboard.fetchSectorStrength()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+                <div class="flex items-center gap-2">
+                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
+                    ${[['sector', 'Sectors'], ['industry', 'Industries']].map(([k, l]) => `<button onclick="dashboard.fetchSectorStrength('${k}')" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded transition ${this.sectorBy === k ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'}">${l}</button>`).join('')}
+                  </div>
+                  <button onclick="dashboard.fetchSectorStrength()" class="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 ring-1 ring-gray-700/60 transition">Refresh</button>
+                </div>
               </div>
               ${this.sectorStrengthLoading || !d ? `
                 <div class="text-center py-16 text-gray-500 text-sm">Rolling up sector strength from the scanned universe…</div>
@@ -5678,7 +5781,7 @@
                       <tr class="border-b border-gray-600">
                         <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Rank</th>
                         <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Where the sector ranked four weeks ago. An arrow up means money is rotating in.">4 wk ago</span></th>
-                        <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Sector</th>
+                        <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">${this.sectorBy === 'industry' ? 'Industry' : 'Sector'}</th>
                         <th style="min-width:70px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300">Stocks</th>
                         <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Median trailing 1-week return of the sector's stocks.">1W</span></th>
                         <th style="min-width:80px;" class="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-300"><span data-tip="Median trailing 1-month return of the sector's stocks.">1M</span></th>
