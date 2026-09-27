@@ -225,6 +225,40 @@ model User {
 
   @@index([subscriptionStatus])
   bookTrades       BookTrade[]
+  chartLines       ChartLine[]
+}
+
+// A line the reader drew on a chart, kept so the screen can watch it.
+//
+// Trendlines lived in localStorage, which meant nobody but that browser knew
+// they existed — the scanner could not see them and so could not say when
+// price crossed one. This is the same two points, stored per user and ticker.
+//
+// It is an annotation, not a screen rule: nothing here grades, and an alert
+// from it is worded as the reader's own line being crossed, never as the
+// screen finding something.
+model ChartLine {
+  id        String   @id @default(cuid())
+  userId    String
+  asset     String
+  kind      String   @default("segment") // segment | ray | horizontal
+  // Two anchors: seconds since the epoch, and the price at each.
+  t1        Int
+  p1        Float
+  t2        Int
+  p2        Float
+  note      String?
+  // Which side the last close sat on, so a crossing is a change rather than a
+  // standing condition that would email every day.
+  lastSide  String?  // above | below
+  lastCheck DateTime?
+  alertedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, asset])
+  @@index([asset])
 }
 
 // Extensible for future agents

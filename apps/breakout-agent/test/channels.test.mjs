@@ -516,3 +516,36 @@ test('backtest: every panel renders from one template', () => {
   }
   assert.match(block, /alert\$\{t\.count === 1 \? '' : 's'\}/, 'and counts read as alerts, which is what they are');
 });
+
+// The backtest's three type pills are not the same axis, and the old labels
+// hid it. "Emailed breakouts" was the alerts actually sent; "Extension" and
+// "Gap retest" are classifiers over rows that were never emailed at all.
+test('backtest: the type pills say which are alerts and which are not', () => {
+  assert.match(dash, /controlPill\('Alerts sent', 'type', 'Type1'/, 'the sent population is called what it is');
+  assert.doesNotMatch(dash, /Emailed breakouts/, 'and not by the old name');
+  assert.match(dash, /Extensions · never emailed/);
+  assert.match(dash, /Gap retests · never emailed/);
+  assert.match(dash, /the same rows the Saturday receipts count/, 'the subtitle ties it to the public record');
+});
+
+// Trendlines lived in localStorage, so only that browser knew they existed and
+// nothing could watch them. They are stored per user and ticker now and checked
+// after the close — an annotation the screen watches, not a screen rule.
+test('chart lines: drawn lines reach the server and get checked', () => {
+  assert.match(dash, /_persistLine\(name, points\)/, 'every drawing is mirrored');
+  assert.match(dash, /vertical/, 'a vertical line is refused, having no price to cross');
+  assert.match(server, /app\.post\('\/api\/chart-lines'/);
+  assert.match(server, /async function checkChartLines\(\)/);
+  assert.match(server, /oncePerDay\('chart_lines_check'/, 'once per trading day');
+  assert.match(server, /t\.hhmm === '16:20'/, 'after the close');
+  assert.doesNotMatch(between(server, "async function checkChartLines()", '\n}'), /Sat|Sun/, 'weekends are excluded at the ticker, not inside');
+});
+
+test('chart lines: the alert is worded as the reader\'s own line', () => {
+  const words = between(src('../chart-lines.js'), 'export function crossingWords', '\n}');
+  assert.match(words, /the line you drew/);
+  assert.match(server, /Your own line, not a screen signal/, 'and the email says so outright');
+  for (const banned of ['breakout', 'buy point', 'entry']) {
+    assert.ok(!words.toLowerCase().includes(banned), `no "${banned}" in the sentence`);
+  }
+});
