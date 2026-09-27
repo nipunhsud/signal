@@ -549,3 +549,35 @@ test('chart lines: the alert is worded as the reader\'s own line', () => {
     assert.ok(!words.toLowerCase().includes(banned), `no "${banned}" in the sentence`);
   }
 });
+
+// O'Neil drops a distribution day once the index closes 5% above it, because
+// a rally that size means the selling was absorbed. We only aged days out of
+// the 25-session window, so on 2026-09-26 QQQ showed 5 days while sitting 0.6%
+// from its 52-week high — four had been cleared by rallies of 5.4% to 5.8%,
+// and the honest count was 1.
+test('market health: a distribution day clears on a 5% rally, not only on age', () => {
+  const g = between(server, 'let distributionDays = 0;', 'return { trendScore');
+  assert.match(g, /win\[j\]\.close >= win\[i\]\.close \* 1\.05/, 'the price expiry');
+  assert.match(g, /absorbed/, 'named for what it means');
+  assert.match(g, /0\.998/, 'and the 0.2% floor is unchanged');
+  const learn = src('../public/learn/distribution-days-explained.html');
+  assert.match(learn, /5% above that day's close/, 'the guide documents it');
+  assert.match(learn, /the honest count was <strong>1<\/strong>/, 'with the case that found it');
+});
+
+// The count itself barely separates breakout outcomes once both expiries are
+// applied. What does is where the index sits against its own recent high.
+test('market health: the pullback band is carried and explained', () => {
+  assert.match(server, /const fromHigh = Math\.min\(\.\.\.gauges\.map/, 'the worse benchmark sets it');
+  assert.match(server, /fromHigh <= -5 \? 'broken'/);
+  assert.match(server, /pullback: 2\.23/, 'with the measured profit factor of each band');
+  assert.match(server, /not scored into the gauge|Not scored into the gauge/i, 'and it is a reading, not a component');
+  assert.match(dash, /Where the index is/, 'the dashboard shows it');
+  assert.match(src('../public/pulse.html'), /Where the index is/, 'and so does the pulse page');
+});
+
+test('market health: the distribution copy no longer overclaims', () => {
+  const row = between(dash, "row('Distribution days'", '`,');
+  assert.match(row, /barely separates outcomes/, 'it says what we measured');
+  assert.doesNotMatch(row, /4\+ is a warning even while price holds up/, 'the old line is gone');
+});
