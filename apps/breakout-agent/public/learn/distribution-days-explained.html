@@ -130,7 +130,8 @@
       <p>Large funds cannot exit a position in a day without crushing the price, so they sell gradually, into rallies, while the index still looks fine. The <em>price</em> damage comes later; the <em>volume</em> signature is visible immediately. That is what makes distribution days the closest thing to a leading indicator in a toolkit otherwise built from lagging averages: they detect the behavior that precedes the decline.</p>
       <h2>Why these exact thresholds</h2>
       <p>Each piece of the definition earns its place. The <strong>0.2% decline</strong> floor keeps flat, drifting sessions out of the count — a day that closed a few cents lower on heavy volume is churn, not distribution. The <strong>higher-volume</strong> requirement is the heart of it: price falling on <em>lighter</em> volume than yesterday means sellers were timid; falling on <em>heavier</em> volume means someone large needed out badly enough to accept worse prices. And the <strong>25-session window</strong> matches how institutions actually operate — a fund trimming a major position works the order over roughly a month, so that's the span over which the footprints cluster before the decline they foreshadow.</p>
-      <p>The count also heals: each new session pushes the oldest one out of the window, so a distribution day "expires" after about five weeks. A market can absorb two or three and move on. What it rarely absorbs is a cluster that keeps refreshing faster than it expires.</p>
+      <p>The count also heals, in two ways, and the second is the one people forget. The first is age: each new session pushes the oldest day out of the window, so a distribution day expires after about five weeks whatever price does. The second is <strong>price</strong>. O'Neil's rule drops a distribution day as soon as the index closes <strong>5% above that day's close</strong>, because a rally of that size means the selling has already been absorbed. A day the market has eaten is not supply hanging over the tape any more, and leaving it on the tally charges the market twice for the same shares.</p>
+      <p>That second rule is not a technicality. On 26 September 2026 our own gauge showed QQQ carrying <strong>5 distribution days</strong> while the index sat 0.6% from its 52-week high — a contradiction a reader spotted immediately. It was real: four of the five had been cleared by rallies of 5.4% to 5.8%, and the honest count was <strong>1</strong>. The gauge was counting selling the market had digested weeks earlier. SPY genuinely carried 8, because it had not risen 5% from any of them. Both numbers now apply the price expiry.</p>
       <h2>A live worked example: August 2026</h2>
       <p>In late August 2026, SPY sat above both its 50-day and 200-day moving averages with both rising — by trend measures, a perfect tape. Yet SPY was carrying <strong>5 distribution days</strong> in its last 25 sessions, and QQQ <strong>6</strong>. And the damage was already measurable where it matters: DataQuant's own breakout win rate had fallen to roughly <strong>37% in the July window, from 64% in May–June</strong>. The index held up. The tape under it did not — and breakout traders trade the tape, not the index.</p>
       <h2>Why DataQuant scores it separately — and watches two benchmarks</h2>
@@ -141,7 +142,18 @@
         <li><strong>3 days:</strong> attention. Tighten stops on extended positions.</li>
         <li><strong>4–6 days:</strong> institutions are selling into strength. Size down, demand only the best setups, and expect breakouts to fail more often — whatever the index chart looks like.</li>
       </ul>
-      <p>Distribution days age out: as sessions roll past the 25-day window, old ones drop off the count. A market can also repair itself — a cluster that never becomes a correction simply expires. The count is context, not prophecy.</p>
+      <p>Distribution days age out, and they also clear on a 5% rally, so a cluster that never becomes a correction simply disappears from the count.</p>
+
+      <h2>What our own data says about them</h2>
+      <p>We joined the count to <strong>98,854 graded breakouts</strong> from 1985 to date, applying both expiries. The uncomfortable result: the distribution count on its own says very little about how a breakout goes. Across the bands the profit factor runs 1.98, 1.72, 1.75, 1.97, 1.67 — no direction, just noise. An earlier version of this study appeared to show heavy distribution preceding <em>better</em> breakouts, and that turned out to be an artifact of the missing 5% expiry rather than a real inversion.</p>
+      <p>What does separate is not the count at all but <strong>where the index sits relative to its own recent high</strong>:</p>
+      <ul>
+        <li><strong>More than 5% below</strong> its 25-session high: profit factor 1.52. The market is genuinely broken and breakouts fail with it.</li>
+        <li><strong>2 to 5% below:</strong> <span class="text-green-400 font-semibold">2.23</span> — the best band by a wide margin, and it holds in every decade (2.94, 1.85, 2.45, 2.18).</li>
+        <li><strong>Half a percent to 2% below:</strong> 1.87.</li>
+        <li><strong>At the high:</strong> 1.70, the weakest. Breaking out into a market that has just run is the hardest case.</li>
+      </ul>
+      <p>So the honest reading is narrower than the classic rule. A pile of distribution days is worth knowing about as a description of the tape, and O'Neil's threshold is a reasonable prompt to size down. But if you want the one market-context number that has actually separated breakout outcomes over forty years, it is the index's distance from its own recent high, and the sweet spot is a market that has pulled back a little without breaking.</p>
     
       
     <section class="faq mt-12">

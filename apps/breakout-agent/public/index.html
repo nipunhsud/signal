@@ -1706,8 +1706,24 @@
             ${row('Trend', c.trend?.score ?? 0, 50, `${trendRows || 'Benchmark trend vs the 50 and 200-day averages.'}`)}
             ${row('Distribution days', c.distribution?.score ?? 0, 25, `
               <span class="${dd >= 4 ? 'text-red-400 font-semibold' : ''}">${dd} in the last 25 sessions</span>${ddPer ? ` <span class="text-gray-500">(${ddPer})</span>` : ''}.
-              Days the index fell on <em>rising</em> volume — institutions selling into strength. 4+ is a warning even while price holds up.`,
+              Days the index fell on <em>rising</em> volume, dropped once the index closes 5% above one — the selling has been absorbed by then. O'Neil calls 4+ a warning. Measured over 98,854 graded breakouts the count on its own barely separates outcomes; the line below does.`,
               `${c.distribution?.score ?? 0} pts · ${dd} day${dd === 1 ? '' : 's'}`)}
+            ${c.pullback ? `
+            <div class="flex items-start justify-between gap-3 py-1.5 border-t border-gray-700/40">
+              <div class="min-w-0">
+                <div class="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">Where the index is</div>
+                <div class="text-[12px] text-gray-300 mt-0.5">
+                  <span class="${c.pullback.best ? 'text-green-400 font-semibold' : c.pullback.band === 'broken' ? 'text-red-400 font-semibold' : ''}">${c.pullback.fromHigh}% from its 25-session high · ${c.pullback.band}</span>
+                </div>
+                <div class="text-[11px] text-gray-500 mt-0.5">
+                  The one market number that separated breakout outcomes over forty years. More than 5% below ran a 1.52 profit factor, 2-5% below 2.23, half a percent to 2% below 1.87, at the high 1.70 — and it holds in every decade. A tape that has pulled back a little without breaking is the friendliest; one that has just run is the hardest.
+                </div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <div class="font-mono text-sm ${c.pullback.best ? 'text-green-400' : 'text-gray-300'}">${c.pullback.pf}</div>
+                <div class="text-[10px] text-gray-500">measured PF</div>
+              </div>
+            </div>` : ''}
             ${row('Breadth', c.breadth?.score ?? 0, 25, breadthPct != null
               ? `${breadthPct}% of the ${(c.breadth?.universe || 0).toLocaleString()} stocks we scan are positive over the last month${c.breadth?.pctPositive1w != null ? `, ${c.breadth.pctPositive1w}% over the last week` : ''} — the average stock's tape, not the index's.${c.breadth?.direction === 'deteriorating' ? ' <span class="text-red-400 font-semibold">Short-term weaker than the month — breadth is deteriorating.</span>' : c.breadth?.direction === 'improving' ? ' <span class="text-green-400 font-semibold">Short-term stronger than the month — breadth is improving.</span>' : ''}`
               : 'Populating — appears after the next scan cycles.')}
