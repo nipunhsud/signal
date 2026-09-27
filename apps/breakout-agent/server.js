@@ -4,6 +4,8 @@ import 'dotenv/config';
 import { gradeAlerts, summarize, weekWindow, composeReceipts, foldEpisodes } from './alert-ledger.js';
 import { mergeGapBars } from './candle-gaps.js';
 import { holdOdds } from './hold-odds.js';
+import { lineValueAt, crossing, crossingWords } from './chart-lines.js';
+import { sendEmail } from './dist/email.js';
 import { classifyShelf } from './shelf.js';
 import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
@@ -1857,6 +1859,86 @@ app.delete('/api/book/:id', requireAuth(), async (req, res) => {
   }
 });
 
+// ── Lines the reader draws ──────────────────────────────────────────────────
+// Trendlines used to live in localStorage, so only that browser knew they
+// existed and nothing could watch them. Stored per user and ticker now, and
+// checked after the close.
+app.get('/api/chart-lines', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const asset = String(req.query.asset || '').toUpperCase();
+    const lines = await db.chartLine.findMany({
+      where: { userId: user.id, ...(asset ? { asset } : {}) },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(lines);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/chart-lines', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const { asset, kind, t1, p1, t2, p2, note } = req.body || {};
+    const a = String(asset || '').toUpperCase();
+    const nums = [t1, p1, t2, p2].map(Number);
+    if (!a || !nums.every(Number.isFinite)) return res.status(400).json({ error: 'asset and two points required' });
+    if (nums[0] === nums[2]) return res.status(400).json({ error: 'a vertical line has no price to cross' });
+    const line = await db.chartLine.create({
+      data: {
+        userId: user.id, asset: a, kind: ['segment', 'ray', 'horizontal'].includes(kind) ? kind : 'segment',
+        t1: Math.round(nums[0]), p1: nums[1], t2: Math.round(nums[2]), p2: nums[3],
+        note: note ? String(note).slice(0, 200) : null,
+      },
+    });
+    res.json(line);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/chart-lines/:id', requireAuth(), async (req, res) => {
+  try {
+    const user = await reqUser(req);
+    const { count } = await db.chartLine.deleteMany({ where: { id: req.params.id, userId: user.id } });
+    res.json({ deleted: count });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// After the close: has any drawn line been crossed?
+//
+// A crossing is a change of side, not a standing condition — a stock that has
+// been above the line since March must not email every session. The first look
+// only records the side, because we cannot know whether it just got there.
+async function checkChartLines() {
+  let lines;
+  try { lines = await db.chartLine.findMany({ include: { user: true } }); } catch (e) { return; }
+  if (!lines.length) return;
+  const byAsset = new Map();
+  for (const l of lines) { if (!byAsset.has(l.asset)) byAsset.set(l.asset, []); byAsset.get(l.asset).push(l); }
+  let checked = 0, fired = 0;
+  for (const [asset, group] of byAsset) {
+    let bars;
+    try { bars = await getDailyCandles(asset); } catch { continue; }
+    if (!bars || !bars.length) continue;
+    const last = bars[bars.length - 1];
+    const t = Math.floor(Date.parse(last.time + 'T00:00:00Z') / 1000);
+    for (const line of group) {
+      checked++;
+      const cross = crossing(line, last.close, t);
+      if (!cross) continue;
+      const data = { lastSide: cross.side, lastCheck: new Date() };
+      if (cross.crossed) {
+        const words = crossingWords(asset, line, cross);
+        try {
+          await sendEmail(`${asset} crossed your line`, `${words}\n\nClose ${last.close} on ${last.time}.\n\nChart and base history   https://dataquant.ai/$${asset.toLowerCase()}\n\nYour own line, not a screen signal. Screen output for research, not advice.\n`);
+          data.alertedAt = new Date();
+          fired++;
+        } catch (e) { console.warn(`[chart-lines] ${asset} email failed:`, e.message); }
+      }
+      try { await db.chartLine.update({ where: { id: line.id }, data }); } catch {}
+    }
+  }
+  if (checked) console.log(`[chart-lines] checked ${checked}, crossed ${fired}`);
+}
+
 app.get('/api/shortlist-lists', requireAuth(), async (req, res) => {
   try {
     const user = await reqUser(req);
@@ -2563,6 +2645,7 @@ app.get('/api/history/:symbol', async (req, res) => {
 
 setInterval(() => {
   const t = etParts();
+  if (t.hhmm === '16:20' && !['Sat', 'Sun'].includes(t.day)) oncePerDay('chart_lines_check', t.date, checkChartLines);
   if (t.day === 'Mon' && t.hhmm === '08:30') oncePerDay('weekly_health_post', t.date, postWeeklyMarketHealth);
   if (t.day === 'Sat' && t.hhmm === '11:00') oncePerDay('weekly_receipts_post', t.date, postWeeklyReceipts);
 }, 60 * 1000);

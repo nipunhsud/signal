@@ -3667,6 +3667,29 @@
       _saveDrawings(list) {
         try { localStorage.setItem(this._drawKey(), JSON.stringify(list)); } catch (_) {}
       }
+
+      // A line only this browser knows about cannot be watched. Every drawing
+      // is mirrored to the server so the after-close pass can tell you when
+      // price crossed it. localStorage stays the source for rendering, because
+      // it survives a signed-out session and needs no round trip.
+      async _persistLine(name, points) {
+        if (!this.chartAsset || points.length < 2) return;
+        const [a, b] = points;
+        if (!Number.isFinite(a?.timestamp) || !Number.isFinite(b?.timestamp)) return;
+        if (Math.round(a.timestamp / 1000) === Math.round(b.timestamp / 1000)) return; // vertical
+        try {
+          const res = await fetch('/api/chart-lines', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              asset: this.chartAsset,
+              kind: name === 'horizontalStraightLine' ? 'horizontal' : name === 'rayLine' ? 'ray' : 'segment',
+              t1: Math.round(a.timestamp / 1000), p1: a.value,
+              t2: Math.round(b.timestamp / 1000), p2: b.value,
+            }),
+          });
+          if (res.ok) this.toast('Watching that line — you will hear when a close crosses it', { kind: 'info' });
+        } catch (_) { /* the drawing still renders; only the watch is lost */ }
+      }
       _drawStyles() {
         return { line: { color: '#38bdf8', size: 2 }, point: { color: '#38bdf8', borderColor: '#0c4a6e' } };
       }
@@ -3679,9 +3702,11 @@
           onDrawEnd: (e) => {
             const pts = (e.overlay && e.overlay.points) || [];
             if (!pts.length) return;
+            const points = pts.map((p) => ({ timestamp: p.timestamp, value: p.value }));
             const list = this._loadDrawings();
-            list.push({ id: e.overlay.id, name, points: pts.map((p) => ({ timestamp: p.timestamp, value: p.value })) });
+            list.push({ id: e.overlay.id, name, points });
             this._saveDrawings(list);
+            this._persistLine(name, points);
             return true;
           },
           onRemoved: (e) => {
@@ -4615,7 +4640,7 @@
               <div class="mb-6 flex items-end justify-between flex-wrap gap-3">
                 <div>
                   <h1 class="text-2xl font-bold tracking-tight">Backtest</h1>
-                  <p class="text-gray-500 text-sm">${p.type === 'Type1' ? 'Forward return of every breakout the screen emailed, from the close on the day it went out' : 'Forward return of extension rows, from the close on the signal day'} · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
+                  <p class="text-gray-500 text-sm">${p.type === 'Type1' ? 'Forward return of every alert the screen sent, from the close on the day it went out — the same rows the Saturday receipts count' : 'Forward return of rows the classifier marked, from the close on the signal day. These were never emailed; this view is for research.'} · ${bt?.summary?.totalSignals ?? '…'} evaluated</p>
                 </div>
                 <div class="text-right text-[11px] text-gray-500">
                   ${bt?.generatedAt ? `Generated ${new Date(bt.generatedAt).toLocaleTimeString()}${bt.cached ? ' · cached' : ''}` : ''}
@@ -4627,9 +4652,14 @@
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Type</span>
                   <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
-                    ${controlPill('Emailed breakouts', 'type', 'Type1', p.type)}
-                    ${controlPill('Extension', 'type', 'Type3', p.type)}
-                    ${controlPill('Gap retest', 'type', 'GR', p.type)}
+                    <!-- These three are not the same axis and the labels used
+                         to hide it. The first is the alerts actually sent —
+                         lastAlertAt is not null, the same rows the Saturday
+                         receipts count. The other two are signal classifiers
+                         over rows that were never emailed, kept for research. -->
+                    ${controlPill('Alerts sent', 'type', 'Type1', p.type)}
+                    ${controlPill('Extensions · never emailed', 'type', 'Type3', p.type)}
+                    ${controlPill('Gap retests · never emailed', 'type', 'GR', p.type)}
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
