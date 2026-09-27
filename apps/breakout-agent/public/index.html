@@ -4694,33 +4694,39 @@
                   </div>
                 </div>
 
-                <!-- By tier -->
+                <!-- Breakdowns of the emailed population -->
+                ${[
+                  ['By relative strength', bt.byTier, 'The band each name sat in when the screen emailed it. Under 89 ran a 1.73 profit factor across the studies, 89-95 ran 2.04, 95+ ran 2.45.'],
+                  ['By base grade', bt.byGrade, 'S is a 16-week-plus tight blue-sky base, A+ five weeks or more, A any blue-sky base. Ungraded rows reached the inbox through the cheat or deep-band kinds.'],
+                  ['By entry kind', bt.byKind, 'A pivot close is the base resolving. A cheat is a shelf inside the base. The deep band is 25-35% deep, entered at the close that cleared by 3% or more.'],
+                  ['By how far it cleared', bt.byClearance, 'The same bands the retest odds use. A clear under 1% came back to the pivot 61% of the time; a clear past 6% held 67% of the time.'],
+                  ['By volume on the bar', bt.byVolume, 'The breakout bar against its own 20-day average. Volume is half the alert gate — 1.5x is the floor.'],
+                ].filter(([, g]) => g && g.length).map(([title, group, note]) => `
                 <div class="bg-gray-800 rounded-lg ring-1 ring-gray-700/60 p-4 mb-6">
-                  <h3 class="font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                  <h3 class="font-semibold text-gray-200 mb-1 flex items-center gap-2">
                     <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                    By relative strength
+                    ${title}
                   </h3>
+                  <p class="text-[11px] text-gray-500 mb-3">${note}</p>
                   ${(() => {
-                    const maxAbs = Math.max(0.5, ...bt.byTier.map(t => Math.abs(t.avgReturn)));
+                    const maxAbs = Math.max(0.5, ...group.map(t => Math.abs(t.avgReturn)));
                     return `<div class="space-y-2.5">
-                      ${bt.byTier.map(t => {
+                      ${group.map(t => {
                         const empty = t.count === 0;
                         const pct = empty ? 0 : Math.abs(t.avgReturn) / maxAbs * 100;
                         const pos = t.avgReturn >= 0;
                         return `
                           <div class="flex items-center gap-3">
-                            <div class="w-16 text-[11px] font-mono text-gray-400">${t.label}</div>
+                            <div class="w-24 text-[11px] font-mono text-gray-400">${t.label}</div>
                             <div class="flex-1 relative h-6 bg-gray-900/60 rounded overflow-hidden">
                               <div class="absolute inset-y-0 left-1/2 border-l border-gray-700/60"></div>
-                              ${empty ? '' : `
-                                <div class="absolute inset-y-0 ${pos ? 'left-1/2' : 'right-1/2'} ${pos ? 'bg-green-500/40' : 'bg-red-500/40'}" style="width: ${pct / 2}%"></div>
-                              `}
+                              ${empty ? '' : `<div class="absolute inset-y-0 ${pos ? 'left-1/2' : 'right-1/2'} ${pos ? 'bg-green-500/40' : 'bg-red-500/40'}" style="width:${pct / 2}%"></div>`}
                               <div class="absolute inset-0 flex items-center justify-center text-[11px] font-mono font-semibold ${returnColor(t.avgReturn)}">
                                 ${empty ? '<span class="text-gray-600">no data</span>' : fmt(t.avgReturn, { sign: true, pct: true })}
                               </div>
                             </div>
-                            <div class="w-20 text-right text-[11px] text-gray-400 tabular-nums">${empty ? '—' : `${t.count} signals`}</div>
-                            <div class="w-16 text-right text-[11px] tabular-nums ${empty ? 'text-gray-600' : t.winRate >= 55 ? 'text-green-400' : t.winRate >= 45 ? 'text-yellow-400' : 'text-red-400'}">
+                            <div class="w-20 text-right text-[11px] text-gray-400 tabular-nums">${empty ? '—' : `${t.count} alert${t.count === 1 ? '' : 's'}`}</div>
+                            <div class="w-16 text-right text-[11px] tabular-nums ${empty ? 'text-gray-600' : t.winRate >= 55 ? 'text-green-400' : t.winRate >= 45 ? 'text-gray-300' : 'text-red-400'}">
                               ${empty ? '—' : fmt(t.winRate, { pct: true, digits: 0 }) + ' win'}
                             </div>
                           </div>
@@ -4728,7 +4734,7 @@
                       }).join('')}
                     </div>`;
                   })()}
-                </div>
+                </div>`).join('')}
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <!-- By sector -->
