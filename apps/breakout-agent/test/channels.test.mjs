@@ -581,3 +581,40 @@ test('market health: the distribution copy no longer overclaims', () => {
   assert.match(row, /barely separates outcomes/, 'it says what we measured');
   assert.doesNotMatch(row, /4\+ is a warning even while price holds up/, 'the old line is gone');
 });
+
+// QMCO on 2026-09-27: the drawer said "Why it is not on the screen" over a row
+// two days old, blamed depth alone for a base that also failed blue sky, and
+// the history heading said "Alert history" over entries that were never
+// emailed — which is how a tracked handle read as an alert that had been sent.
+test('profile: the heading follows the row, not an assumption', () => {
+  assert.match(dash, /const onScreenNow = !!onScreenAt/, 'a recent row is detected');
+  assert.match(dash, /On the screen, but not alertable/, 'and the heading changes');
+  assert.match(dash, /These are the reasons it cannot reach the email gate/);
+});
+
+test('profile: blue sky is judged on the base, not on today\'s price', () => {
+  // QMCO sat 4% under its 52-week high while its base pivot was 15.8% under
+  // it, so a check on price found nothing wrong.
+  assert.match(server, /isBlueSky: newest\.isBlueSky === true/, 'the base carries its own verdict');
+  assert.match(server, /pivotPctFromHigh/, 'and how far its pivot sits from the high');
+  assert.match(dash, /b\.isBlueSky === false/, 'the reason list uses it');
+  assert.match(dash, /so it is not a blue-sky base/);
+});
+
+test('profile: a 25-35% base is told it is in the deep band', () => {
+  assert.match(dash, /inside the 25-35% band the screen alerts on separately/);
+  assert.match(dash, /The grade stops at 25% and the deep band at 35%/, 'and past 35% nothing can alert');
+});
+
+test('history: the heading no longer implies everything was emailed', () => {
+  assert.match(dash, /Entry history/);
+  const rendered = dash.replace(/<!--[\s\S]*?-->/g, '');
+  assert.doesNotMatch(rendered, /Alert history/, 'the old heading is gone from anything rendered');
+  assert.match(dash, /most are tracked only/, 'and says so plainly');
+});
+
+test('sectors: an empty 4-week column says it is collecting, not broken', () => {
+  assert.match(server, /rankHistoryFrom = starts/, 'the server works out when it fills in');
+  assert.match(dash, /Rank snapshots began on \$\{s\.rankHistorySince\}/, 'and the cell explains the wait');
+  assert.match(dash, /collecting/);
+});

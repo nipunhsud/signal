@@ -2803,6 +2803,15 @@ async function computeSectorStrength(region) {
         const prev = JSON.parse(dated.r.value);
         for (const s of sectors) s.rank4w = prev[s.sector] ?? null;
         for (const s of sectors) s.rank4wDate = dated.date;
+      } else if (old.length) {
+        // No snapshot is old enough yet. The column showed a bare dash, which
+        // reads as broken rather than as young — snapshots only began on the
+        // day this shipped, so say when the comparison starts.
+        const oldest = old.map((r) => r.key.split(':')[2]).filter(Boolean).sort()[0];
+        if (oldest) {
+          const starts = new Date(new Date(oldest + 'T00:00:00Z').getTime() + 28 * 864e5).toISOString().slice(0, 10);
+          for (const s of sectors) { s.rankHistorySince = oldest; s.rankHistoryFrom = starts; }
+        }
       }
     } catch (e) { console.warn('[sector-strength] rank history:', e.message); }
     return { region, asOf: new Date().toISOString(), universe: rows.length, coverage, sectors, leadingCount: Math.ceil(sectors.length / 3) };
@@ -3145,7 +3154,16 @@ app.get('/api/profile/:symbol', async (req, res) => {
       range52: { high: hi52, low: lo52, highDate: yr[hiIdx]?.time || null, pctFromHigh: pct(last.close, hi52), pctAboveLow: pct(last.close, lo52) },
       mas: { ma20, ma50, ma200, above20: ma20 != null ? last.close > ma20 : null, above50: ma50 != null ? last.close > ma50 : null, above200: ma200 != null ? last.close > ma200 : null, stack: ma50 != null && ma200 != null ? ma50 > ma200 : null },
       rs: ret ? { rating: await rsRatingFor(ret), score: ret.rsScore, sector: ret.sector, updatedAt: ret.updatedAt } : null,
-      base: newest ? { status: newest.status, weeks: newest.weeks, depthPct: newest.depthPct, pivot: newest.pivot, low: newest.low, start: newest.start, end: newest.end, count: bases.length } : { count: 0 },
+      base: newest ? {
+        status: newest.status, weeks: newest.weeks, depthPct: newest.depthPct, pivot: newest.pivot,
+        low: newest.low, start: newest.start, end: newest.end, count: bases.length,
+        // Blue sky is a property of the BASE, not of today's price. QMCO sat
+        // 4% under its 52-week high while its base pivot was 15.8% under it,
+        // so a check on price said nothing was wrong and the drawer blamed
+        // depth alone for a base that failed on both counts.
+        isBlueSky: newest.isBlueSky === true,
+        pivotPctFromHigh: hi52 > 0 ? ((newest.pivot - hi52) / hi52) * 100 : null,
+      } : { count: 0 },
       lastSignal,
       // The tape score. It lives on signal rows, so a name with no current row
       // — which is most of what this drawer is opened for — showed nothing at

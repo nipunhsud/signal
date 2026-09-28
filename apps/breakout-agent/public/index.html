@@ -2483,7 +2483,20 @@
         const why = [];
         if (p.mas.above200 === false) why.push('It is below its 200-day average. Graded bases have to sit above it.');
         if (p.range52.pctFromHigh != null && p.range52.pctFromHigh < -25) why.push(`It is ${n(Math.abs(p.range52.pctFromHigh), 0)}% under its 52-week high, so no base here is a blue-sky base.`);
-        if (b && b.count && b.depthPct > 25) why.push(`The newest base is ${n(b.depthPct, 0)}% deep. The screen grades bases up to 25% deep.`);
+        if (b && b.count && b.depthPct > 25) {
+          // 25-35% is the deep band, which alerts on its own terms, so saying
+          // only "the grade stops at 25%" is half the story.
+          why.push(b.depthPct <= 35
+            ? `The newest base is ${n(b.depthPct, 0)}% deep, past the 25% the grade allows but inside the 25-35% band the screen alerts on separately — that needs a blue-sky pivot, a close clearing it by 3% or more, and 1.5x volume.`
+            : `The newest base is ${n(b.depthPct, 0)}% deep. The grade stops at 25% and the deep band at 35%, so nothing here can alert on it.`);
+        }
+        // Blue sky is a property of the base, not of today's price. QMCO sat
+        // 4% under its 52-week high while its base pivot was 15.8% under it.
+        if (b && b.count && b.isBlueSky === false) {
+          why.push(b.pivotPctFromHigh != null
+            ? `The base tops out ${n(Math.abs(b.pivotPctFromHigh), 0)}% under the 52-week high, so it is not a blue-sky base. Both the grade and the deep band need one.`
+            : 'The base is not at the 52-week high, so it is not a blue-sky base.');
+        }
         if (b && b.count && b.status === 'forming' && p.price.close < b.pivot) why.push(`Price is ${n(Math.abs(((p.price.close - b.pivot) / b.pivot) * 100), 1)}% under the newest pivot at ${CUR}${n(b.pivot)}. Nothing to grade until a close clears it.`);
         if (!b || !b.count) why.push('No consolidation of two weeks or more in the last two years, so there is no base to grade.');
         if (p.liquidityOk === false) why.push('Average volume is under 100k shares, below the liquidity floor.');
@@ -2493,6 +2506,11 @@
         // answer is not a property of the stock — the screen simply has no row
         // for it, and saying anything else is wrong.
         const missed = (p.xray && p.xray.missed) || [];
+        // It may well be on the screen. This drawer opens for any ticker, and
+        // QMCO carried a row two days old while the heading insisted it was
+        // absent. The heading follows the row.
+        const onScreenAt = ls && ls.createdAt ? new Date(ls.createdAt) : null;
+        const onScreenNow = !!onScreenAt && Date.now() - onScreenAt.getTime() < 7 * 864e5;
         if (!why.length && !missed.length) why.push('Nothing rules it out on these numbers. It has not closed above a graded pivot yet.');
 
         body.className = '';
@@ -2519,7 +2537,8 @@
             </ul>
           </div>` : ''}
           <div class="border-t border-gray-700/60 pt-4 mt-5">
-            <h3 class="font-semibold text-gray-200 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>Why it is not on the screen</h3>
+            <h3 class="font-semibold text-gray-200 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>${onScreenNow ? 'On the screen, but not alertable' : 'Why it is not on the screen'}</h3>
+            ${onScreenNow ? `<p class="text-[11px] text-gray-500 mb-2">It has a row from ${this.formatRelative(ls.createdAt)}, so the screen is tracking it. These are the reasons it cannot reach the email gate.</p>` : ''}
             <ul class="space-y-1.5 text-[13px] text-gray-300">${why.length ? why.map((w) => `<li class="pl-3 border-l-2 border-gray-700">${w}</li>`).join('') : '<li class="pl-3 border-l-2 border-gray-700">Nothing rules it out. The breakouts above are the reason — the screen did not record them.</li>'}</ul>
           </div>`;
       }
@@ -3030,11 +3049,13 @@
               </div>
               `}
 
-              <!-- Alert history: every previous breakout the screen recorded (loaded lazily) -->
+              <!-- Entry history: every level the screen froze, emailed or not. It was
+                   called "Alert history", which read as though every card had been
+                   sent; QMCO's 17 Sep handle entry ran +23% and was never emailed. -->
               <div id="history-section" class="border-t border-gray-700/60 pt-4">
                 <h3 class="font-semibold text-gray-200 flex items-center gap-2 mb-2">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  Alert history
+                  Entry history
                 </h3>
                 <div id="history-content" class="text-[13px] text-gray-300 leading-relaxed">
                   <span class="text-gray-500">Loading…</span>
@@ -3651,7 +3672,8 @@
               ${this.chartLegend()}
               <div id="base-xray" class="mt-6"></div>
               <div class="mt-6">
-                <h2 class="text-lg font-bold text-white">Alert history</h2>
+                <h2 class="text-lg font-bold text-white">Entry history</h2>
+                <p class="text-[11px] text-gray-500 mt-0.5">Every level the screen froze for this name. Each card says whether it was emailed — most are tracked only.</p>
                 <p class="text-xs text-gray-500 mb-3">Every breakout the screen recorded for this ticker, and whether it was emailed.</p>
                 <div id="chart-history"></div>
               </div>
@@ -5691,7 +5713,7 @@
                       ${sectors.map((s, idx) => `
                         <tr class="${idx % 2 === 0 ? 'bg-gray-800/60' : 'bg-gray-800/30'} border-b border-gray-700/50">
                           <td class="card-header px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank <= (d.leadingCount || 3) ? 'text-amber-300 font-bold' : 'text-gray-400'}" data-tip="${s.rank <= (d.leadingCount || 3) ? 'Leading sector (top third by median RS)' : ''}">#${s.rank}</td>
-                          <td data-label="4 wk ago" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank4w == null ? 'text-gray-600' : s.rank4w > s.rank ? 'text-green-400' : s.rank4w < s.rank ? 'text-red-400' : 'text-gray-400'}">${s.rank4w == null ? '—' : `#${s.rank4w} ${s.rank4w > s.rank ? '↑' : s.rank4w < s.rank ? '↓' : '·'}`}</td>
+                          <td data-label="4 wk ago" class="px-3 py-2.5 whitespace-nowrap font-mono tabular-nums ${s.rank4w == null ? 'text-gray-600' : s.rank4w > s.rank ? 'text-green-400' : s.rank4w < s.rank ? 'text-red-400' : 'text-gray-400'}">${s.rank4w == null ? (s.rankHistoryFrom ? `<span class="text-[10px] text-gray-600" data-tip="Rank snapshots began on ${s.rankHistorySince}. Four weeks of them is the comparison, so this column fills in on ${s.rankHistoryFrom}.">collecting</span>` : '—') : `#${s.rank4w} ${s.rank4w > s.rank ? '↑' : s.rank4w < s.rank ? '↓' : '·'}`}</td>
                           <td data-label="Sector" class="px-3 py-2.5 whitespace-nowrap font-semibold text-white">${s.sector}</td>
                           <td data-label="Stocks" class="px-3 py-2.5 whitespace-nowrap text-right font-mono tabular-nums text-gray-400">${s.stocks}</td>
                           <td data-label="1W" class="px-3 py-2.5 whitespace-nowrap text-right">${pct(s.median1wPct)}</td>
