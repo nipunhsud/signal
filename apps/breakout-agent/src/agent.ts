@@ -8,6 +8,7 @@ import { postXThread } from "./x-post.js";
 import { classifyShelf, cheatGate } from "../shelf.js";
 // @ts-ignore — plain JS at the app root
 import { activityWords } from "../activity.js";
+import { insiderWords } from "../insider.js";
 
 // Sector rank at scan time: sectors of the fresh universe ordered by the
 // median RS score of their names (the same roll-up the Sectors tab shows).
@@ -1496,6 +1497,29 @@ Worth watching: ${review.watchFor}
     const activityLine = rec.activityScore != null
       ? `${rec.activityScore}/10 — ${activityWords({ score: rec.activityScore, acc: rec.activityAcc ?? 0, dist: rec.activityDist ?? 0, bigUp: rec.activityBigUp ?? 0, udv: rec.activityUdv ?? null, obv: rec.activityObv ?? null, points: { net: 0, bigUp: 0, udv: 0, obv: 0 } })}`
       : null;
+    // Form 4. Read from the table the dashboard refreshes nightly — the shards
+    // never call SEC. Officers, directors and 10% owners only; it says nothing
+    // about a fund below 10%. Buying and selling are not weighted the same and
+    // the sentence says which kind of selling it was.
+    let insiderLine: string | null = null;
+    try {
+      const ia: any = await (db as any).insiderActivity.findUnique({ where: { asset: result.asset } });
+      if (ia && (ia.buys || ia.sells)) {
+        insiderLine = insiderWords({
+          windowDays: ia.windowDays, buys: ia.buys, sells: ia.sells, realSells: ia.realSells,
+          plannedSells: ia.plannedSells, exerciseSells: ia.exerciseSells,
+          buyers: ia.buyers, sellers: ia.sellers,
+          buyShares: ia.buyShares, sellShares: ia.sellShares,
+          buyValue: ia.buyValue, sellValue: ia.sellValue,
+          tone: ia.tone, cluster: ia.cluster, filings: ia.filings,
+          lastFiledAt: ia.lastFiledAt,
+          latest: ia.latestAt ? {
+            date: ia.latestAt, kind: ia.latestKind, owner: ia.latestOwner, role: ia.latestRole,
+            shares: ia.latestShares, price: ia.latestPrice, planned: ia.latestPlanned, link: ia.latestLink,
+          } : null,
+        } as any);
+      }
+    } catch { /* table may not exist mid-rollout */ }
     const sectorLine = rec.sectorRank != null && rec.sectorCount ? `${latestRecord.sector || "unknown"} — ranked ${rec.sectorRank} of ${rec.sectorCount} sectors` : null;
     const baseLine = [
       rec.baseGrade ? `grade ${rec.baseGrade}` : null,
@@ -1512,6 +1536,7 @@ Worth watching: ${review.watchFor}
       shelfNow ? pad("Entry", `${shelfNow.label.toLowerCase()}, ${shelfNow.posPct}% of the way up the base`) : null,
       baseLine ? pad("Base", baseLine) : null,
       activityLine ? pad("Activity", activityLine) : null,
+      insiderLine ? pad("Insiders", insiderLine) : null,
       pad("Sector", sectorLine || `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
       pad("Confidence", `${(result.confidence * 100).toFixed(0)}%`),
       latestRecord.assetType === "etf" && latestRecord.expenseRatio ? pad("Expense", `${latestRecord.expenseRatio}%`) : null,

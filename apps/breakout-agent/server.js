@@ -11,6 +11,8 @@ import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
 import { gradePosition, bookStats, runningList, parseTrade, weekWindowOf } from './book.js';
 import { computeActivity } from './activity.js';
+import { summarizeInsider, insiderWords, insiderTag } from './insider.js';
+import { refreshInsiderActivity as runInsiderRefresh, insiderFor as insiderRowFor } from './insider-refresh.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -91,6 +93,45 @@ async function refreshPoliticianBuys() {
 }
 refreshPoliticianBuys();
 setInterval(refreshPoliticianBuys, 12 * 60 * 60 * 1000);
+
+// ── Form 4: insider buying and selling ──────────────────────────────────────
+// SEC, no key, no vendor. Section 16 insiders and 10% owners file within two
+// business days of a transaction, so this is the one ownership filing that
+// keeps pace with a base — a 13F is a quarterly snapshot up to 135 days stale.
+//
+// It reports officers, directors and 10% owners only. It says nothing about
+// Fidelity or any other fund below 10%, which is most of them.
+//
+// Measured over 57,032 graded breakouts since 2010 it does not predict the
+// outcome (scripts/insider-study.mjs): buying ran a 1.80 profit factor against 1.76
+// for the cohort, selling 1.72, and what little separation there is disappears
+// inside a single liquidity band. So it is context on the row and in the email,
+// never a ranking input and never part of the alert gate.
+//
+// One process, one limiter: the scanner shards read the table and never call
+// SEC. Nightly is the right cadence because the filings themselves are daily.
+const refreshInsiderActivity = () => runInsiderRefresh(db);
+const insiderFor = (symbol) => insiderRowFor(db, symbol);
+
+function insiderPayload(r) {
+  if (!r) return null;
+  const s = {
+    windowDays: r.windowDays, buys: r.buys, sells: r.sells, realSells: r.realSells,
+    plannedSells: r.plannedSells, exerciseSells: r.exerciseSells,
+    buyers: r.buyers, sellers: r.sellers,
+    buyShares: r.buyShares, sellShares: r.sellShares,
+    buyValue: r.buyValue, sellValue: r.sellValue,
+    netValue: Math.round((r.buyValue || 0) - (r.sellValue || 0)),
+    tone: r.tone, cluster: r.cluster, filings: r.filings,
+    lastFiledAt: r.lastFiledAt,
+    latest: r.latestAt ? {
+      date: r.latestAt, kind: r.latestKind, owner: r.latestOwner, role: r.latestRole,
+      shares: r.latestShares, price: r.latestPrice, planned: r.latestPlanned, link: r.latestLink,
+    } : null,
+  };
+  return { ...s, tag: insiderTag(s), words: insiderWords(s), checkedAt: r.checkedAt };
+}
+
 
 // Stripe is optional at boot. If keys aren't set, billing endpoints return 501
 // and the paywall degrades to "any signed-in user allowed" so the auth flow can
@@ -1383,6 +1424,19 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
       const pb = politicianBuysBySymbol.get((s.asset || '').toUpperCase());
       return pb ? { ...s, politicianBuy: pb } : s;
     });
+
+    // Form 4 overlay — the stored nightly rollup, never a SEC call on a page
+    // load. Only symbols with something to say carry the field.
+    try {
+      const rows = await db.insiderActivity.findMany({
+        where: { asset: { in: [...new Set(allSignals.map((s) => (s.asset || '').toUpperCase()))] } },
+      });
+      const byAsset = new Map(rows.filter((r) => r.buys || r.sells).map((r) => [r.asset, insiderPayload(r)]));
+      allSignals = allSignals.map((s) => {
+        const ia = byAsset.get((s.asset || '').toUpperCase());
+        return ia ? { ...s, insider: ia } : s;
+      });
+    } catch { /* table may not exist mid-rollout */ }
 
     const sorted = allSignals.sort((a, b) => b.confidence - a.confidence);
 
@@ -2689,6 +2743,7 @@ app.get('/api/history/:symbol', async (req, res) => {
 setInterval(() => {
   const t = etParts();
   if (t.hhmm === '16:20' && !['Sat', 'Sun'].includes(t.day)) oncePerDay('chart_lines_check', t.date, checkChartLines);
+  if (t.hhmm === '18:30' && !['Sat', 'Sun'].includes(t.day)) oncePerDay('insider_refresh', t.date, refreshInsiderActivity);
   if (t.day === 'Mon' && t.hhmm === '08:30') oncePerDay('weekly_health_post', t.date, postWeeklyMarketHealth);
   if (t.day === 'Sat' && t.hhmm === '11:00') oncePerDay('weekly_receipts_post', t.date, postWeeklyReceipts);
 }, 60 * 1000);
@@ -3172,6 +3227,9 @@ app.get('/api/profile/:symbol', async (req, res) => {
       activity: (() => {
         try { return computeActivity(bars, newest); } catch { return null; }
       })(),
+      // Form 4. Officers, directors and 10% owners only — it says nothing
+      // about a fund holding under 10%, which is nearly all of them.
+      insider: insiderPayload(await insiderFor(symbol)),
       // Breakouts the X-ray finds that would have graded, newest first, with
       // the ones the screener has no row for called out.
       xray: { qualified: qualified.slice(-6).reverse(), missed: missed.slice(-6).reverse() },

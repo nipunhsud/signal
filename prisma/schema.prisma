@@ -466,3 +466,45 @@ model DailyBar {
 
   @@id([symbol, date])
 }
+
+// Form 4 — the 90-day open-market insider picture per symbol, refreshed nightly
+// from SEC EDGAR (insider-sec.js). One row per asset; the screener, the profile
+// and the alert email all read this rather than calling SEC on the hot path.
+//
+// Buys and sells are deliberately not netted. The research asymmetry is large:
+// insider purchases carry information, insider sales mostly do not, because
+// selling is driven by diversification, taxes and pre-scheduled 10b5-1 plans
+// that were signed months before the price the screen is looking at.
+model InsiderActivity {
+  asset        String   @id
+  cik          String?
+  windowDays   Int      @default(90)
+  buys         Int      @default(0) // open-market purchase transactions (code P)
+  sells        Int      @default(0) // open-market sale transactions (code S)
+  realSells    Int      @default(0) // sells that were neither planned nor an exercise-and-sell
+  plannedSells Int      @default(0) // filed under a 10b5-1 plan
+  exerciseSells Int     @default(0) // sold on the same day an option was exercised
+  buyers       Int      @default(0) // distinct insiders buying
+  sellers      Int      @default(0)
+  buyShares    Float    @default(0)
+  sellShares   Float    @default(0)
+  buyValue     Float    @default(0)
+  sellValue    Float    @default(0)
+  tone         String   @default("quiet") // buying | selling | mixed | quiet
+  cluster      Boolean  @default(false)   // 2+ distinct insiders bought in the window
+  filings      Int      @default(0) // Form 4s with an open-market transaction in the window
+  lastFiledAt  String?  // YYYY-MM-DD of the newest Form 4 of any kind
+  latestAt     String?  // YYYY-MM-DD of the newest open-market transaction
+  latestKind   String?  // buy | sell
+  latestOwner  String?
+  latestRole   String?
+  latestShares Float?
+  latestPrice  Float?
+  latestPlanned Boolean @default(false)
+  latestLink   String?
+  checkedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tone])
+  @@index([checkedAt])
+}
