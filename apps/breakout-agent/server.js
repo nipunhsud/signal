@@ -11,6 +11,7 @@ import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
 import { gradePosition, bookStats, runningList, parseTrade, weekWindowOf } from './book.js';
 import { computeActivity } from './activity.js';
+import { institutionsFor, institutionsForOne } from './institutions-read.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -1383,6 +1384,17 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
       const pb = politicianBuysBySymbol.get((s.asset || '').toUpperCase());
       return pb ? { ...s, politicianBuy: pb } : s;
     });
+
+    // Form 13F overlay — the institutional register as of the newest quarter we
+    // hold, with its largest named holders. Read from the table; the ingest is
+    // quarterly and offline (scripts/f13f-ingest.mjs).
+    {
+      const inst = await institutionsFor(db, allSignals.map((s) => s.asset), { limit: 8 });
+      if (inst.size) allSignals = allSignals.map((s) => {
+        const i = inst.get((s.asset || '').toUpperCase());
+        return i ? { ...s, institutions: i } : s;
+      });
+    }
 
     const sorted = allSignals.sort((a, b) => b.confidence - a.confidence);
 
@@ -3172,6 +3184,10 @@ app.get('/api/profile/:symbol', async (req, res) => {
       activity: (() => {
         try { return computeActivity(bars, newest); } catch { return null; }
       })(),
+      // Who owns it, by name, from the newest 13F quarter on file. 13F is the
+      // complete register and the slowest filing there is — up to 135 days old
+      // — so the period travels with the numbers.
+      institutions: await institutionsForOne(db, symbol, { limit: 25 }),
       // Breakouts the X-ray finds that would have graded, newest first, with
       // the ones the screener has no row for called out.
       xray: { qualified: qualified.slice(-6).reverse(), missed: missed.slice(-6).reverse() },

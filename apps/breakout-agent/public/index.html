@@ -2521,6 +2521,7 @@
             ${row('52-week', `<span class="font-mono text-xs">${money(p.range52.low)} – ${money(p.range52.high)}</span> · ${pctHtml(p.range52.pctFromHigh)} from the high`)}
             ${row('Averages', `<span class="text-xs">${maCell('20', p.mas.ma20, p.mas.above20)}${maCell('50', p.mas.ma50, p.mas.above50)}${maCell('200', p.mas.ma200, p.mas.above200)}</span>`)}
             ${row('Volume', `<span class="font-mono text-xs">${(p.price.volume / 1e6).toFixed(2)}M</span> · ${p.price.volumeRatio != null ? n(p.price.volumeRatio, 1) + 'x the 20-day average' : '—'}`)}
+            ${p.institutions && p.institutions.holders ? row('Institutions', this.institutionsPanelHtml(p.institutions, 10)) : ''}
             ${p.activity ? row('Activity', `<span class="text-xs"><span class="${p.activity.score >= 7 ? 'text-green-400' : p.activity.score >= 4 ? 'text-yellow-400' : 'text-gray-400'} font-semibold">${p.activity.score}/10</span> <span class="text-gray-400">${p.activity.acc} heavy up · ${p.activity.dist} heavy down · ${p.activity.bigUp} print${p.activity.bigUp === 1 ? '' : 's'} at the high${p.activity.udv != null ? ` · up÷down vol ${p.activity.udv}x` : ''}</span></span>`) : ''}
             ${row('Bases', `<span class="text-xs">${baseHtml}</span>`)}
             ${row('On the screen', `<span class="text-xs">${lsHtml}</span>`)}
@@ -2707,6 +2708,7 @@
                 ${row('RS', rs)}
                 ${signal.deepBase === true ? row('Deep base', `<span class="text-xs">${this.deepBaseChipHtml(signal)} <span class="text-gray-400">the grade stops at 25% depth; this one cleared its pivot decisively on real volume, so the level is the close, not the pivot. 34% of these ran 20%+ against 14% for graded, and 52% touched the fail level against 28%.</span></span>`) : ''}
                 ${signal.holdPath ? row('What clears like this do', `<span class="text-xs">${this.holdPathChipHtml(signal)} <span class="text-gray-400">${signal.holdPath.holds}% held · ${signal.holdPath.retests}% came back and cleared again · ${signal.holdPath.fails}% never recovered, over ${signal.holdPath.n.toLocaleString()} measured</span></span>`) : ''}
+                ${signal.institutions && signal.institutions.holders ? row('Institutions', this.institutionsPanelHtml(signal.institutions, 6)) : ''}
                 ${signal.activity ? row('Activity', `<span class="text-xs">${this.activityChipHtml(signal)} <span class="text-gray-400">${signal.activity.acc} heavy up · ${signal.activity.dist} heavy down · ${signal.activity.bigUp} print${signal.activity.bigUp === 1 ? '' : 's'} at the high${signal.activity.udv != null ? ` · up÷down vol ${signal.activity.udv}x` : ''}</span></span>`) : ''}
                 ${(() => { const sr = this.sectorRankNow(signal); return sr ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${sr.count}${sr.rank <= Math.ceil(sr.count / 3) ? ' · leading sector' : ''}${signal.sectorRank != null && signal.sectorRank !== sr.rank ? ` · was #${signal.sectorRank} when this row was written` : ''}</span></span>`) : ''; })()}
                 ${signal.trendTemplate != null || signal.pivotTightPct != null ? row('Trend', `<span class="text-xs">${signal.trendTemplate == null ? '' : signal.trendTemplate ? '<span class="text-green-400" data-tip="Minervini trend template: close above a rising 200-day, 50 > 150 > 200, 30%+ off the 52-week low, within 25% of the high. Historically 16.7% of these reach +20% in 60 bars vs 6.6% without.">template ✓</span>' : '<span class="text-gray-400" data-tip="Fails the Minervini trend template — usually the prior run is under 30% off the 52-week low. Historically 6.6% reach +20% in 60 bars.">template ✗</span>'}${signal.pivotTightPct != null ? ` <span class="text-gray-500">·</span> <span class="font-mono" data-tip="Range of the 10 bars before the breakout, % of pivot. Under 5%: 9-18% fail rate but small moves. 12%+: 48% fail rate, 32% reach +20%.">pivot ${this.safeNum(signal.pivotTightPct, 1)}%${signal.pivotTightPct < 5 ? ' tight' : signal.pivotTightPct >= 12 ? ' loose' : ''}</span>` : ''}</span>`) : ''}
@@ -5886,6 +5888,76 @@
         return `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 whitespace-nowrap ${cls}" data-tip="${tip}">${word} ${h.pct}%</span>`;
       }
 
+// Form 13F — who owns it, by name. Every manager over $100M files within 45
+      // days of each quarter end, listing each position with its share count and
+      // market value, so this is the complete institutional register and also the
+      // slowest filing there is: at worst a position is 135 days old when it
+      // becomes public. A picture of the register, never a signal about today,
+      // and the quarter it belongs to is always on screen.
+      //
+      // BlackRock, Vanguard, State Street and Geode hold nearly every listed
+      // company because they run index funds. Their presence carries no opinion,
+      // so the panel separates them from the managers who chose the position.
+      institutionsChipHtml(signal) {
+        const i = signal && signal.institutions;
+        if (!i || !i.holders) return '';
+        const money = (v) => {
+          const a = Math.abs(v);
+          if (a >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
+          if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+          if (a >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+          return `$${Math.round(v / 1e3)}k`;
+        };
+        const d = i.drift;
+        const cls = d && d.direction === 'more' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
+          : d && d.direction === 'fewer' ? 'bg-gray-800 text-gray-500 ring-gray-700/60'
+          : 'bg-gray-700/50 text-gray-300 ring-gray-600/40';
+        const fresh = i.top.filter((h) => h.isNew && !h.isIndex && !h.isMarketMaker).slice(0, 2).map((h) => h.manager);
+        const tip = `${i.words} Of the ${i.holders}, ${i.activeHolders == null ? 'some' : i.activeHolders} are not index funds.${fresh.length ? ` Opened it this quarter: ${fresh.join(', ')}.` : ''} Form 13F is filed 45 days after the quarter ends, so this register is as of ${i.period} and can be up to 135 days behind the price. It is context — it does not rank a name and it does not gate an alert.`;
+        const change = d && d.direction !== 'flat' ? ` · ${d.net > 0 ? '+' : ''}${d.net}` : '';
+        return `<span class="badge ${cls} ring-1" data-tip="${tip.replace(/"/g, '&quot;')}"><span class="badge-dot"></span>${i.holders} funds${change} · ${money(i.value)}</span>`;
+      }
+
+      // The named register. Managers who chose the position first, the index
+      // complexes collapsed onto one muted line behind them.
+      institutionsPanelHtml(i, max = 8) {
+        if (!i || !i.holders) return '';
+        const money = (v) => {
+          const a = Math.abs(v);
+          if (a >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+          if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+          if (a >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+          return `$${Math.round(v / 1e3)}k`;
+        };
+        const sh = (v) => (v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : `${Math.round(v / 1e3)}k`);
+        const chosen = i.top.filter((h) => !h.isIndex && !h.isMarketMaker).slice(0, max);
+        const passive = i.top.filter((h) => h.isIndex || h.isMarketMaker);
+        const move = (h) => {
+          if (h.isNew) return '<span class="text-sky-300">new</span>';
+          if (h.changePct == null) return '<span class="text-gray-600">—</span>';
+          if (Math.abs(h.changePct) < 2) return '<span class="text-gray-500">held</span>';
+          const cls = h.changePct > 0 ? 'text-green-400' : 'text-red-400';
+          return `<span class="${cls}">${h.changePct > 0 ? '+' : ''}${Math.round(h.changePct)}%</span>`;
+        };
+        const rows = chosen.map((h) => `
+          <div class="flex items-baseline gap-2 py-0.5">
+            <span class="flex-1 truncate text-gray-200">${h.manager}</span>
+            <span class="font-mono tabular-nums text-gray-300 w-16 text-right">${money(h.value)}</span>
+            <span class="font-mono tabular-nums text-gray-500 w-16 text-right">${sh(h.shares)}</span>
+            <span class="w-12 text-right">${move(h)}</span>
+          </div>`).join('');
+        return `
+          <div class="text-[11px]">
+            <div class="flex items-baseline justify-between text-gray-400 mb-1">
+              <span>${i.holders} institutions · ${money(i.value)} · ${i.activeHolders != null ? `${i.activeHolders} not index funds` : ''}</span>
+              <span class="text-gray-500">as of ${i.period}</span>
+            </div>
+            ${i.holdersPrior != null ? `<div class="text-gray-500 mb-1.5">${i.opened} opened · ${i.closed} exited · ${i.added} added · ${i.reduced} reduced, against ${i.holdersPrior} holders the quarter before</div>` : ''}
+            ${rows || '<div class="text-gray-500">No holder outside the index funds in the top 25.</div>'}
+            ${passive.length ? `<div class="text-gray-600 mt-1.5 pt-1.5 border-t border-gray-700/40">Also held by ${passive.slice(0, 5).map((h) => h.manager).join(', ')}${passive.length > 5 ? ` and ${passive.length - 5} more` : ''} — index funds and market makers, which hold nearly everything.</div>` : ''}
+          </div>`;
+      }
+
       activityChipHtml(signal) {
         const a = signal && signal.activity;
         if (!a || a.score == null) return '';
@@ -6061,6 +6133,7 @@
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
                                 ${this.deepBaseChipHtml(signal)}
                                 ${this.activityChipHtml(signal)}
+                                ${this.institutionsChipHtml(signal)}
                                 ${this.holdPathChipHtml(signal)}
                                 ${this.sectorChipHtml(signal)}
                                 <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>

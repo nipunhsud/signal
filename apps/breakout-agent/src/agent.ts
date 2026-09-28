@@ -8,6 +8,7 @@ import { postXThread } from "./x-post.js";
 import { classifyShelf, cheatGate } from "../shelf.js";
 // @ts-ignore — plain JS at the app root
 import { activityWords } from "../activity.js";
+import { ownershipWords } from "../institutions.js";
 
 // Sector rank at scan time: sectors of the fresh universe ordered by the
 // median RS score of their names (the same roll-up the Sectors tab shows).
@@ -1496,6 +1497,22 @@ Worth watching: ${review.watchFor}
     const activityLine = rec.activityScore != null
       ? `${rec.activityScore}/10 — ${activityWords({ score: rec.activityScore, acc: rec.activityAcc ?? 0, dist: rec.activityDist ?? 0, bigUp: rec.activityBigUp ?? 0, udv: rec.activityUdv ?? null, obv: rec.activityObv ?? null, points: { net: 0, bigUp: 0, udv: 0, obv: 0 } })}`
       : null;
+    // Form 13F. The complete institutional register and the slowest filing
+    // there is — up to 135 days behind the price — so the quarter it belongs to
+    // goes in the line. Index complexes are excluded from the names because
+    // BlackRock and Vanguard hold nearly every listed company.
+    let institutionsLine: string | null = null;
+    try {
+      const own: any = await (db as any).institutionalOwnership.findFirst({
+        where: { asset: result.asset }, orderBy: { period: "desc" },
+      });
+      if (own && own.holders) {
+        const top: any[] = await (db as any).institutionalHolder.findMany({
+          where: { asset: result.asset, period: own.period }, orderBy: { rank: "asc" }, take: 12,
+        });
+        institutionsLine = ownershipWords(own as any, top as any);
+      }
+    } catch { /* table may not exist mid-rollout */ }
     const sectorLine = rec.sectorRank != null && rec.sectorCount ? `${latestRecord.sector || "unknown"} — ranked ${rec.sectorRank} of ${rec.sectorCount} sectors` : null;
     const baseLine = [
       rec.baseGrade ? `grade ${rec.baseGrade}` : null,
@@ -1512,6 +1529,7 @@ Worth watching: ${review.watchFor}
       shelfNow ? pad("Entry", `${shelfNow.label.toLowerCase()}, ${shelfNow.posPct}% of the way up the base`) : null,
       baseLine ? pad("Base", baseLine) : null,
       activityLine ? pad("Activity", activityLine) : null,
+      institutionsLine ? pad("Institutions", institutionsLine) : null,
       pad("Sector", sectorLine || `${latestRecord.sector || "unknown"}${latestRecord.industry ? " / " + latestRecord.industry : ""}`),
       pad("Confidence", `${(result.confidence * 100).toFixed(0)}%`),
       latestRecord.assetType === "etf" && latestRecord.expenseRatio ? pad("Expense", `${latestRecord.expenseRatio}%`) : null,
