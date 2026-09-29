@@ -6606,7 +6606,7 @@
                       <h3 class="text-sm font-semibold text-emerald-300">Emailed ${a.label} · ${a.list.length} alert${a.list.length === 1 ? '' : 's'}</h3>
                       <span class="text-[11px] text-gray-500">${a.ymd}${a.isToday ? '' : ' — the last session that produced any'}</span>
                     </div>
-                    <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-emerald-700/40" data-keep-scroll="alerted-x">
+                    <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-emerald-700/40" data-table="alerted" data-keep-scroll="alerted-x">
                       <table class="w-full signals-responsive" style="min-width:1140px;">
                         <thead class="sticky-head">
                           <tr class="border-b border-gray-600">
@@ -6620,7 +6620,7 @@
                     </div>
                   </div>`;
                 })()}
-                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="signals-x">
+                <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-table="board" data-keep-scroll="signals-x">
                   <table class="w-full signals-responsive" style="min-width:1140px;">
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
