@@ -466,3 +466,53 @@ model DailyBar {
 
   @@id([symbol, date])
 }
+
+// Form 13F — the institutional register per stock, per quarter, from SEC's
+// quarterly datasets (apps/breakout-agent/scripts/f13f-ingest.mjs).
+//
+// One row per asset and period: how many managers reported the position, how
+// much, and how that moved against the quarter before. 13F is the complete
+// roster and the slowest filing there is — a position can be 135 days old
+// before it is public — so this is a picture of the register, never a signal
+// about today.
+model InstitutionalOwnership {
+  asset        String
+  period       String  // quarter end, YYYY-MM-DD
+  holders      Int
+  shares       Float
+  value        Float
+  // The quarter before, and what moved. Null on the oldest period loaded,
+  // because "no change" and "nothing to compare with" are different things.
+  holdersPrior Int?
+  sharesPrior  Float?
+  valuePrior   Float?
+  opened       Int?    // managers reporting the position for the first time
+  closed       Int?    // managers who no longer report it
+  added        Int?    // grew the position more than 2%
+  reduced      Int?    // cut it more than 2%
+  // Holders that are neither an index complex nor a market maker — the ones
+  // who chose the position (institutions.js).
+  activeHolders Int?
+  updatedAt    DateTime @updatedAt
+
+  @@id([asset, period])
+  @@index([asset])
+  @@index([period])
+}
+
+// The largest 25 reported positions per asset and period, by value, so the
+// drawer can name them. priorShares is null when the manager opened it.
+model InstitutionalHolder {
+  asset       String
+  period      String
+  manager     String
+  cik         String?
+  shares      Float
+  value       Float
+  rank        Int
+  priorShares Float?
+  isIndex     Boolean @default(false)
+
+  @@id([asset, period, manager])
+  @@index([asset, period, rank])
+}
