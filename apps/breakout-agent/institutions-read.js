@@ -5,7 +5,7 @@
 // so between a quarter end and that deadline the newest complete register is the
 // quarter before — the period is carried on every payload so the reader can see
 // how old it is rather than assume it is current.
-import { ownershipWords, ownershipTag, ownershipDrift, cleanName, isIndexManager, isMarketMaker } from './institutions.js';
+import { ownershipWords, ownershipTag, ownershipDrift, churnWords, cleanName, isIndexManager, isMarketMaker } from './institutions.js';
 
 const holderOut = (h) => ({
   manager: cleanName(h.manager),
@@ -41,6 +41,9 @@ export function institutionsPayload(row, holders = []) {
     drift: ownershipDrift(row),
     tag: ownershipTag(row),
     words,
+    // A register that moved a lot either way is the one measured thing here
+    // (institutions.js). Empty string when it did not.
+    churnWords: churnWords(ownershipDrift(row)?.churn),
     top,
   };
 }

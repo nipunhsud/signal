@@ -6012,13 +6012,20 @@
           return `$${Math.round(v / 1e3)}k`;
         };
         const d = i.drift;
-        const cls = d && d.direction === 'more' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
+        // A heavily churned register is the one thing here that measured out, so
+        // it is the one thing the chip colours for. Direction is not it.
+        const churn = d && d.churn;
+        const cls = churn && churn.heavy ? 'bg-violet-500/15 text-violet-300 ring-violet-500/30'
+          : d && d.direction === 'more' ? 'bg-sky-500/15 text-sky-300 ring-sky-500/30'
           : d && d.direction === 'fewer' ? 'bg-gray-800 text-gray-500 ring-gray-700/60'
           : 'bg-gray-700/50 text-gray-300 ring-gray-600/40';
         const fresh = i.top.filter((h) => h.isNew && !h.isIndex && !h.isMarketMaker).slice(0, 2).map((h) => h.manager);
-        const tip = `${i.words} Of the ${i.holders}, ${i.activeHolders == null ? 'some' : i.activeHolders} are not index funds.${fresh.length ? ` Opened it this quarter: ${fresh.join(', ')}.` : ''} Form 13F is filed 45 days after the quarter ends, so this register is as of ${i.period} and can be up to 135 days behind the price. It is context — it does not rank a name and it does not gate an alert.`;
+        const measured = i.churnWords
+          || 'Measured over 49,382 graded breakouts since 2003, which way the register moved predicts nothing: a register that shrank 25% and one that grew 25% score the same. Only the size of the move separates anything, and this one did not move much.';
+        const tip = `${i.words} Of the ${i.holders}, ${i.activeHolders == null ? 'some' : i.activeHolders} are not index funds.${fresh.length ? ` Opened it this quarter: ${fresh.join(', ')}.` : ''} Form 13F is filed 45 days after the quarter ends, so this register is as of ${i.period} and can be up to 135 days behind the price. ${measured} A size-of-winner label: it ranks a name, it never gates an alert.`;
         const change = d && d.direction !== 'flat' ? ` · ${d.net > 0 ? '+' : ''}${d.net}` : '';
-        return `<span class="badge ${cls} ring-1" data-tip="${tip.replace(/"/g, '&quot;')}"><span class="badge-dot"></span>${i.holders} funds${change} · ${money(i.value)}</span>`;
+        const churnBit = churn && churn.heavy ? ` · ${churn.pct.toFixed(0)}% turnover` : '';
+        return `<span class="badge ${cls} ring-1" data-tip="${tip.replace(/"/g, '&quot;')}"><span class="badge-dot"></span>${i.holders} funds${change}${churnBit} · ${money(i.value)}</span>`;
       }
 
       // The named register. Managers who chose the position first, the index
@@ -6056,6 +6063,7 @@
               <span class="text-gray-500">as of ${i.period}</span>
             </div>
             ${i.holdersPrior != null ? `<div class="text-gray-500 mb-1.5">${i.opened} opened · ${i.closed} exited · ${i.added} added · ${i.reduced} reduced, against ${i.holdersPrior} holders the quarter before</div>` : ''}
+            ${i.drift && i.drift.churn && i.drift.churn.heavy ? `<div class="text-violet-300/90 mb-1.5">Register turned over ${i.drift.churn.pct.toFixed(0)}% this quarter. Breakouts with a move that size, either direction, reached +20% 30% of the time against 15%, and touched the fail level half the time against a third.</div>` : ''}
             ${rows || '<div class="text-gray-500">No holder outside the index funds in the top 25.</div>'}
             ${passive.length ? `<div class="text-gray-600 mt-1.5 pt-1.5 border-t border-gray-700/40">Also held by ${passive.slice(0, 5).map((h) => h.manager).join(', ')}${passive.length > 5 ? ` and ${passive.length - 5} more` : ''} — index funds and market makers, which hold nearly everything.</div>` : ''}
           </div>`;

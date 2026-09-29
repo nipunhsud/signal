@@ -89,7 +89,50 @@ export function ownershipDrift(o) {
     shareNetPct: shareNet == null ? null : Math.round(shareNet * 10) / 10,
     opened: o.opened, closed: o.closed, added: o.added, reduced: o.reduced,
     direction: pct >= 3 ? 'more' : pct <= -3 ? 'fewer' : 'flat',
+    churn: registerChurn(o),
   };
+}
+
+// How much the register churned, regardless of which way.
+//
+// Measured over 49,382 graded breakouts 2003-2026
+// (scripts/institutional-ownership-study.mjs): the DIRECTION of the change
+// predicts nothing — a register that shrank 25% and one that grew 25% score the
+// same. The SIZE of the change does. Breakouts where the register moved 20% or
+// more either way, against a base of at least 50 holders, ran a 2.27 profit
+// factor against 1.65 and reached +20% within 60 sessions 29.6% of the time
+// against 15.5%, with the win rate flat at 52%. They also touched the fail
+// level half the time against a third.
+//
+// So it is a size-of-winner label, the same shape as the tape activity score:
+// it ranks a name, it never gates one. It survives both obvious confounds —
+// inside one band of 3-month return and inside one band of dollar volume it
+// leads on every rung, and the gap is widest in the most liquid band, which is
+// the opposite of a thin-and-wild artifact. Reach was higher in all 14 years
+// with enough data; profit factor in 10 of 14.
+//
+// The 50-holder floor is not optional. Without it the bucket fills with names
+// carrying a median of five institutions, where going from four holders to six
+// reads as +50%.
+const CHURN_MIN_REGISTER = 50;
+const CHURN_HEAVY_PCT = 20;
+
+export function registerChurn(o) {
+  if (!o || o.holdersPrior == null || o.holdersPrior < CHURN_MIN_REGISTER) return null;
+  const pct = Math.abs(((o.holders - o.holdersPrior) / o.holdersPrior) * 100);
+  return {
+    pct: Math.round(pct * 10) / 10,
+    heavy: pct >= CHURN_HEAVY_PCT,
+    direction: o.holders >= o.holdersPrior ? 'in' : 'out',
+    minRegister: CHURN_MIN_REGISTER,
+  };
+}
+
+// What a churned register did next, in the product voice. Never says which way
+// the churn went is good, because the study says it is not.
+export function churnWords(c) {
+  if (!c || !c.heavy) return '';
+  return `The register turned over ${c.pct.toFixed(0)}% on the quarter. Breakouts where it moved 20% or more either way ran a 2.27 profit factor against 1.65 and reached +20% within 60 sessions 30% of the time against 15%, on a flat win rate — and touched the fail level half the time against a third. Size of move, not direction: a register that shrank that much scored the same as one that grew.`;
 }
 
 // Two or three words for the chip.

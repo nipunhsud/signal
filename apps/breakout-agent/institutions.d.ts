@@ -31,11 +31,20 @@ export interface Ownership {
   reduced?: number | null;
   activeHolders?: number | null;
 }
+export interface Churn {
+  pct: number;
+  heavy: boolean;
+  direction: 'in' | 'out';
+  minRegister: number;
+}
 export interface Drift {
   net: number; pct: number; shareNetPct: number | null;
   opened?: number | null; closed?: number | null; added?: number | null; reduced?: number | null;
   direction: 'more' | 'fewer' | 'flat';
+  churn: Churn | null;
 }
+export function registerChurn(o: Ownership | null | undefined): Churn | null;
+export function churnWords(c: Churn | null | undefined): string;
 export function notableHolders(holders: Holder[] | null | undefined, limit?: number): Holder[];
 export function ownershipDrift(o: Ownership | null | undefined): Drift | null;
 export function ownershipTag(o: Ownership | null | undefined): string | null;
