@@ -78,6 +78,25 @@
         pointer-events: none;
       }
     }
+    /* The Asset cell carries a ticker and up to nine pills. On one line it grew
+       past 600px, pushed every other column off the right, and left the tickers
+       at a different x on every row because the pills in front of them differed.
+       Two lines: identity on top, pills wrapped underneath, column pinned to a
+       fixed width so the tickers form a straight edge. */
+    @media (min-width: 769px) {
+      table.signals-responsive td.card-header,
+      table.signals-responsive th:first-child { width: 232px; max-width: 232px; }
+      .row-pills { max-width: 208px; }
+      /* A pill may not stretch the column: it wraps or it truncates. */
+      .row-pills > * { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    }
+    /* Stacked-card mode has no columns to keep in line, so the two rows just
+       flow; the pills still wrap rather than scroll sideways. */
+    @media (max-width: 768px) {
+      .row-ident { width: 100%; }
+      .row-pills { max-width: 100%; }
+    }
+
     /* Mobile: reflow the signals table into stacked cards so nothing hides behind
        horizontal scroll. Desktop (>768px) keeps the full table unchanged. */
     @media (max-width: 768px) {
@@ -6061,7 +6080,31 @@
           </div>`;
       }
 
-      activityChipHtml(signal) {
+// The alerts that actually went out on the most recent session that had
+      // any. "Today" before the open would be an empty box every morning, so
+      // the section names the session it is showing instead of assuming today:
+      // on a Monday before the scan runs it reads "Friday 25 Sep".
+      alertedSession() {
+        const all = [...(this.signals || []), ...(this.trackingSignals || [])];
+        const byDay = new Map();
+        for (const s of all) {
+          const d = s.alertedAt ? String(s.alertedAt).slice(0, 10) : null;
+          if (!d) continue;
+          if (!byDay.has(d)) byDay.set(d, []);
+          byDay.get(d).push(s);
+        }
+        if (!byDay.size) return null;
+        const ymd = [...byDay.keys()].sort().pop();
+        const list = byDay.get(ymd).sort((a, b) => (b.rsRating ?? 0) - (a.rsRating ?? 0));
+        const today = new Date().toISOString().slice(0, 10);
+        const sessions = this.sessionsAgo(ymd);
+        const label = ymd === today ? 'today'
+          : sessions === 1 ? 'yesterday'
+          : new Date(ymd + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+        return { ymd, list, label, isToday: ymd === today };
+      }
+
+            activityChipHtml(signal) {
         const a = signal && signal.activity;
         if (!a || a.score == null) return '';
         const cls = a.score >= 5 ? 'bg-blue-500/15 text-blue-300 ring-blue-500/30' : a.score >= 3 ? 'bg-gray-700/50 text-gray-300 ring-gray-600/40' : 'bg-gray-800 text-gray-500 ring-gray-700/60';
@@ -6218,8 +6261,9 @@
                             data-signal-index="${idx}"
                             onclick="if (!event.target.closest('button') && !event.target.closest('a')) dashboard.openDrawer((${sourceExpr})[parseInt(this.dataset.signalIndex)])"
                           >
-                            <td class="card-header px-3 py-2.5 whitespace-nowrap">
-                              <div class="flex items-center gap-2">
+                            <td class="card-header px-3 py-2">
+                              <div class="flex flex-col gap-1 row-ident">
+                              <div class="flex items-center gap-2 whitespace-nowrap">
                                 <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="hover:scale-125 transition flex-shrink-0 ${inShortlist ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}" title="Shortlist">
                                   ${inShortlist ? '★' : '☆'}
                                 </button>
@@ -6231,6 +6275,9 @@
                                   ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
                                 </span>
                                 ${signal.stoppedOut ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-red-500/15 text-red-400 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed">Failed</span>' : signal.noEntry ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-gray-500/15 text-gray-300 ring-gray-500/30" title="Price has not closed above the base pivot — no breakout to track yet">Below pivot</span>' : ''}
+                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">✕</button>
+                              </div>
+                              <div class="flex flex-wrap items-center gap-1 row-pills">
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
@@ -6240,9 +6287,7 @@
                                 ${this.holdPathChipHtml(signal)}
                                 ${this.sectorChipHtml(signal)}
                                 <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>
-                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">
-                                  ✕
-                                </button>
+                              </div>
                               </div>
                             </td>
                             <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">${signal.rsRating != null ? `<span class="text-sm font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile, per market)">${signal.rsRating}</span>` : '<span class="text-gray-600">—</span>'}</td>
@@ -6547,11 +6592,39 @@
                   </button>
                 </div>
               ` : `
+                ${(() => {
+                  // Emailed alerts from the latest session that produced any,
+                  // above the full board. These are the rows that left the
+                  // building; everything below is the screen's working set.
+                  const a = this.alertedSession();
+                  if (!a || !a.list.length) return '';
+                  const heads = ['Asset', 'RS', 'Trend', 'Earnings', 'Sector', 'Signal', 'Price', 'Levels', 'Detail', 'Breakout'];
+                  const widths = [232, 60, 80, 160, 140, 120, 90, 150, 170, 80];
+                  return `
+                  <div class="mb-6">
+                    <div class="flex items-baseline justify-between mb-2">
+                      <h3 class="text-sm font-semibold text-emerald-300">Emailed ${a.label} · ${a.list.length} alert${a.list.length === 1 ? '' : 's'}</h3>
+                      <span class="text-[11px] text-gray-500">${a.ymd}${a.isToday ? '' : ' — the last session that produced any'}</span>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-emerald-700/40" data-keep-scroll="alerted-x">
+                      <table class="w-full signals-responsive" style="min-width:1140px;">
+                        <thead class="sticky-head">
+                          <tr class="border-b border-gray-600">
+                            ${heads.map((h, i) => `<th style="min-width:${widths[i]}px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">${h}</th>`).join('')}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${a.list.map((signal, idx) => this.renderSignalRow(signal, idx, 'dashboard.alertedSession().list')).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>`;
+                })()}
                 <div class="bg-gray-800 rounded-lg overflow-x-auto ring-1 ring-gray-700/60" data-keep-scroll="signals-x">
                   <table class="w-full signals-responsive" style="min-width:1140px;">
                     <thead class="sticky-head">
                       <tr class="border-b border-gray-600">
-                        <th style="min-width:180px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset', event.shiftKey);">
+                        <th style="min-width:232px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('asset', event.shiftKey);">
                           Asset ${this.sortIndicator('asset')}
                         </th>
                         <th style="min-width:60px;" title="Click to sort · shift-click to add a secondary sort" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300 cursor-pointer hover:text-white transition select-none" onclick="dashboard.toggleSort('rs', event.shiftKey);">
@@ -6606,7 +6679,7 @@
                       <table class="w-full signals-responsive" style="min-width:1140px;">
                         <thead class="sticky-head">
                           <tr class="border-b border-gray-600">
-                            <th style="min-width:180px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
+                            <th style="min-width:232px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Asset</th>
                             <th style="min-width:60px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">RS</th>
                             <th style="min-width:80px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Trend</th>
                             <th style="min-width:160px;" class="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-300">Earnings</th>
