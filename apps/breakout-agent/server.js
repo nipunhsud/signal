@@ -1216,6 +1216,11 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
         shelf, // { kind: 'low-cheat'|'cheat'|'handle', posPct, baseLow, basePivot, pctBelowPivot } or null
         agentDecision: s.agentDecision || '',
         createdAt: s.createdAt,
+        // The market session the breakout fired on, which is not the same as
+        // when the scanner last rewrote the row. The Breakout column and its
+        // sort both read this; the SQL selected it for a while but the mapper
+        // dropped it, so the column showed a dash on every row.
+        signalDate: s.signalDate || null,
         pineScriptGreen: s.pineScriptGreen || false,
         bullishCandle: s.bullishCandle || false,
         barsInRange: s.barsInRange || 0,
