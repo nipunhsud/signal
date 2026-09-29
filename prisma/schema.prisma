@@ -138,6 +138,7 @@ model AssetReturn {
   assetType   String @default("stock") // rank stocks against stocks, etfs against etfs
   region      String @default("US") // "US" | "IN" — RS percentiles are per-market
   sector      String? // FMP sector — powers the sector-strength rollup
+  industry    String? // FMP industry — the finer rollup on the same tab
   rsScore     Float // weighted trailing return: 0.5*3m + 0.3*1m + 0.2*1w
   return1wPct Float?
   return1mPct Float?
@@ -145,6 +146,27 @@ model AssetReturn {
   updatedAt   DateTime @updatedAt
 
   @@index([region, assetType, updatedAt])
+}
+
+// Graded bases still forming under their pivot, one row per asset, upserted by
+// every scan that sees one and removed when the base resolves. The Near Pivot
+// tab reads rows refreshed in the last session: what is about to clear, the
+// pair to the "cleared the pivot" strip. Signal rows are only written for
+// breakouts, so a forming base had no home before this.
+model BaseWatch {
+  asset      String   @id
+  region     String   @default("US") // "US" | "IN"
+  grade      String // S / A+ / A
+  pivot      Float
+  price      Float
+  pctToPivot Float // (pivot - price) / pivot * 100; small negative = poked above intrabar
+  baseBars   Int
+  depthPct   Float
+  rsRating   Int?
+  sector     String?
+  updatedAt  DateTime @updatedAt
+
+  @@index([region, updatedAt])
 }
 
 // Free email list captured on the pulse page ("morning market health email").

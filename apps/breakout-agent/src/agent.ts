@@ -449,6 +449,7 @@ export class BreakoutAgent {
               assetType: data.assetType,
               region: regionOf(asset),
               sector: knowsSector ? data.sector : null,
+              industry: knowsSector ? data.industry ?? null : null,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -458,6 +459,7 @@ export class BreakoutAgent {
               assetType: data.assetType,
               region: regionOf(asset),
               sector: knowsSector ? data.sector : undefined,
+              industry: knowsSector ? data.industry ?? null : undefined,
               rsScore,
               return1wPct: data.return1wPct,
               return1mPct: data.return1mPct,
@@ -1021,6 +1023,31 @@ export class BreakoutAgent {
       // or a pivot close the scans never saw): TWLO cleared $258.35 on 21 Sep
       // and the dashboard had no row for it until the late email.
       const gbNow = data.gradedBase;
+
+      // Near Pivot: a graded base still forming under its pivot gets one
+      // BaseWatch row, refreshed every scan; the row goes when the base
+      // resolves. Signal rows are written for breakouts only, so without
+      // this the tab would have nothing to show.
+      try {
+        if (breakoutAnalysis.baseGrade && gbNow?.status === "forming" && gbNow.pivot > 0) {
+          const watch = {
+            region: regionOf(asset),
+            grade: breakoutAnalysis.baseGrade,
+            pivot: gbNow.pivot,
+            price: data.close,
+            pctToPivot: Math.round(((gbNow.pivot - data.close) / gbNow.pivot) * 1000) / 10,
+            baseBars: gbNow.bars,
+            depthPct: gbNow.depthPct,
+            rsRating,
+            sector: breakoutAnalysis.sector || latestForAsset?.sector || null,
+          };
+          await db.baseWatch.upsert({ where: { asset }, create: { asset, ...watch }, update: watch });
+        } else if (gbNow?.status === "breakout" && (gbNow.sessionsSinceBreakout ?? 99) <= 1) {
+          await db.baseWatch.deleteMany({ where: { asset } });
+        }
+      } catch (e: any) {
+        console.warn(`[BaseWatch] ${asset}:`, e?.message);
+      }
       const clearedLastSession =
         breakoutAnalysis.baseGrade != null &&
         gbNow?.sessionsSinceBreakout === 1 &&

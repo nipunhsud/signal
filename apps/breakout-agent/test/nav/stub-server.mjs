@@ -36,6 +36,7 @@ export function startStub(port = 0) {
   app.get('/api/winners', (q, r) => r.json({ winners: [{ asset: 'NVDA', tier: 'A' }, { asset: 'AAPL', tier: 'A' }, { asset: 'MSFT', tier: 'B' }] }));
   app.get('/api/beat-raise', (q, r) => r.json({ stocks: [] }));
   app.get('/api/unusual-volume', (q, r) => r.json({ stocks: [], date: '2026-09-04' }));
+  app.get('/api/near-pivot', (q, r) => r.json({ stocks: [], within: 5, count: 0 }));
   app.get('/api/sector-strength', (q, r) => r.json({ universe: 4200, asOf: new Date().toISOString(), leadingCount: 4, sectors: [
     { rank: 1, sector: 'Energy', stocks: 40, medianRsScore: 0.3, median1wPct: 1.2, median1mPct: 4, median3mPct: 9, leaders: 12, leadersPct: 30, topAssets: ['XOM'], rank4w: 8 },
     { rank: 2, sector: 'Health Care', stocks: 60, medianRsScore: 0.2, median1wPct: 0.9, median1mPct: 3, median3mPct: 7, leaders: 14, leadersPct: 23, topAssets: ['KNSA'], rank4w: 6 },
