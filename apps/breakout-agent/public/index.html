@@ -5913,7 +5913,7 @@
           : d && d.direction === 'fewer' ? 'bg-gray-800 text-gray-500 ring-gray-700/60'
           : 'bg-gray-700/50 text-gray-300 ring-gray-600/40';
         const fresh = i.top.filter((h) => h.isNew && !h.isIndex && !h.isMarketMaker).slice(0, 2).map((h) => h.manager);
-        const tip = `${i.words} Of the ${i.holders}, ${i.activeHolders == null ? 'some' : i.activeHolders} are not index funds.${fresh.length ? ` Opened it this quarter: ${fresh.join(', ')}.` : ''} Form 13F is filed 45 days after the quarter ends, so this register is as of ${i.period} and can be up to 135 days behind the price. It is context — it does not rank a name and it does not gate an alert.`;
+        const tip = `${i.words} Of the ${i.holders}, ${i.activeHolders == null ? 'some' : i.activeHolders} are not index funds.${fresh.length ? ` Opened it this quarter: ${fresh.join(', ')}.` : ''} Form 13F is filed 45 days after the quarter ends, so this register is as of ${i.period} and can be up to 135 days behind the price. Measured over 49,382 graded breakouts since 2003, which way the register moved does not predict what the breakout did next: a register that shrank more than 10% scored better than one that grew 3-10%, and dropping the direction entirely leaves a clean slope on the size of the move alone. Against its own control it won 9 of 18 years. So this is who owns the company, not a reason to expect anything — it does not rank a name and it does not gate an alert.`;
         const change = d && d.direction !== 'flat' ? ` · ${d.net > 0 ? '+' : ''}${d.net}` : '';
         return `<span class="badge ${cls} ring-1" data-tip="${tip.replace(/"/g, '&quot;')}"><span class="badge-dot"></span>${i.holders} funds${change} · ${money(i.value)}</span>`;
       }
