@@ -128,7 +128,11 @@ const iso = (v) => {
 function extractWindow(zip, mapFile) {
   const cp = `${zip}.coverpage.tsv`;
   const sb = `${zip}.submission.tsv`;
-  for (const [member, dest] of [['COVERPAGE.tsv', cp], ['SUBMISSION.tsv', sb]]) {
+  // Most windows hold their tables at the root; some nest them under a
+  // directory named after the window (01JUN2025-31AUG2025_form13f/COVERPAGE.tsv).
+  // A leading wildcard matches both — without it that window extracts nothing
+  // and the whole quarter goes missing silently.
+  for (const [member, dest] of [['*COVERPAGE.tsv', cp], ['*SUBMISSION.tsv', sb]]) {
     fs.writeFileSync(dest, execFileSync('unzip', ['-p', zip, member], { maxBuffer: 1 << 30 }));
   }
   const program = `
@@ -148,7 +152,7 @@ NR == 1 { next }
 }`;
   const out = `${zip}.rows.tsv`;
   const fd = fs.openSync(out, 'w');
-  const r = spawnSync('sh', ['-c', `unzip -p '${zip}' INFOTABLE.tsv | awk -F'\\t' -v cp='${cp}' -v sb='${sb}' -v mapf='${mapFile}' '${program.replace(/'/g, "'\\''")}'`], { stdio: ['ignore', fd, 'inherit'] });
+  const r = spawnSync('sh', ['-c', `unzip -p '${zip}' '*INFOTABLE.tsv' | awk -F'\\t' -v cp='${cp}' -v sb='${sb}' -v mapf='${mapFile}' '${program.replace(/'/g, "'\\''")}'`], { stdio: ['ignore', fd, 'inherit'] });
   fs.closeSync(fd);
   if (r.status !== 0) throw new Error(`extract failed for ${zip}`);
   for (const f of [cp, sb]) fs.unlinkSync(f);
