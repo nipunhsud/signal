@@ -209,7 +209,14 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     const deepRows = await p2.locator('#app tbody tr').allInnerTexts();
     check(deepRows.some((r) => r.includes('DEEP')) && !deepRows.some((r) => r.includes('NVDA')), 'the Deep filter keeps only deep bases');
     await p2.evaluate(() => dashboard.toggleQualityFilter('deep')); await settle(p2, 200);
-    check((await p2.locator('#app tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
+    // An emailed name now appears twice on the page: once in the "Emailed ..."
+    // block above the board and once in the board itself. Scope to the board so
+    // this still counts rows rather than sections.
+    check((await p2.locator('[data-table="board"] tr:has-text("AAPL") .badge:has-text("emailed")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("emailed")').count()) === 0, 'screener marks the emailed row and only that row');
+    // The block itself: what actually left the building, named by session.
+    check((await p2.locator('[data-table="alerted"] tr:has-text("AAPL")').count()) === 1, 'the emailed row is lifted into its own block above the board');
+    check((await p2.locator('[data-table="alerted"] tr:has-text("NVDA")').count()) === 0, 'a name that was not emailed stays out of that block');
+    check(/Emailed .+ · \d+ alert/.test(await p2.locator('#app').innerText()), 'the block names the session it is showing');
     check((await p2.locator('#app tr:has-text("SWKS") .badge:has-text("Cheat · 52% up the base")').count()) === 1, 'a shelf breakout inside a forming base is labelled as a cheat entry');
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 300);
     const rows = await p2.locator('#app tbody tr').allInnerTexts();
