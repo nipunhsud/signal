@@ -8,7 +8,7 @@ import { postXThread } from "./x-post.js";
 import { classifyShelf, cheatGate } from "../shelf.js";
 // @ts-ignore — plain JS at the app root
 import { activityWords } from "../activity.js";
-import { ownershipWords } from "../institutions.js";
+import { ownershipWords, ownershipDrift, churnWords } from "../institutions.js";
 
 // Sector rank at scan time: sectors of the fresh universe ordered by the
 // median RS score of their names (the same roll-up the Sectors tab shows).
@@ -1511,6 +1511,10 @@ Worth watching: ${review.watchFor}
           where: { asset: result.asset, period: own.period }, orderBy: { rank: "asc" }, take: 12,
         });
         institutionsLine = ownershipWords(own as any, top as any);
+        // The one thing in the register that measured out: how much it turned
+        // over, either direction, against a base of at least 50 holders.
+        const churn = churnWords(ownershipDrift(own as any)?.churn);
+        if (churn) institutionsLine += ` ${churn}`;
       }
     } catch { /* table may not exist mid-rollout */ }
     const sectorLine = rec.sectorRank != null && rec.sectorCount ? `${latestRecord.sector || "unknown"} — ranked ${rec.sectorRank} of ${rec.sectorCount} sectors` : null;

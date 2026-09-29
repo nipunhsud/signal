@@ -34,7 +34,16 @@
 //
 // ── What it found, 49,382 graded breakouts, 2003–2026 ───────────────────────
 //
-// The register moving does not predict the breakout. The cohort runs a 1.71
+// SHIPPED as a ranking label: a register that turned over 20% or more in EITHER
+// direction, against a base of at least 50 holders, ran a 2.27 profit factor
+// against 1.65 and reached +20% within 60 sessions 29.6% of the time against
+// 15.5%. Win rate flat at 52%, fail-level touches 50% against 34% — the profile
+// of a size-of-winner signal, the same shape as the tape activity score. It
+// fires on 3.2% of breakouts. It ranks; it never gates.
+//
+// The direction of the move predicts nothing, and that part has to be said
+// plainly because it is the thing everyone assumes. At a matched register size,
+// shrinking 25% and growing 25% score the same. The cohort runs a 1.71
 // profit factor, and bucketing on the change in holder count gives a U, not a
 // slope:
 //
@@ -55,24 +64,35 @@
 // gives the same U to two decimal places, so the separation that makes the
 // panel readable does not rescue it as a predictor.
 //
-// The pooled comparison does lean positive — "grew 10%+" against "did not" runs
-// 1.96/1.77, 1.91/1.64, 1.72/1.63 and 1.94/1.62 across four bands of dollar
-// volume, and stays ahead inside every band of 3-month return. But year by
-// year, against its own control, it wins 9 of 18. The pooled gap is 2020
-// (+1.28) and 2018 (+0.85) against 2012 (-0.50) and 2010 (-0.44), not an edge
-// that was there each year.
+// Directional tests fail. "Grew 10%+" against "did not" wins 9 of 18 years
+// against its own control — a coin flip carried by 2020 (+1.28) and 2018
+// (+0.85) against 2012 (-0.50) and 2010 (-0.44).
 //
-// And where it does lead, the fail-level touch rate leads with it: on names up
-// more than 40% in three months, a grown register touches the fail level 63.6%
-// of the time against 58.2%. Wider both ways.
+// The magnitude test, with the register floor, does not fail:
 //
-// One more tell. Sorting on how STALE the register was at the breakout — 45-70
-// days, 70-100, 100-140 — gives PF 1.45, 1.72, 1.87. An older filing scoring
-// better is not a thing a real signal does; it is the calendar showing through.
+//   |move| >= 20%, 50+ holders   PF 2.27  reach 29.6%  stop 50.2%  win 52.0%
+//   everything else              PF 1.65  reach 15.5%  stop 34.2%  win 52.7%
 //
-// So 13F ships as what the panel already calls it: who owns the company, by
-// name, as of a stated quarter. Context for reading a chart. Not a ranking
-// input, not part of the alert gate.
+// It survives both confounds. Inside one band of 3-month return it leads on
+// every rung (PF 2.04/1.51, 2.04/1.61, 2.71/2.25), so it is not restating
+// momentum. Inside one band of dollar volume it leads on all four, and the gap
+// is WIDEST in the most liquid band — $100M+ runs 2.56 against 1.62, reach
+// 27.8% against 12.7% — which is the opposite of what a thin-and-wild artifact
+// does. Reach was higher in all 14 years with enough data; profit factor in 10
+// of 14. The threshold sweep rises through 10%, 15%, 20% and flattens at 25%
+// before small-sample noise takes over at 40%, so 20% is not a tuned cell.
+//
+// The 50-holder floor is what makes the difference, and it is why the first
+// pass through this data reached the wrong answer. Without it, the "grew more
+// than 25%" bucket carries a MEDIAN OF FIVE prior holders: going from four
+// institutions to six reads as +50%. Those are nearly uncovered stocks, not
+// accumulated ones.
+//
+// Two honest caveats that remain. The fail-level touch rate rises with
+// everything else — half these breakouts touch it — so this describes a wider
+// distribution, not a safer one. And sorting on how stale the register was at
+// the breakout (45-70 days, 70-100, 100-140) gives PF 1.45, 1.72, 1.87, which
+// no real signal should do; some of what is measured here is the calendar.
 import fs from 'fs';
 import readline from 'readline';
 import { detectBases } from '../base-detect.js';

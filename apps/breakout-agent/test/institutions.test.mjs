@@ -109,3 +109,50 @@ test('money and share counts read at every scale', () => {
   assert.equal(shareCount(73.7e6), '73.7M');
   assert.equal(shareCount(900), '900');
 });
+
+// ── Register churn ──────────────────────────────────────────────────────────
+// The one thing in the register that measured out over 49,382 breakouts: how
+// far it moved, not which way. See scripts/institutional-ownership-study.mjs.
+import { registerChurn, churnWords } from '../institutions.js';
+
+test('churn needs a register big enough for a percentage to mean anything', () => {
+  // The bucket fills with five-holder names otherwise: four to six reads +50%.
+  assert.equal(registerChurn({ holders: 59, holdersPrior: 33 }), null);
+  assert.equal(registerChurn({ holders: 8, holdersPrior: 4 }), null);
+  assert.equal(registerChurn({ holders: 100, holdersPrior: null }), null);
+  assert.equal(registerChurn({ holders: 75, holdersPrior: 50 }).heavy, true);
+});
+
+test('a big move counts the same whichever way it went', () => {
+  const grew = registerChurn({ holders: 130, holdersPrior: 100 });
+  const shrank = registerChurn({ holders: 70, holdersPrior: 100 });
+  assert.equal(grew.pct, 30);
+  assert.equal(shrank.pct, 30);
+  assert.equal(grew.heavy, true);
+  assert.equal(shrank.heavy, true);
+  assert.equal(grew.direction, 'in');
+  assert.equal(shrank.direction, 'out');
+});
+
+test('a quiet register is not called heavy', () => {
+  const c = registerChurn({ holders: 246, holdersPrior: 240 });
+  assert.equal(c.heavy, false);
+  assert.equal(churnWords(c), '', 'nothing to say about a register that sat still');
+});
+
+test('the churn sentence gives the measured odds and refuses to read direction into it', () => {
+  const w = churnWords(registerChurn({ holders: 430, holdersPrior: 226 }));
+  assert.match(w, /turned over 90% on the quarter/);
+  assert.match(w, /2\.27 profit factor against 1\.65/);
+  assert.match(w, /reached \+20% within 60 sessions 30% of the time against 15%/);
+  assert.match(w, /touched the fail level half the time against a third/);
+  assert.match(w, /a register that shrank that much scored the same as one that grew/);
+  assert.doesNotMatch(w, /\b(buy|entry|stop loss|accumulating|smart money|bullish)\b/i);
+});
+
+test('drift carries the churn so every reader gets the same number', () => {
+  const d = ownershipDrift({ holders: 430, holdersPrior: 226, shares: 2, sharesPrior: 1 });
+  assert.equal(d.churn.heavy, true);
+  assert.equal(d.churn.pct, 90.3);
+  assert.equal(ownershipDrift({ holders: 40, holdersPrior: 30, shares: 1, sharesPrior: 1 }).churn, null);
+});
