@@ -1,6 +1,7 @@
 // The chat's tools are the MCP server's tools, served in-process. The public
 // endpoint never gets the subscriber tools; the chat always does.
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -56,7 +57,8 @@ test('tool schemas are JSON schema the Messages API accepts, and calls reach the
 test('the chat module loads and names the model and the voice rules', async () => {
   const src = (await import('node:fs')).readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
   assert.match(src, /const MODEL = 'claude-opus-5';/);
-  assert.match(src, /Report, don't recommend/);
+  // Chat gives a view now; the published-copy rule lives in the voice skill.
+  assert.match(src, /Lead with the answer/);
   assert.match(src, /subscriber: true/, 'the chat opens the subscriber tool set');
   assert.doesNotMatch(src, /updateMany|\.create\(\{|\.delete\(/, 'the chat never writes');
 });
@@ -146,4 +148,18 @@ test('the dossier tool is subscriber-only, reaches the assembler, and the prompt
   const src = (await import('node:fs')).readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
   assert.match(src, /call analyze_ticker first/);
   assert.match(src, /never turn the dossier into a recommendation or a score out of ten/i);
+});
+
+// Chat is not the published-copy surface. A subscriber asking "which of these
+// is better" wants a view; the prompt used to open with "I can't tell you
+// whether to enter" and then answer anyway, which reads as evasion.
+test('the chat prompt asks for a view, and draws the line at telling someone what to do', async () => {
+  const src = await readFile(new URL('../chat.js', import.meta.url), 'utf8');
+  const prompt = src.slice(src.indexOf('const SYSTEM = `'), src.indexOf('Today is {{today}}'));
+  assert.match(prompt, /Lead with the answer/, 'answer first, no preamble');
+  assert.match(prompt, /Never open with "I can't tell you whether to/, 'the hedge is named and banned');
+  assert.match(prompt, /Give a view, and say what it rests on/);
+  assert.match(prompt, /no buy or sell instruction, no size, no "you should"/, 'the line is drawn at instructing action');
+  assert.match(prompt, /Screen output for research, not advice\./, 'the disclaimer survives');
+  assert.doesNotMatch(prompt, /Report, don't recommend/, 'the report-only rule is gone from chat');
 });

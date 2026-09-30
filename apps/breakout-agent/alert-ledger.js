@@ -134,10 +134,18 @@ export function foldEpisodes(rows) {
     if (r.stopLoss != null && ep.fail == null) ep.fail = r.stopLoss;
     const failNow = ep.fail != null ? Number(ep.fail) : ep.entry != null ? Number(ep.entry) * 0.93 : null;
     if (ep.fellAt == null && failNow != null && r.currentPrice <= failNow) ep.fellAt = r.createdAt;
-    // Per-row stamp (current) or legacy asset-wide stamp: credit the alert
-    // to the episode that was live when it went out.
-    const stamp = r.lastAlertAt || r.alertSentAt;
-    if (stamp && stamp >= ep.firstSeen && stamp <= new Date(new Date(ep.lastSeen).getTime() + 24 * 60 * 60 * 1000)) {
+    // Credit an alert to the episode that was live when it went out. A row
+    // carries TWO stamps, and they are different alerts: alertSentAt is the
+    // first one this asset ever produced, lastAlertAt the most recent. Reading
+    // `lastAlertAt || alertSentAt` took only the newest, so an asset that
+    // alerted twice lost the older one — CRWD emailed on 14 Sep at $233.88 and
+    // again on 23 Sep, and the September 14 card read "not emailed" because the
+    // only stamp it saw was the 23rd, which falls outside that episode's
+    // window. Both stamps get tested, and the episode keeps the earliest that
+    // lands inside it.
+    const closes = new Date(new Date(ep.lastSeen).getTime() + 24 * 60 * 60 * 1000);
+    for (const stamp of [r.alertSentAt, r.lastAlertAt]) {
+      if (!stamp || stamp < ep.firstSeen || stamp > closes) continue;
       if (!ep.alertedAt || stamp < ep.alertedAt) { ep.alertedAt = stamp; ep.alertedPrice = r.currentPrice; }
     }
     if (r.xPostedAt && r.xPostedAt >= ep.firstSeen) ep.xPostedAt = ep.xPostedAt || r.xPostedAt;
