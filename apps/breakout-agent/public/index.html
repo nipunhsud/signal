@@ -614,6 +614,9 @@
         this.scanning = false;
         this.filtering = '';
         this.minRs = prefs.minRs ?? 0;
+        // Only 7s and above by default. It is a live, clearable filter chip, not
+        // a hidden cut — the count of what it removes sits next to it.
+        this.minGrade = prefs.minGrade ?? 7;
         this.lookbackDays = prefs.lookbackDays ?? 3; // breakout lookback window (days)
         // Multi-sort: ordered {key, dir} list — first entry is the primary sort,
         // the rest break ties. Click replaces the primary (previous keys demote
@@ -1179,6 +1182,7 @@
             assetTypeFilter: this.assetTypeFilter,
             sectorFilter: this.sectorFilter,
             minRs: this.minRs,
+            minGrade: this.minGrade,
             lookbackDays: this.lookbackDays,
             qualityFilters: this.qualityFilters,
             gradeFilter: this.gradeFilter,
@@ -2753,6 +2757,7 @@
                 ${row('RS', rs)}
                 ${signal.deepBase === true ? row('Deep base', `<span class="text-xs">${this.deepBaseChipHtml(signal)} <span class="text-gray-400">the grade stops at 25% depth; this one cleared its pivot decisively on real volume, so the level is the close, not the pivot. 34% of these ran 20%+ against 14% for graded, and 52% touched the fail level against 28%.</span></span>`) : ''}
                 ${signal.holdPath ? row('What clears like this do', `<span class="text-xs">${this.holdPathChipHtml(signal)} <span class="text-gray-400">${signal.holdPath.holds}% held · ${signal.holdPath.retests}% came back and cleared again · ${signal.holdPath.fails}% never recovered, over ${signal.holdPath.n.toLocaleString()} measured</span></span>`) : ''}
+                ${signal.grade ? row('Grade', `<span class="text-xs">${this.gradeChipHtml(signal)} <span class="text-gray-400">${signal.grade.reasons.map((r) => r.text).join(' · ')}</span></span>`) : ''}
                 ${signal.institutions && signal.institutions.holders ? row('Institutions', this.institutionsPanelHtml(signal.institutions, 6)) : ''}
                 ${signal.activity ? row('Activity', `<span class="text-xs">${this.activityChipHtml(signal)} <span class="text-gray-400">${signal.activity.acc} heavy up · ${signal.activity.dist} heavy down · ${signal.activity.bigUp} print${signal.activity.bigUp === 1 ? '' : 's'} at the high${signal.activity.udv != null ? ` · up÷down vol ${signal.activity.udv}x` : ''}</span></span>`) : ''}
                 ${(() => { const sr = this.sectorRankNow(signal); return sr ? row('Sector rank', `<span class="text-xs">${this.sectorChipHtml(signal)} <span class="text-gray-400">of ${sr.count}${sr.rank <= Math.ceil(sr.count / 3) ? ' · leading sector' : ''}${signal.sectorRank != null && signal.sectorRank !== sr.rank ? ` · was #${signal.sectorRank} when this row was written` : ''}</span></span>`) : ''; })()}
@@ -4488,6 +4493,9 @@
         let filtered = stoppedView
           ? this.signals.filter(s => s.stoppedOut)
           : this.signals.filter(s => (s.rsRating ?? 0) >= this.minRs);
+        // The measured-factor grade (grade.js). A row the server could not
+        // grade has no score and does not survive a grade cut.
+        if (this.minGrade > 0 && !stoppedView) filtered = filtered.filter(s => (s.grade?.score ?? 0) >= this.minGrade);
 
         // Asset type filter (stocks, etfs, all)
         if (this.assetTypeFilter !== 'all') {
@@ -4677,6 +4685,7 @@
       resetFilters() {
         this.filtering = '';
         this.minRs = 0;
+        this.minGrade = 0;
         this.signalTypeFilter = 'breakout';
         this.assetTypeFilter = 'all';
         this.sectorFilter = 'all';
@@ -6104,6 +6113,21 @@
         return { ymd, list, label, isToday: ymd === today };
       }
 
+      // The 1-10 grade (grade.js). Every weight in it is a measured profit-factor
+      // lift, so the tooltip lists the factors that moved this one rather than
+      // asserting a number. Amber when the row is more than 5% past its pivot,
+      // because then the measured figures describe a price that has gone.
+      gradeChipHtml(signal) {
+        const g = signal && signal.grade;
+        if (!g || g.score == null) return '';
+        const cls = g.score >= 8 ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
+          : g.score >= 7 ? 'bg-green-500/15 text-green-300 ring-green-500/30'
+          : g.score >= 5 ? 'bg-gray-700/50 text-gray-300 ring-gray-600/40'
+          : 'bg-gray-800 text-gray-500 ring-gray-700/60';
+        const warn = g.atLevel === false ? ' · extended' : '';
+        return `<span class="badge ${cls} ring-1" data-tip="${String(g.words || '').replace(/"/g, '&quot;')}">${g.score}/10${warn}</span>`;
+      }
+
             activityChipHtml(signal) {
         const a = signal && signal.activity;
         if (!a || a.score == null) return '';
@@ -6281,6 +6305,7 @@
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
+                                ${this.gradeChipHtml(signal)}
                                 ${this.deepBaseChipHtml(signal)}
                                 ${this.activityChipHtml(signal)}
                                 ${this.institutionsChipHtml(signal)}
@@ -6441,6 +6466,19 @@
                     ${this.getSectors().map(sec => `<option value="${sec}" ${this.sectorFilter === sec ? 'selected' : ''}>${sec}</option>`).join('')}
                   </select>
 
+                  <!-- Measured-factor grade, 1-10 (grade.js). Starts at 7:
+                       the ask was to see only the top of the board by default.
+                       Clearing it is one click on the active-filter chip. -->
+                  <label class="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap" title="Minimum grade (1-10). Every weight behind it is a measured profit-factor lift: RS bucket, base grade, tape activity, clearance and volume, episodic pivot, register turnover, and a penalty past 5% extension. A ranking, not a probability.">
+                    Min grade
+                    <input
+                      type="range" min="0" max="10" step="1"
+                      value="${this.minGrade}"
+                      class="w-20 accent-green-500"
+                      onchange="dashboard.setFilter('minGrade', parseInt(this.value));" />
+                    <span class="w-6 text-right font-mono text-gray-300">${this.minGrade || 'off'}</span>
+                  </label>
+
                   <!-- Minimum relative strength. This slider used to be a
                        confidence floor defaulting to 85, which hid every row
                        scoring 10 — the 78% of graded breakouts that do not
@@ -6530,6 +6568,7 @@
                 if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
                 if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
                 if (this.minRs > 0) chips.push({ label: `RS ≥ ${this.minRs}`, clear: `dashboard.setFilter('minRs', 0)` });
+                if (this.minGrade > 0) chips.push({ label: `Grade ≥ ${this.minGrade}`, clear: `dashboard.setFilter('minGrade', 0)` });
                 if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Since ${this.lookbackSinceDate()}`, clear: `dashboard.setLookback(3)` });
                 if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
                 if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });

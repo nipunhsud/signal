@@ -12,6 +12,7 @@ import { buildDossier } from './analysis.js';
 import { gradePosition, bookStats, runningList, parseTrade, weekWindowOf } from './book.js';
 import { computeActivity } from './activity.js';
 import { institutionsFor, institutionsForOne } from './institutions-read.js';
+import { gradeSignal, gradeWords } from './grade.js';
 import { handleChatRequest } from './chat.js';
 import express from 'express';
 import { clerkMiddleware, requireAuth, getAuth, clerkClient } from '@clerk/express';
@@ -1398,6 +1399,26 @@ async function computeSignals(region, assetTypeFilter, daysBack) {
       if (inst.size) allSignals = allSignals.map((s) => {
         const i = inst.get((s.asset || '').toUpperCase());
         return i ? { ...s, institutions: i } : s;
+      });
+    }
+
+    // Grade every row 1-10 off the measured factors (grade.js). Done here, not
+    // on the client, so the screener, the drawer and anything else read one
+    // number.
+    //
+    // Staleness first. The scanner writes a row every 15 minutes and the tiers
+    // finish at different times, so after the close the newest row for a name
+    // can be from late morning — an hour of volume in it and a midday price.
+    // Scoring the volume term on a partial session invents a number, so a row
+    // written well before the session's last scan is graded without it.
+    {
+      const newest = allSignals.reduce((t, s) => Math.max(t, new Date(s.createdAt).getTime() || 0), 0);
+      const STALE_MS = 45 * 60 * 1000;
+      allSignals = allSignals.map((s) => {
+        const age = newest - (new Date(s.createdAt).getTime() || 0);
+        const stale = age > STALE_MS;
+        const grade = gradeSignal(s, { stale });
+        return grade ? { ...s, grade: { ...grade, words: gradeWords(grade), ageMinutes: Math.round(age / 60000) } } : s;
       });
     }
 
