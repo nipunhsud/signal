@@ -180,3 +180,30 @@ test('an episode that fell through its fail level stays fallen after the newest 
   assert.equal(ep.status, 'fell');
   assert.equal(ep.cappedPct, -7, 'credited at the fail level, whatever price did after');
 });
+
+test('an asset that alerted twice credits each alert to the episode that was live (CRWD)', () => {
+  // Rows carry both stamps asset-wide: first alert 14 Sep, latest 23 Sep.
+  const first = new Date('2026-09-14T18:47:49Z');
+  const latest = new Date('2026-09-23T14:04:20Z');
+  const row = (date, o) => scanRow(date, { alertSentAt: first, lastAlertAt: latest, ...o });
+  const eps = foldEpisodes([
+    row('2026-09-14', { entryPrice: 233.88, stopLoss: 217.51, basePivot: 233.88, baseGrade: 'A', baseBars: 10, baseDepthPct: 20, currentPrice: 236.96 }),
+    row('2026-09-21', { entryPrice: 233.88, stopLoss: 217.51, basePivot: 233.88, baseGrade: 'A', baseBars: 10, baseDepthPct: 20, currentPrice: 249.35 }),
+    row('2026-09-22', { entryPrice: 247.56, stopLoss: 230.23, basePivot: 247.56, baseGrade: 'A', baseBars: 10, baseDepthPct: 14, currentPrice: 250.06 }),
+    row('2026-09-23', { entryPrice: 247.56, stopLoss: 230.23, basePivot: 247.56, baseGrade: 'A', baseBars: 10, baseDepthPct: 14, currentPrice: 262.49 }),
+  ]);
+  assert.equal(eps.length, 2);
+  const [newest, older] = eps;
+  assert.equal(older.entry, 233.88);
+  assert.equal(String(older.alertedAt), String(first), 'the September 14 episode owns the September 14 alert');
+  assert.equal(newest.entry, 247.56);
+  assert.equal(String(newest.alertedAt), String(latest), 'the newer episode owns the newer alert');
+});
+
+test('an alert outside every episode window is credited to none of them', () => {
+  const stray = new Date('2026-05-01T14:00:00Z');
+  const eps = foldEpisodes([
+    scanRow('2026-09-14', { entryPrice: 10, stopLoss: 9.3, basePivot: 10, baseGrade: 'A', currentPrice: 11, alertSentAt: stray, lastAlertAt: stray }),
+  ]);
+  assert.equal(eps[0].alertedAt, null);
+});
