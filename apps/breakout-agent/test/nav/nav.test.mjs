@@ -119,7 +119,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.keyboard.press('Escape');
 
   // Grade sort + filter (Signals view)
-  await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minRs', 0); });
+  await page.evaluate(() => { dashboard.setView('dashboard'); dashboard.setFilter('signalTypeFilter', 'all'); dashboard.setFilter('minRs', 0); dashboard.setFilter('minGrade', 0); });
   await page.evaluate(() => dashboard.setSortPreset([{ key: 'grade', dir: 'desc' }, { key: 'rs', dir: 'desc' }]));
   const order = await page.evaluate(() => dashboard.getFilteredSignals().map((s) => s.asset));
   check(JSON.stringify(order) === JSON.stringify(['MSFT', 'AAPL', 'NVDA', 'DEEP', 'AMD', 'SWKS', 'TSLA']), `grade sort: S › A+ › A › ungraded by RS 95/91/90 › X (${order.join(',')})`);
@@ -202,6 +202,11 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   {
     const p2 = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     await p2.goto(`${base}/dashboard`); await settle(p2, 400);
+    await p2.evaluate(() => dashboard.setFilter('minGrade', 0)); await settle(p2, 150);
+    // The measured-factor grade cut defaults to 7. These checks are about the
+    // row's badges and the other filters, so the cut comes off first; it has
+    // its own checks below.
+    await p2.evaluate(() => dashboard.setFilter('minGrade', 0)); await settle(p2, 200);
     check((await p2.locator('#app tr:has-text("NVDA") .badge:has-text("activity 5")').count()) === 1 && (await p2.locator('#app tr:has-text("NVDA") .badge:has-text("Technology #3")').count()) === 1, 'row shows the activity score and the sector rank from the live roll-up, not the stale one on the row');
     check((await p2.locator('#app tr:has-text("NVDA") .badge:has-text("Technology #5")').count()) === 0, 'the rank frozen on the row is not what the chip shows');
     check((await p2.locator('#app tr:has-text("DEEP") .badge:has-text("deep base · 28%")').count()) === 1, 'the deep-base kind is labelled on the row');
@@ -216,6 +221,19 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     // The block itself: what actually left the building, named by session.
     check((await p2.locator('[data-table="alerted"] tr:has-text("AAPL")').count()) === 1, 'the emailed row is lifted into its own block above the board');
     check((await p2.locator('[data-table="alerted"] tr:has-text("NVDA")').count()) === 0, 'a name that was not emailed stays out of that block');
+    // The grade cut itself: on by default at 7, and clearable.
+    const gradeCut = await p2.evaluate(async () => {
+      dashboard.setFilter('minGrade', 7);
+      const filtered = dashboard.getFilteredSignals();
+      const kept = filtered.map((s) => s.asset);
+      const keptScores = filtered.map((s) => s.grade?.score ?? null);
+      const scores = dashboard.signals.map((s) => s.grade?.score ?? null);
+      dashboard.setFilter('minGrade', 0);
+      return { kept, keptScores, all: dashboard.getFilteredSignals().length, scores };
+    });
+    check(gradeCut.scores.every((v) => v === null || (v >= 1 && v <= 10)), 'every row carries a 1-10 grade from the server');
+    check(gradeCut.kept.length < gradeCut.all, 'a grade cut of 7 removes rows');
+    check(gradeCut.keptScores.every((v) => v >= 7), `the cut keeps only rows at 7 or above (${gradeCut.keptScores.join(',')})`);
     check(/Emailed .+ · \d+ alert/.test(await p2.locator('#app').innerText()), 'the block names the session it is showing');
     check((await p2.locator('#app tr:has-text("SWKS") .badge:has-text("Cheat · 52% up the base")').count()) === 1, 'a shelf breakout inside a forming base is labelled as a cheat entry');
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 300);
@@ -224,6 +242,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     await p2.evaluate(() => dashboard.toggleQualityFilter('cheat')); await settle(p2, 200);
     // Universal ticker search in the top bar: any symbol opens its chart.
     await p2.goto(`${base}/dashboard`); await settle(p2, 300);
+    await p2.evaluate(() => dashboard.setFilter('minGrade', 0)); await settle(p2, 150);
     await p2.fill('#nav-ticker-search', 'swks'); await settle(p2, 150);
     check((await p2.locator('#nav-search-dd button').count()) >= 1, 'nav search suggests as you type');
     await p2.press('#nav-ticker-search', 'Enter'); await settle(p2, 300);
@@ -285,6 +304,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
     check((await p4.locator('#welcome').count()) === 1 && (await p4.evaluate(() => ui.history.length)) === 0, 'new conversation clears the thread');
     // The same chat as a side panel in the dashboard.
     await p4.goto(`${base}/dashboard`); await settle(p4, 400);
+    await p4.evaluate(() => dashboard.setFilter('minGrade', 0)); await settle(p4, 150);
     check(((await p4.locator('#chat-panel').boundingBox())?.width ?? 0) <= 2, 'panel starts closed');
     await p4.click('#chat-toggle'); await settle(p4, 500);
     check(((await p4.locator('#chat-panel').boundingBox())?.width || 0) > 300 && (await p4.locator('#chat-panel #pool-list label').count()) === 2, 'Ask opens the panel with the pool loaded');
