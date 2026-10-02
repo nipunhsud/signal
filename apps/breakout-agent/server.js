@@ -7,6 +7,7 @@ import { holdOdds } from './hold-odds.js';
 import { lineValueAt, crossing, crossingWords } from './chart-lines.js';
 import { sendEmail } from './dist/email.js';
 import { classifyShelf } from './shelf.js';
+import { breakoutLead } from './x-lead.js';
 import { rowState } from './row-state.js';
 import { buildDossier } from './analysis.js';
 import { gradePosition, bookStats, runningList, parseTrade, weekWindowOf } from './book.js';
@@ -714,7 +715,7 @@ function composeBreakoutTweet(asset, sig) {
   const pct = sig.entryPrice > 0 && sig.currentPrice > 0 ? ((sig.currentPrice - sig.entryPrice) / sig.entryPrice) * 100 : null;
   const baseBits = [sig.baseGrade && sig.baseGrade !== 'X' ? `grade ${sig.baseGrade}` : null, weeks ? `${weeks} weeks long` : null, sig.isVcp ? 'volatility contracted into the pivot' : null].filter(Boolean);
   const main = [
-    `$${asset.replace(/\.(NS|BO)$/i, '')} ${isExt ? 'is holding past its pivot' : 'closed above its pivot'}${pivot ? `, ${pivot}` : ''}${pct != null && isExt ? `, now ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% past it` : ''}.`,
+    breakoutLead(asset, sig, { money, pivot, pct, isExt }),
     baseBits.length ? `Base ${baseBits.join(', ')}.` : null,
     'Screen output for research, not advice.',
   ].filter((l) => l !== null).join('\n');
@@ -731,14 +732,22 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   const asset = String(req.body?.asset || '').toUpperCase().trim();
   if (!asset) return res.status(400).json({ error: 'asset required' });
 
-  const sig = await db.breakoutSignal.findFirst({
-    where: { asset, breakoutType: { in: ['Type1', 'Type1b', 'Type3'] } },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (!sig) return res.status(404).json({ error: `No breakout signal on record for ${asset}` });
+  // Any kind of row the drawer can show: breakouts, shelves, extensions and
+  // retests, catalyst days and gap retests; else the latest pre-breakout handle.
+  let sig = await db.breakoutSignal.findFirst({ where: { asset }, orderBy: { createdAt: 'desc' } });
+  let isSetup = false;
+  if (!sig) {
+    const setup = await db.signal.findFirst({ where: { asset, agentName: 'BreakoutAgent', signalType: { startsWith: 'setup-' } }, orderBy: { createdAt: 'desc' } });
+    if (setup) {
+      const m = setup.metadata || {};
+      isSetup = true;
+      sig = { id: setup.id, asset, breakoutType: 'Setup', currentPrice: m.currentPrice, distanceToPivotPct: m.distanceToPivotPct, basePivot: m.basePivot ?? m.pivot ?? null, rsRating: m.rsRating, sector: m.sector, industry: m.industry };
+    }
+  }
+  if (!sig) return res.status(404).json({ error: `Nothing on the screen for ${asset} yet` });
 
   const tweets = composeBreakoutTweet(asset, sig);
-  if (!req.body?.confirm) return res.json({ preview: true, tweets, maxChars: xMaxChars(), tags: hashtagsFor('breakout', { sector: sig.sector, industry: sig.industry }) });
+  if (!req.body?.confirm) return res.json({ preview: true, tweets, maxChars: xMaxChars(), autoCard: !isSetup, tags: hashtagsFor('breakout', { sector: sig.sector, industry: sig.industry }) });
 
   // The editor may send edited text; validate and prefer it over the composed draft.
   const edited = sanitizeEditedTweets(req.body?.tweets);
@@ -748,11 +757,11 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   // Attach the live scorecard as media on the main tweet — an image is not a
   // link, so the visual rides the main post without reach penalty. Fails open.
   let mediaPng = null;
-  try { mediaPng = renderScorecardPng(sig); } catch (e) { console.warn('[tweet-breakout] card render failed:', e.message); }
+  try { mediaPng = isSetup ? null : renderScorecardPng(sig); } catch (e) { console.warn('[tweet-breakout] card render failed:', e.message); }
 
   const result = await postXThreadDetailed(toPost, mediaPng ? { mediaPng } : undefined);
   if (!result.ok) return res.status(502).json({ error: `X post failed: ${result.error}. Env issues: set X_POST_ENABLED=true + the four X_* tokens in the droplet root .env, then \`docker compose up -d dashboard\`.` });
-  await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
+  if (!isSetup) await db.breakoutSignal.update({ where: { id: sig.id }, data: { xPostedAt: new Date() } });
   console.log(`✓ Admin tweeted $${asset} breakout${edited?.tweets?.length ? ' (edited)' : ''}`);
   res.json({ ok: true, tweets: toPost });
 });
