@@ -169,6 +169,75 @@ export class BreakoutAgent {
   // 15-minute scan (x2 modes) — pure bandwidth waste.
   private universeCache = new Map<string, { date: string; symbols: string[] }>();
 
+  // Why the cache "failed": it never failed. It cached exactly what it was
+  // given, for the whole trading day, and the only check was that the list was
+  // not empty. The input was bad — FMP answers an over-quota screener call with
+  // HTTP 200 and a shorter array, so 1,351 of 3,525 stocks looked like a
+  // perfectly good universe. Two things were missing, and both are here now.
+  //
+  //  1. A size check. A fetch materially below what this universe has recently
+  //     been is refused rather than cached, so a throttled answer cannot become
+  //     the day's universe.
+  //  2. Somewhere to fall back to. The cache was in-memory, so a container that
+  //     restarted inside a throttled window had nothing to compare against and
+  //     nothing to reuse. The high-water mark and the last good universe are
+  //     persisted now, and survive a restart.
+  //
+  // The high-water mark re-baselines if it has not been beaten in 30 days, so a
+  // genuine long-term shrink (delistings, a tighter floor) is not treated as a
+  // fault forever.
+  private static readonly UNIVERSE_MIN_FRACTION = 0.7;
+  private static readonly UNIVERSE_HIGH_WATER_TTL_DAYS = 30;
+
+  private universeKey(mode: string, what: string) {
+    return `universe_${what}_${process.env.REGION || "US"}_${mode}`;
+  }
+
+  private async readFlag(key: string): Promise<string | null> {
+    try { return (await db.runtimeFlag.findUnique({ where: { key } }))?.value ?? null; } catch { return null; }
+  }
+  private async writeFlag(key: string, value: string) {
+    try { await db.runtimeFlag.upsert({ where: { key }, create: { key, value }, update: { value } }); } catch { /* best effort */ }
+  }
+
+  // Returns the list to use, which is either the fetch (good) or the last good
+  // universe (fetch too small). Null means neither is usable and the caller
+  // should not scan on it.
+  private async validateUniverse(mode: string, fetched: string[]): Promise<string[] | null> {
+    const hwKey = this.universeKey(mode, "high_water");
+    const lastKey = this.universeKey(mode, "last_good");
+    let high = 0, highAt = 0;
+    try {
+      const raw = await this.readFlag(hwKey);
+      if (raw) { const p = JSON.parse(raw); high = Number(p.max) || 0; highAt = Number(p.at) || 0; }
+    } catch { /* treat as unset */ }
+
+    const stale = highAt > 0 && Date.now() - highAt > BreakoutAgent.UNIVERSE_HIGH_WATER_TTL_DAYS * 86400000;
+    const floor = stale ? 0 : Math.floor(high * BreakoutAgent.UNIVERSE_MIN_FRACTION);
+
+    if (fetched.length >= floor) {
+      if (fetched.length > high || stale) await this.writeFlag(hwKey, JSON.stringify({ max: fetched.length, at: Date.now() }));
+      await this.writeFlag(lastKey, JSON.stringify({ at: Date.now(), symbols: fetched }));
+      return fetched;
+    }
+
+    console.error(`[FMP] REFUSING universe for ${mode}: ${fetched.length} symbols is under ${floor} (${Math.round(BreakoutAgent.UNIVERSE_MIN_FRACTION * 100)}% of the ${high} high-water mark). An over-quota screener answers 200 with a short list; this is that.`);
+    this.noteMiss("universe-truncated");
+    try {
+      const raw = await this.readFlag(lastKey);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (Array.isArray(p.symbols) && p.symbols.length >= floor) {
+          const ageH = Math.round((Date.now() - (Number(p.at) || 0)) / 3600000);
+          console.warn(`[FMP] Falling back to the last good ${mode} universe: ${p.symbols.length} symbols, ${ageH}h old.`);
+          return p.symbols as string[];
+        }
+      }
+    } catch { /* fall through */ }
+    console.error(`[FMP] No usable ${mode} universe — skipping this scan rather than running on a third of the market.`);
+    return null;
+  }
+
   async fetchAssetsFromFMP(mode: "stocks" | "etfs" = "stocks"): Promise<string[]> {
     const apiKey = process.env.FMP_API_KEY;
     if (!apiKey) throw new Error("FMP_API_KEY not set");
@@ -298,8 +367,12 @@ export class BreakoutAgent {
         }
       }
 
-      if (activeAssets.length > 0) this.universeCache.set(mode, { date: cacheDate, symbols: activeAssets });
-      return activeAssets;
+      // Validate BEFORE caching: a truncated universe cached here runs the
+      // whole trading day.
+      const validated = await this.validateUniverse(mode, activeAssets);
+      if (validated === null) return [];
+      if (validated.length > 0) this.universeCache.set(mode, { date: cacheDate, symbols: validated });
+      return validated;
     } catch (error) {
       console.error("[FMP] Asset fetch failed:", error);
       // Stale universe beats a skipped scan when the screener endpoint hiccups.

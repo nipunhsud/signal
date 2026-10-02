@@ -1631,13 +1631,14 @@ async function fetchFMPData(symbol: string): Promise<MarketData> {
       return result;
     } catch (error: any) {
       lastError = error;
+      // A 429 used to be retried right here, up to three times, while every
+      // other in-flight call carried on pushing — so the backoff was private to
+      // one symbol and the fleet never eased off. The limiter owns pacing now:
+      // tell it, and it holds every caller in this process for a jittered,
+      // doubling cooldown. This symbol is simply dropped from the scan and
+      // picked up on the next 15-minute pass.
       if (error.response?.status === 429) {
-        retries--;
-        if (retries > 0) {
-          const delay = Math.pow(2, 3 - retries) * 1000;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
+        globalRateLimiter.notifyRateLimited();
       }
       break;
     }
