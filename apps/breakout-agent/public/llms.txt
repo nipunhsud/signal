@@ -1,16 +1,15 @@
 # DataQuant
 
-> Systematic breakout-signal platform for individual traders, covering the US market (~3,000 NASDAQ/NYSE/AMEX tickers above $300M market cap and 100k average daily volume) and Indian NSE/BSE stocks. Every liquid stock is scanned every 15 minutes during market hours for breakouts from tight consolidations. Signals are curated — pre-filtered to high confidence — each with a frozen entry price, a disciplined 8% stop, risk/reward, relative-strength rating, base-quality metrics, and an AI summary of the company's latest earnings call. Research and educational tool only; not investment advice.
+> DataQuant is a stock screener that reads every liquid US stock four ways: technicals (graded bases, relative strength, pivots), fundamentals (the latest earnings call, read by AI), popularity (institutional activity, named 13F holders, social sentiment and news) and a plain-language AI write-up on top. It covers about 3,300 US stocks and ETFs on NASDAQ, NYSE and AMEX above $300M market value, plus Indian NSE stocks, screened every 15 minutes in market hours and again after the close. It reports what the screen saw; it is a research tool, not investment advice.
 
-## How the signals work
+## The four readings
 
-- **Actionable (Type 1) breakouts**: price clears a multi-week base on at least 1.2x average volume, with moving averages stacked in an uptrend (20 > 50 > 150 > 200 day). Entry is frozen at the breakout level the moment the signal fires; the stop sits 8% below entry. A breached stop ends the episode — later signals start fresh.
-- **VCP breakouts**: Type 1 signals matching a calibrated Volatility Contraction Pattern — a moderately tightening base (coiled, but not artificially pinned) breaking out on heavy volume. The exact thresholds are calibrated against DataQuant's own multi-thousand-base outcome study and are part of the edge, so they aren't published.
-- **Relative Strength (RS) rating**: every stock's trailing returns (50% 3-month, 30% 1-month, 20% 1-week) ranked 1-99 against its own market's scanned universe — US vs US, India vs India. Dashboard filters let users screen to leaders (RS ≥ 70), VCP-only, or blue-sky-only breakouts.
-- **Base-quality metrics** on every signal: up/down volume ratio (accumulation), failed pokes at the pivot (supply overhead), coil ratio (tightening), and a blue-sky flag when the pivot sits at the 52-week high.
-- **Setups**: tight pre-breakout consolidations ("handles") near the 20-day moving average, with distance-to-pivot.
-- **Extensions**: continuations of a recent breakout. Extensions more than 5 days past their breakout are demoted to a "tracking" list — monitoring for holders, not entry candidates.
-- **AI earnings context**: every US stock signal carries an LLM analysis of the latest earnings call — tone score (-1 to +1), guidance direction (raised/maintained/lowered), highlights, and risk flags.
+- **Technicals.** When a close clears the pivot of a base, the base is graded S, A+ or A by its length, its depth (25% or less) and whether it tops out at the 52-week high (blue sky). The breakout is scored 1 to 10 from factors that measured as a profit-factor lift over 97,789 historical breakouts: relative-strength bucket, base grade, institutional activity, how far and on how much volume the close cleared the pivot, an episodic-pivot flag, 13F register turnover, and a penalty past 5% extension. The dashboard shows 7 and above by default. The fail level sits 7% below the pivot. A separate deep-base kind (25-35% deep, blue sky, cleared by 3%+ on 1.5x volume) is graded on its own terms.
+- **Relative strength (RS).** Trailing returns (50% 3-month, 30% 1-month, 20% 1-week) ranked 1-99 against the stock's own market. Breakouts with RS under 89 ran a 1.73 profit factor, 89-95 ran 2.04, 95 and above ran 2.45.
+- **Fundamentals.** For every US stock on the screen, a language model reads the latest earnings call transcript and returns a tone score from -1 to +1, guidance direction (raised, maintained, lowered), highlights in management's words and risk flags. The Winners and Beat & Raise lists add growth, margins and earnings-surprise history.
+- **Popularity.** An institutional activity score from 0 to 10 (heavy-volume up and down days, prints at the high, up/down volume): at 7 or more, 32% of breakouts reached +20%, against 11-13% at the bottom of the scale. The 13F register names the funds that hold each stock and how much the list turned over. StockTwits/X sentiment and the latest news sit beside it.
+- **AI.** Each reading carries a short plain-language write-up. "Ask the screen" is a chat that answers from the screen's own rows. AI agents can connect through the MCP server below.
+- **Other row kinds.** Handles (tight late-stage consolidations near the pivot), retests (pullbacks to the pivot while the base holds), extensions (past the 5% pivot zone; after 5 days they move to a tracking list), and gap retests (tracked, not emailed).
 
 ## Market analysis tools
 
@@ -63,10 +62,10 @@ DataQuant exposes its free data layer as a Model Context Protocol server at `htt
 
 ## Key pages
 
-- [Home](https://dataquant.ai/): product overview, methodology, 30-day record, FAQ
+- [Home](https://dataquant.ai/): the four readings, today's screen (live market health and the bases that cleared their pivot), research, pricing and FAQ
 - [Market Pulse](https://dataquant.ai/pulse): free live market health, trending tickers, and news
-- [Dashboard](https://dataquant.ai/dashboard): the live signal feed with charts, X-ray, sectors, and filters (subscription; 30-day free trial, then $49/month or $449/year)
+- [Dashboard](https://dataquant.ai/dashboard): the live screen with graded breakouts, a per-stock drawer (overview, chart, technicals, fundamentals, popularity, history), base X-ray charts, sectors and filters (subscription; 30-day free trial, then $49/month or $449/year)
 
 ## Disclaimer
 
-DataQuant provides systematic technical signals for research and educational purposes only. It is not a registered investment advisor and nothing on the site is a recommendation to buy or sell any security.
+DataQuant publishes screen output for research and educational purposes only. It is not a registered investment advisor and nothing on the site is a recommendation to buy or sell any security.

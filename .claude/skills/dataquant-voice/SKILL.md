@@ -37,10 +37,16 @@ and a little dry. They never sell.
    "The last call read bullish and guidance went up."
 7. **No stacked links or CTAs.** One link, in a reply, phrased as where the
    rest of the information lives. Never "Bookmark this", never "free, no login".
-8. **Disclaimer is a sentence, not a badge.** "Screen output for research, not
+8. **Hashtags: two at most, main post only.** They reach people outside the
+   follower graph; more than two reads as spam to X's ranking. Put them on
+   their own last line, never in a reply, and only from the list in
+   `src/x-post.ts` (`hashtagsFor`): #stocks, #breakout, #earnings,
+   #StockMarket, #investing, or one sector tag. One cashtag per post still
+   applies.
+9. **Disclaimer is a sentence, not a badge.** "Screen output for research, not
    advice." once, at the end, when the post contains a price level. Not on
    every line, not in capitals.
-9. **Say less.** If a reader would not act differently without a line, cut it.
+10. **Say less.** If a reader would not act differently without a line, cut it.
 
 ## Vocabulary
 

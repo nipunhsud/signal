@@ -49,7 +49,7 @@ for (const vp of [{ width: 1400, height: 800 }, { width: 390, height: 760 }]) {
   await page.evaluate(() => dashboard.openAsset('AAPL'));
   check((await url()) === '/dashboard/winners?s=AAPL', 'switching ticker replaces ?s');
   const dtxt = await page.locator('#drawer').innerText();
-  check(['SIGNAL', 'RS', 'TREND', 'EARNINGS', 'LEVELS', 'DETAIL', 'UPDATED'].every((l) => dtxt.includes(l)) && (await page.locator('#drawer [data-grade="A+"]').count()) >= 1, 'drawer mirrors every table column and shows the grade chip');
+  check(['SIGNAL', 'RS', 'TREND', 'EARNINGS', 'PIVOT', 'LEVELS', 'UPDATED'].every((l) => dtxt.toUpperCase().includes(l)) && (await page.locator('#drawer [data-grade="A+"]').count()) >= 1, 'drawer mirrors every table column and shows the grade chip');
   await settle(page, 300);
   const hist = await page.locator('#drawer #history-content').innerText();
   check(hist.includes('emailed Sep 8') && hist.includes('past the pivot') && hist.includes('pivot $120.00'), 'drawer alert history lists the emailed episode with its levels');

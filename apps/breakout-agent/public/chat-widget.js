@@ -56,7 +56,7 @@
     .dqc .msg strong { color: #fff; }
     .dqc .tool { font-size: 11px; color: #9ca3af; } .dqc .tool::before { content: '·'; margin-right: 6px; color: #60a5fa; }
     .dqc .pool-row.selected { background: rgba(96,165,250,.12); }
-    .dqc .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #374151; color: #9ca3af; background: transparent; cursor: pointer; }
+    .dqc .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #374151; color: #9ca3af; background: transparent; cursor: pointer; height: auto; white-space: normal; text-align: left; line-height: 1.4; }
     .dqc .chip.on { border-color: #60a5fa; color: #bfdbfe; background: rgba(96,165,250,.12); }
     .dqc .kbd { font-size: 10px; border: 1px solid #374151; border-radius: 4px; padding: 0 4px; color: #9ca3af; }
     .dqc .typing::after { content: '▍'; animation: dqc-blink 1s steps(2) infinite; color: #9ca3af; }

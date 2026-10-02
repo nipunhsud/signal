@@ -438,7 +438,7 @@ test('the retest odds travel to every channel', () => {
   assert.match(server, /const holdPath = holdOdds\(/, 'the screener payload computes it from the stored volume ratio');
   assert.match(server, /bs\."volumeRatio",/, 'which the query now selects');
   assert.match(dash, /holdPathChipHtml\(signal\)/, 'the row shows a chip');
-  assert.match(dash, /What clears like this do/, 'and the drawer spells it out');
+  assert.match(dash, /Clears like this/, 'and the drawer spells it out');
 });
 
 test('the odds describe the path, never the payoff', () => {

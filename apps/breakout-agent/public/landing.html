@@ -3,35 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Systematic breakout signals for individual traders. Backtested +6.9% average return, 64% win rate, 8% max risk per trade.">
-  <title>DataQuant — Systematic breakout signals. Backtested.</title>
+  <title>DataQuant · Technicals, fundamentals and popularity for every US stock, read by AI</title>
+  <meta name="description" content="DataQuant screens about 3,300 US stocks every session. It grades the base each one is building, reads the latest earnings call with AI, and tracks who owns it and who is talking about it. Research output, not advice.">
   <link rel="canonical" href="https://dataquant.ai/">
+  <meta name="theme-color" content="#07080b">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="DataQuant">
-  <meta property="og:title" content="DataQuant — Systematic breakout signals. Backtested.">
-  <meta property="og:description" content="Every liquid US stock scanned every 15 minutes for breakouts from tight bases. 20-30 curated signals per month with AI earnings-call context, frozen entries, and a disciplined 8% stop.">
+  <meta property="og:title" content="DataQuant · Every stock, read four ways">
+  <meta property="og:description" content="Technicals, fundamentals and popularity for every liquid US stock, with an AI write-up on top. Graded bases, earnings calls read by AI, institutional and social activity.">
   <meta property="og:url" content="https://dataquant.ai/">
-  <meta property="og:image" content="https://dataquant.ai/og/SPY.png">
+  <meta property="og:image" content="https://dataquant.ai/og/pulse.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="DataQuant — Systematic breakout signals. Backtested.">
-  <meta name="twitter:description" content="Every liquid US stock scanned every 15 minutes for breakouts from tight bases. Curated signals with AI earnings context, frozen entries, and a disciplined 8% stop.">
-  <meta name="twitter:image" content="https://dataquant.ai/og/SPY.png">
+  <meta name="twitter:site" content="@tradersud">
+  <meta name="twitter:title" content="DataQuant · Every stock, read four ways">
+  <meta name="twitter:description" content="Technicals, fundamentals and popularity for every liquid US stock, with an AI write-up on top.">
+  <meta name="twitter:image" content="https://dataquant.ai/og/pulse.png">
+  <link rel="alternate" type="text/plain" title="LLM summary" href="/llms.txt">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%238b7bff'/%3E%3Cstop offset='1' stop-color='%232fd8a8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2310131a'/%3E%3Cpath d='M7 21l5-5 4 3 9-9' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@graph": [
       {
         "@type": "Organization",
+        "@id": "https://dataquant.ai/#org",
         "name": "DataQuant",
         "url": "https://dataquant.ai/",
-        "logo": "https://dataquant.ai/og/SPY.png"
+        "logo": "https://dataquant.ai/og/pulse.png",
+        "sameAs": ["https://x.com/tradersud"]
       },
       {
         "@type": "WebSite",
+        "@id": "https://dataquant.ai/#site",
         "name": "DataQuant",
         "alternateName": "DataQuant.ai",
         "url": "https://dataquant.ai/",
-        "description": "Systematic breakout signals for individual traders. Every liquid US stock scanned for breakouts from tight consolidations, with AI earnings-call analysis on every signal."
+        "publisher": { "@id": "https://dataquant.ai/#org" },
+        "description": "A stock screener that reads every liquid US stock four ways: technicals (graded bases, relative strength), fundamentals (earnings calls read by AI), popularity (institutional activity, 13F holders, social sentiment) and an AI write-up."
       },
       {
         "@type": "SoftwareApplication",
@@ -39,862 +47,644 @@
         "applicationCategory": "FinanceApplication",
         "operatingSystem": "Web",
         "url": "https://dataquant.ai/",
-        "description": "Breakout signal dashboard for US and Indian stocks: scanned every 15 minutes for breakouts from tight bases (including Minervini volatility contraction patterns), pre-filtered to high confidence, each with a frozen entry, 8% stop, risk/reward, 1-99 relative-strength rating, base-quality metrics, and AI-summarized earnings-call tone. Includes a market-health regime gauge (trend, distribution days, breadth), sector-strength rankings, native charts with a 2-year base X-ray, and leader/VCP/blue-sky filters.",
+        "description": "Breakout screener for US and Indian stocks. Every liquid stock is screened every 15 minutes in market hours. Each base is graded S, A+ or A, each breakout is scored 1 to 10 from measured factors, the latest earnings call is read by a language model, and institutional activity, 13F holders and social sentiment sit beside it. Includes a market-health gauge, sector strength, a two-year base X-ray chart and a chat that answers questions about the screen.",
         "offers": [
-          {
-            "@type": "Offer",
-            "price": "49",
-            "priceCurrency": "USD",
-            "description": "Monthly subscription after a 30-day free trial"
-          },
-          {
-            "@type": "Offer",
-            "price": "449",
-            "priceCurrency": "USD",
-            "description": "Annual subscription after a 30-day free trial (about $37/month)"
-          }
+          { "@type": "Offer", "price": "49", "priceCurrency": "USD", "description": "Monthly, after a 30-day free trial" },
+          { "@type": "Offer", "price": "449", "priceCurrency": "USD", "description": "Yearly, after a 30-day free trial (about $37 a month)" }
         ]
       },
       {
         "@type": "FAQPage",
         "mainEntity": [
-          {
-            "@type": "Question",
-            "name": "Why not just use TradingView or TrendSpider?",
-            "acceptedAnswer": { "@type": "Answer", "text": "TradingView can replicate the scanning if you build multi-timeframe scanners yourself. DataQuant differs in three ways: curation (20-30 signals per month pre-filtered to over 80% confidence, not 500 alerts), AI earnings context on every signal (call tone, guidance direction, risk flags), and a frozen entry with a disciplined 8% stop fixed at the moment of signal." }
-          },
-          {
-            "@type": "Question",
-            "name": "30 days of data isn't a real backtest. Why should I trust these numbers?",
-            "acceptedAnswer": { "@type": "Answer", "text": "You shouldn't treat 30 days as proof of a permanent edge — it is a single market regime. It proves the mechanics: the system runs, signals fire, discipline holds. Results are published monthly, wins and losses both, so the sample grows across regimes." }
-          },
-          {
-            "@type": "Question",
-            "name": "How does the AI earnings analysis work?",
-            "acceptedAnswer": { "@type": "Answer", "text": "For every US-listed stock signal, the most recent earnings call transcript is run through a large language model to extract an overall tone score (bullish/neutral/bearish, -1 to +1), guidance direction (raised/maintained/lowered), 2-4 highlights from management's own language, and 1-3 risk flags. Results are cached per quarter." }
-          },
-          {
-            "@type": "Question",
-            "name": "Is this investment advice?",
-            "acceptedAnswer": { "@type": "Answer", "text": "No. DataQuant.ai provides systematic technical signals for research and educational purposes only. We are not registered investment advisors. Nothing on the site is a recommendation to buy or sell any security. Consult a licensed advisor before trading." }
-          },
-          {
-            "@type": "Question",
-            "name": "What's the methodology behind the 30-day results?",
-            "acceptedAnswer": { "@type": "Answer", "text": "22 signals fired between May 22 and Jun 20, 2026. Each held for 20 trading days or stopped at -8%, whichever came first. Returns averaged equal-weight. Live production data, no cherry-picking, all signals disclosed. The data is not annualized or projected forward." }
-          },
-          {
-            "@type": "Question",
-            "name": "What happens after the 30-day trial?",
-            "acceptedAnswer": { "@type": "Answer", "text": "If you don't cancel before day 30, your card is charged for the plan you chose — $49 monthly or $449 yearly — and your subscription continues. Cancel any time from your Stripe billing portal." }
-          },
-          {
-            "@type": "Question",
-            "name": "What stocks do you cover?",
-            "acceptedAnswer": { "@type": "Answer", "text": "The full US market — every actively-traded NASDAQ, NYSE, and AMEX stock above $300M market cap and 100k average daily volume. Roughly 3,000+ tickers across all major sectors, re-screened live so the universe stays current." }
-          },
-          {
-            "@type": "Question",
-            "name": "How do I receive signals?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Via a live dashboard that updates every 15 minutes during market hours. Every signal shows entry, 8% stop, risk/reward, and the AI earnings summary. High-confidence signals bubble to the top with sortable filters by sector or setup type." }
-          },
-          {
-            "@type": "Question",
-            "name": "Can I export signals to my broker?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Direct execution isn't included. Each signal links out to TradingView for chart context; trades are placed manually via your own broker." }
-          }
+          { "@type": "Question", "name": "What is DataQuant?", "acceptedAnswer": { "@type": "Answer", "text": "DataQuant is a stock screener for US and Indian markets. It grades the base each liquid stock is building, reads the latest earnings call with AI, and tracks institutional and social activity around each name. It reports what the screen saw. It does not recommend trades." } },
+          { "@type": "Question", "name": "How does DataQuant grade a breakout?", "acceptedAnswer": { "@type": "Answer", "text": "When a stock closes above the pivot of its base, the base is graded S, A+ or A by its length, depth and distance from the 52-week high. The breakout is then scored 1 to 10 from factors that measured as a lift across 97,789 historical breakouts: relative strength, base grade, institutional activity, how far and on how much volume the close cleared the pivot, and a penalty past 5% extension. The dashboard shows 7 and above by default." } },
+          { "@type": "Question", "name": "What does the AI read?", "acceptedAnswer": { "@type": "Answer", "text": "A language model reads the most recent earnings call transcript for each US stock on the screen and returns a tone score from -1 to +1, the direction of guidance (raised, maintained or lowered), two to four highlights in management's own words and one to three risk flags. Results are cached per quarter." } },
+          { "@type": "Question", "name": "What does popularity mean on DataQuant?", "acceptedAnswer": { "@type": "Answer", "text": "Popularity is who is buying and who is talking. It combines an institutional activity score from 0 to 10 built from heavy-volume up and down days, the named funds on the 13F register and how much that register turned over, social sentiment from StockTwits and X, and the latest news." } },
+          { "@type": "Question", "name": "Which stocks does DataQuant cover?", "acceptedAnswer": { "@type": "Answer", "text": "About 3,300 US stocks and ETFs on NASDAQ, NYSE and AMEX above $300 million in market value and a liquidity floor, plus Indian NSE stocks. The US screen runs every 15 minutes during market hours and again after the close." } },
+          { "@type": "Question", "name": "Can AI assistants and agents use DataQuant?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. DataQuant runs a Model Context Protocol server at https://dataquant.ai/mcp with the market-health gauge, sector strength, the base X-ray for any stock and full-text search over the research notes. A plain-text summary for language models is at https://dataquant.ai/llms.txt." } },
+          { "@type": "Question", "name": "How much does DataQuant cost?", "acceptedAnswer": { "@type": "Answer", "text": "There is a 30-day free trial, then $49 a month or $449 a year. Cancel any time from the billing portal; nothing is charged if you cancel before day 30." } },
+          { "@type": "Question", "name": "Is DataQuant investment advice?", "acceptedAnswer": { "@type": "Answer", "text": "No. DataQuant publishes screen output for research and education. It is not a registered investment adviser or broker-dealer, and nothing on the site is a recommendation to buy or sell any security." } }
         ]
       }
     ]
   }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    :root {
-      --amber: #F59E0B;
-      --amber-hi: #FBBF24;
-      --bg: #0F172A;
-      --panel: #111827;
-      --panel-2: #1F2937;
-      --border: #334155;
-      --fg: #F8FAFC;
-      --muted: #94A3B8;
-      --green: #10B981;
-      --red: #EF4444;
+    /* ── Hero ── */
+    .hero { position: relative; padding: 96px 0 72px; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 56px; align-items: center; position: relative; }
+    .hero .display { margin-top: 22px; }
+    .hero .lede { margin-top: 24px; max-width: 540px; }
+    .hero-ctas { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .hero-note { margin-top: 18px; font-size: 13px; color: var(--fg-3); }
+    @media (max-width: 980px) { .hero-grid { grid-template-columns: 1fr; gap: 48px; } .hero { padding-top: 64px; } }
+
+    /* Example scorecard: the product in one card */
+    .scorecard { padding: 22px; position: relative; }
+    .scorecard::before {
+      content: ''; position: absolute; inset: -1px; border-radius: var(--radius); padding: 1px;
+      background: linear-gradient(160deg, rgba(139,123,255,.55), rgba(47,216,168,.25) 40%, transparent 70%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+      pointer-events: none;
     }
-    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-    html { scroll-behavior: smooth; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-      font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    .sc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .sc-ticker { font-family: var(--mono); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+    .sc-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
+    .sc-score { text-align: right; }
+    .sc-score b { font-family: var(--mono); font-size: 28px; font-weight: 500; letter-spacing: -0.03em; }
+    .sc-score small { font: 500 16px var(--mono); color: var(--fg-3); }
+    .sc-score span { font-size: 11px; color: var(--fg-3); display: block; }
+    .sc-spark { margin: 18px 0 6px; height: 64px; width: 100%; }
+    .lens { display: grid; grid-template-columns: 112px 1fr; gap: 14px; align-items: start; padding: 13px 0; border-top: 1px solid var(--line); font-size: 14px; }
+    .lens dt { color: var(--fg-3); font-size: 12px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
+    .lens dd { margin: 0; color: var(--fg); }
+    .lens dd .muted { font-size: 13px; }
+    .meter { height: 4px; border-radius: 999px; background: rgba(255,255,255,.07); margin-top: 8px; overflow: hidden; }
+    .meter > i { display: block; height: 100%; border-radius: 999px; background: var(--brand-grad); }
+    .ai-read { margin-top: 14px; padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(139,123,255,.07); border: 1px solid rgba(139,123,255,.18); font-size: 14px; color: #d9d5ff; line-height: 1.6; }
+    .ai-read .chip { margin-bottom: 8px; }
+    .sc-foot { margin-top: 12px; font-size: 11px; color: var(--fg-3); }
+
+    /* ── Proof strip ── */
+    .proof { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); }
+    .proof-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .proof-item { padding: 28px 24px; border-left: 1px solid var(--line); }
+    .proof-item:first-child { border-left: 0; padding-left: 0; }
+    .proof-item b { display: block; font-family: var(--mono); font-weight: 500; font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.03em; }
+    .proof-item span { font-size: 13px; color: var(--fg-2); }
+    @media (max-width: 760px) {
+      .proof-grid { grid-template-columns: 1fr 1fr; }
+      .proof-item { padding: 22px 16px; }
+      .proof-item:nth-child(odd) { border-left: 0; padding-left: 0; }
+      .proof-item:nth-child(n+3) { border-top: 1px solid var(--line); }
     }
-    .tabular { font-variant-numeric: tabular-nums; }
-    .grid-bg {
-      background-image:
-        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245, 158, 11, 0.08), transparent 60%),
-        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
-      background-size: 100% 100%, 44px 44px, 44px 44px;
-      background-position: 0 0, 0 0, 0 0;
+
+    /* ── Section heads ── */
+    .head { max-width: 680px; }
+    .head .h2 { margin-top: 18px; }
+    .head .lede { margin-top: 18px; }
+    .head-center { margin: 0 auto; text-align: center; }
+    .head-center .eyebrow { justify-content: center; }
+
+    /* ── Four lenses ── */
+    .lenses { margin-top: 56px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .lens-card { padding: 30px; display: flex; flex-direction: column; min-height: 300px; position: relative; overflow: hidden; }
+    .lens-card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,255,255,.04); border: 1px solid var(--line-2); }
+    .lens-card .kicker { margin-top: 22px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+    .lens-card .h3 { margin-top: 8px; font-size: 24px; }
+    .lens-card p { color: var(--fg-2); margin: 12px 0 0; font-size: 15px; }
+    .lens-card .measured { margin-top: auto; padding-top: 22px; font-size: 13px; color: var(--fg-2); display: flex; gap: 10px; align-items: baseline; }
+    .lens-card .measured b { font-family: var(--mono); font-weight: 500; color: var(--fg); white-space: nowrap; }
+    .k-tech { color: #7cc4ff; } .k-fund { color: #f5c76b; } .k-pop { color: #2fd8a8; } .k-ai { color: #b3a8ff; }
+    .lens-card.ai { background: linear-gradient(160deg, rgba(139,123,255,.12), rgba(16,19,26,.6) 55%); border-color: rgba(139,123,255,.25); }
+    @media (max-width: 860px) { .lenses { grid-template-columns: 1fr; } .lens-card { min-height: 0; } }
+
+    /* ── Live screen ── */
+    .live-grid { margin-top: 48px; display: grid; grid-template-columns: 340px 1fr; gap: 16px; }
+    @media (max-width: 900px) { .live-grid { grid-template-columns: 1fr; } }
+    .health { padding: 26px; }
+    .gauge { position: relative; width: 100%; max-width: 260px; margin: 18px auto 8px; }
+    .gauge-num { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; }
+    .gauge-num b { font-family: var(--mono); font-size: 44px; font-weight: 500; letter-spacing: -0.04em; display: block; line-height: 1; }
+    .health p { font-size: 14px; color: var(--fg-2); margin: 14px 0 0; }
+    .board { padding: 8px 0 0; overflow: hidden; }
+    .board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 24px 12px; }
+    .board-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    .board table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .board th { text-align: left; font-weight: 500; font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; padding: 10px 24px; border-top: 1px solid var(--line); }
+    .board td { padding: 13px 24px; border-top: 1px solid var(--line); white-space: nowrap; }
+    .board td.t { font-family: var(--mono); font-weight: 500; }
+    .board .r, .board th.r { text-align: right; }
+    .board tr:hover td { background: rgba(255,255,255,.02); }
+    .grade { display: inline-grid; place-items: center; min-width: 30px; height: 22px; padding: 0 6px; border-radius: 6px; font: 500 12px/1 var(--mono); background: rgba(255,255,255,.05); border: 1px solid var(--line-2); }
+    .grade-S { color: #f5c76b; border-color: rgba(245,199,107,.35); background: rgba(245,199,107,.08); }
+    .grade-Aplus { color: var(--up); border-color: rgba(52,211,153,.3); background: rgba(52,211,153,.07); }
+    .board-foot { padding: 14px 24px 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-2); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .board-foot a { color: var(--fg); }
+    .skeleton { height: 12px; border-radius: 6px; background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.08), rgba(255,255,255,.04)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
+    @keyframes sk { to { background-position: -200% 0; } }
+    @media (max-width: 640px) { .board th, .board td { padding-left: 16px; padding-right: 16px; } .hide-sm { display: none; } }
+
+    /* ── Steps ── */
+    .steps { margin-top: 56px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--line); }
+    .step { padding: 28px 24px 0 0; }
+    .step + .step { padding-left: 24px; border-left: 1px solid var(--line); }
+    .step .n { font-family: var(--mono); font-size: 13px; color: var(--fg-3); }
+    .step h3 { margin: 14px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    .step p { margin: 10px 0 0; font-size: 15px; color: var(--fg-2); }
+    @media (max-width: 900px) {
+      .steps { grid-template-columns: 1fr 1fr; }
+      .step:nth-child(3) { padding-left: 0; border-left: 0; }
+      .step:nth-child(n+3) { margin-top: 28px; border-top: 1px solid var(--line); }
     }
-    .card {
-      background: linear-gradient(180deg, rgba(31, 41, 55, 0.6) 0%, rgba(17, 24, 39, 0.6) 100%);
-      border: 1px solid rgba(51, 65, 85, 0.6);
-      border-radius: 12px;
-      backdrop-filter: blur(6px);
+    @media (max-width: 560px) { .steps { grid-template-columns: 1fr; } .step, .step + .step { padding: 24px 0 0; border-left: 0; } .step + .step { margin-top: 24px; border-top: 1px solid var(--line); } }
+
+    /* ── Research ── */
+    .research { margin-top: 56px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .paper { padding: 24px; display: flex; flex-direction: column; gap: 12px; transition: border-color .15s, transform .15s; }
+    .paper:hover { border-color: var(--line-2); transform: translateY(-2px); }
+    .paper .tag { font-family: var(--mono); font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; }
+    .paper h3 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; }
+    .paper p { margin: 0; color: var(--fg-2); font-size: 14px; }
+    .paper .go { margin-top: auto; font-size: 13px; color: var(--fg); }
+    @media (max-width: 980px) { .research { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .research { grid-template-columns: 1fr; } }
+
+    /* ── Pricing ── */
+    .price-wrap { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 920px; margin-left: auto; margin-right: auto; }
+    .price-card { padding: 34px; }
+    .price-card.main { position: relative; }
+    .price-card.main::before {
+      content: ''; position: absolute; inset: -1px; border-radius: var(--radius); padding: 1px; background: var(--brand-grad); opacity: .6;
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
     }
-    .btn-primary {
-      background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 100%);
-      color: #0F172A;
-      font-weight: 600;
-      padding: 12px 22px;
-      border-radius: 8px;
-      transition: transform 180ms ease, box-shadow 220ms ease, filter 180ms ease;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -8px rgba(245, 158, 11, 0.35);
-    }
-    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 12px 30px -8px rgba(245, 158, 11, 0.5); }
-    .btn-primary:focus-visible { outline: 2px solid #FBBF24; outline-offset: 3px; }
-    .btn-secondary {
-      background: transparent;
-      color: var(--fg);
-      border: 1px solid var(--border);
-      padding: 12px 20px;
-      border-radius: 8px;
-      transition: background 180ms ease, border-color 180ms ease;
-      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
-      font-weight: 500;
-    }
-    .btn-secondary:hover { background: rgba(148, 163, 184, 0.08); border-color: #475569; }
-    .btn-secondary:focus-visible { outline: 2px solid #FBBF24; outline-offset: 3px; }
-    .pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 4px 10px; border-radius: 999px;
-      font-size: 12px; font-weight: 500;
-      background: rgba(245, 158, 11, 0.12);
-      color: var(--amber-hi);
-      border: 1px solid rgba(245, 158, 11, 0.25);
-    }
-    .pill-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; box-shadow: 0 0 12px currentColor; animation: pulse 2s ease-in-out infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
-    .stat-num { font-family: 'Inter', system-ui; font-weight: 700; letter-spacing: -0.02em; }
-    .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
-    .kbd { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.18); color: var(--muted); }
-    .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.2), transparent); }
-    .mini-bar { height: 6px; background: rgba(148, 163, 184, 0.15); border-radius: 999px; overflow: hidden; }
-    .mini-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--amber), var(--amber-hi)); }
-    .row-hover:hover { background: rgba(59, 130, 246, 0.04); }
-    @media (prefers-reduced-motion: reduce) {
-      * { animation: none !important; transition: none !important; }
-    }
-    /* Nav focus */
-    a:focus-visible { outline: 2px solid var(--amber-hi); outline-offset: 3px; border-radius: 4px; }
+    .toggle { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.04); border: 1px solid var(--line); margin-top: 18px; }
+    .toggle button { border: 0; background: transparent; color: var(--fg-2); font: 500 13px/1 var(--font); padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+    .toggle button[aria-pressed="true"] { background: var(--fg); color: #08090c; }
+    .toggle .save { color: var(--up); margin-left: 4px; }
+    .toggle button[aria-pressed="true"] .save { color: #0a7a52; }
+    .price { margin-top: 22px; display: flex; align-items: baseline; gap: 8px; }
+    .price b { font-family: var(--mono); font-weight: 500; font-size: 56px; letter-spacing: -0.04em; line-height: 1; }
+    .price span { color: var(--fg-2); }
+    .ticks { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 12px; font-size: 15px; }
+    .ticks li { display: grid; grid-template-columns: 18px 1fr; gap: 12px; color: #d6d9e1; }
+    .ticks svg { margin-top: 4px; }
+    @media (max-width: 760px) { .price-wrap { grid-template-columns: 1fr; } .price-card { padding: 26px; } }
+
+    /* ── Final CTA ── */
+    .final { text-align: center; position: relative; overflow: hidden; }
+    .final .h2 { max-width: 720px; margin: 0 auto; }
+    .final .lede { margin: 18px auto 0; max-width: 560px; }
+    .final .hero-ctas { justify-content: center; }
+
+    /* Reveal on scroll */
+    .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } }
   </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-  <!-- ─────────── NAV ─────────── -->
-  <nav class="border-b border-slate-800/60 bg-slate-950/60 backdrop-blur sticky top-0 z-40">
-    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <a href="#" class="flex items-center gap-2 font-semibold text-lg">
-        <span class="inline-flex w-7 h-7 items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/30">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
-        </span>
-        <span>DataQuant<span class="text-amber-400">.ai</span></span>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a href="/" class="brand" aria-label="DataQuant home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DataQuant
       </a>
-      <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
-        <a href="/pulse" class="hover:text-white transition inline-flex items-center gap-1.5">
-          <span class="relative flex h-1.5 w-1.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-70"></span><span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"></span></span>
-          Live Pulse
-        </a>
-        <a href="#results" class="hover:text-white transition">Results</a>
-        <a href="#how" class="hover:text-white transition">How it works</a>
-        <a href="/learn" class="hover:text-white transition">Learn</a>
-        <a href="#pricing" class="hover:text-white transition">Pricing</a>
-        <a href="#faq" class="hover:text-white transition">FAQ</a>
+      <div class="nav-links">
+        <a href="#lenses">Product</a>
+        <a href="#today">Today</a>
+        <a href="#research">Research</a>
+        <a href="/pulse">Market Pulse</a>
+        <a href="#pricing">Pricing</a>
       </div>
-      <div class="flex items-center gap-3">
-        <a href="/dashboard" data-cta="login" class="text-sm text-slate-300 hover:text-white transition">Log in</a>
-        <a href="#pricing" data-cta="start-trial" class="btn-primary text-sm">
-          Start free trial
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-        </a>
+      <div class="nav-cta">
+        <a href="/dashboard" data-cta="login" class="login">Log in</a>
+        <a href="#pricing" data-cta="start-trial" class="btn btn-primary btn-sm">Start free trial</a>
       </div>
     </div>
   </nav>
 
-  <!-- ─────────── HERO ─────────── -->
-  <section class="grid-bg relative overflow-hidden">
-    <div class="max-w-6xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32">
-      <div class="text-center max-w-3xl mx-auto">
-        <div class="mb-6 inline-flex">
-          <span class="pill"><span class="pill-dot"></span>Live scanning 3,000+ stocks every 15 min</span>
-        </div>
-        <h1 class="text-4xl md:text-6xl font-bold leading-[1.05] tracking-tight text-white">
-          Systematic breakout signals.<br>
-          <span class="text-amber-400">Earnings summarized by AI — tone, sentiment, guidance.</span>
-        </h1>
-        <p class="mt-6 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          DataQuant.ai catches actionable breakouts, then reads the underlying company's latest earnings call — tone, guidance, risk flags — so you know if the setup has fundamentals behind it. Delivered with entry, stop, and 8% max risk.
-        </p>
-        <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a href="#pricing" data-cta="start-trial" class="btn-primary">
-            Start 30-day free trial
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          </a>
-          <a href="#results" class="btn-secondary">See live results</a>
-        </div>
-        <div class="mt-6 text-xs text-slate-500 flex items-center justify-center gap-4">
-          <span>Cancel anytime</span>
-          <span class="text-slate-700">·</span>
-          <span>Secure Stripe checkout</span>
-          <span class="text-slate-700">·</span>
-          <span>Live dashboard · 15-min scans</span>
-        </div>
-        <!-- Live market-health strip: real data on the marketing page builds trust
-             and links to the free pulse page. Hidden until the fetch succeeds. -->
-        <div id="hero-health" style="display:none" class="mt-8 inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm bg-slate-800/60 ring-1 ring-slate-700/60 rounded-full px-5 py-2"></div>
-        <script>
-          fetch('/api/market-health').then(r => r.ok ? r.json() : null).then(d => {
-            if (!d || !d.regime) return;
-            const color = d.regime === 'risk-on' ? '#34D399' : d.regime === 'caution' ? '#FBBF24' : '#F87171';
-            const label = d.regime === 'risk-on' ? 'Risk-on' : d.regime === 'caution' ? 'Caution' : 'Risk-off';
-            const dd = d.components?.distribution?.days;
-            const br = d.components?.breadth?.pctPositive1m;
-            document.getElementById('hero-health').innerHTML =
-              `<span class="text-slate-400">Market health right now:</span>` +
-              `<span class="font-semibold" style="color:${color}">● ${label} · ${d.score}/100</span>` +
-              (dd != null ? `<span class="text-slate-500">${dd} distribution days</span>` : '') +
-              (br != null ? `<span class="text-slate-500">${br}% of stocks positive 1m</span>` : '') +
-              `<a href="/pulse" class="text-amber-400 hover:text-amber-300 font-medium">Full pulse →</a>`;
-            document.getElementById('hero-health').style.display = '';
-          }).catch(() => {});
-        </script>
-      </div>
-
-      <!-- Stat strip -->
-      <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">
-        <div class="card p-5 text-center">
-          <div class="stat-label">Avg return / trade</div>
-          <div class="mt-2 text-3xl md:text-4xl stat-num text-emerald-400 tabular">+6.9%</div>
-        </div>
-        <div class="card p-5 text-center">
-          <div class="stat-label">Win rate</div>
-          <div class="mt-2 text-3xl md:text-4xl stat-num text-white tabular">64%</div>
-        </div>
-        <div class="card p-5 text-center">
-          <div class="stat-label">Signals / month</div>
-          <div class="mt-2 text-3xl md:text-4xl stat-num text-white tabular">22</div>
-        </div>
-        <div class="card p-5 text-center">
-          <div class="stat-label">Max risk / trade</div>
-          <div class="mt-2 text-3xl md:text-4xl stat-num text-red-400 tabular">-8%</div>
-        </div>
-      </div>
-      <p class="mt-4 text-center text-xs text-slate-500 max-w-2xl mx-auto">
-        First 30 days of live production (May 22 – Jun 20, 2026 · 22 signals). We publish updated numbers monthly. One market regime is not proof of a permanent edge — see <a href="#results" class="text-slate-400 underline hover:text-slate-200">methodology</a>.
-      </p>
-    </div>
-  </section>
-
-  <!-- ─────────── LIVE RESULTS ─────────── -->
-  <section id="results" class="border-t border-slate-800/60">
-    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
-      <div class="max-w-2xl">
-        <span class="pill">First 30 days · Live production</span>
-        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
-          Real results. Small sample.<br>
-          <span class="text-slate-500">We're not going to hide either.</span>
-        </h2>
-        <p class="mt-4 text-slate-400 text-lg leading-relaxed">
-          One month of live signals — not a curated backtest. Every trade capped at 8% stop-loss, which alone lifted per-trade return from +5.5% (unstopped) to <span class="text-emerald-400 font-semibold">+6.9%</span>. Stopping losers matters more than catching winners.
-        </p>
-      </div>
-
-      <div class="mt-12 grid md:grid-cols-3 gap-6">
-        <!-- Result column 1 -->
-        <div class="card p-6">
-          <div class="stat-label">Return distribution</div>
-          <div class="mt-4 space-y-3">
-            <div class="flex items-center gap-3">
-              <span class="text-emerald-400 text-sm w-14 tabular">14 win</span>
-              <div class="mini-bar flex-1"><span style="width: 64%"></span></div>
-              <span class="text-slate-500 text-xs w-10 text-right tabular">64%</span>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="text-slate-400 text-sm w-14 tabular">3 flat</span>
-              <div class="mini-bar flex-1"><span style="width: 14%; background: linear-gradient(90deg, #94A3B8, #CBD5E1);"></span></div>
-              <span class="text-slate-500 text-xs w-10 text-right tabular">14%</span>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="text-red-400 text-sm w-14 tabular">5 stop</span>
-              <div class="mini-bar flex-1"><span style="width: 22%; background: linear-gradient(90deg, #EF4444, #F87171);"></span></div>
-              <span class="text-slate-500 text-xs w-10 text-right tabular">22%</span>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
-            22 signals over 30 days · 20-day horizon per trade
-          </div>
-        </div>
-
-        <!-- Result column 2 -->
-        <div class="card p-6">
-          <div class="stat-label">Top 5 winners</div>
-          <div class="mt-4 space-y-2.5 text-sm">
-            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
-              <span class="font-mono text-slate-300">TXG</span>
-              <span class="text-emerald-400 font-semibold tabular">+40.1%</span>
-            </div>
-            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
-              <span class="font-mono text-slate-300">HPE</span>
-              <span class="text-emerald-400 font-semibold tabular">+30.2%</span>
-            </div>
-            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
-              <span class="font-mono text-slate-300">MOV</span>
-              <span class="text-emerald-400 font-semibold tabular">+27.6%</span>
-            </div>
-            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
-              <span class="font-mono text-slate-300">VSH</span>
-              <span class="text-emerald-400 font-semibold tabular">+24.8%</span>
-            </div>
-            <div class="flex justify-between items-center row-hover px-2 -mx-2 py-1 rounded">
-              <span class="font-mono text-slate-300">MOG-A</span>
-              <span class="text-emerald-400 font-semibold tabular">+18.2%</span>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
-            May 22 – Jun 2026 · Signal Forge production data
-          </div>
-        </div>
-
-        <!-- Result column 3 -->
-        <div class="card p-6">
-          <div class="stat-label">What we don't claim</div>
-          <ul class="mt-4 space-y-3 text-sm text-slate-300 leading-relaxed">
-            <li class="flex items-start gap-2.5">
-              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-              <span>Annualized returns from 30 days of data</span>
-            </li>
-            <li class="flex items-start gap-2.5">
-              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-              <span>Performance in bear or chop regimes</span>
-            </li>
-            <li class="flex items-start gap-2.5">
-              <svg class="mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
-              <span>That every signal will work</span>
-            </li>
-            <li class="flex items-start gap-2.5">
-              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              <span>What we do: publish monthly, disclose losses, cap risk at 8%</span>
-            </li>
-          </ul>
-          <div class="mt-6 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
-            Full methodology in <a href="#faq" class="underline hover:text-slate-300">FAQ</a>
-          </div>
-        </div>
-      </div>
-
-      <p class="mt-8 text-xs text-slate-500 max-w-3xl">
-        Past performance does not guarantee future results. Sample size is 30 days across a single market regime — a real edge is proven over years, not months. We publish updated numbers on the first of every month, wins and losses both.
-      </p>
-    </div>
-  </section>
-
-  <!-- ─────────── HOW IT WORKS ─────────── -->
-  <section id="how" class="border-t border-slate-800/60 bg-slate-950/40">
-    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
-      <div class="max-w-2xl">
-        <span class="pill">Under the hood</span>
-        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
-          Four steps. Every 15 minutes. Market hours only.
-        </h2>
-      </div>
-
-      <div class="mt-14 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="card p-7">
-          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          </div>
-          <div class="mt-5 stat-label">Step 1 · Scan</div>
-          <h3 class="mt-2 text-xl font-semibold text-white">Wide net, tight filter.</h3>
-          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
-            3,000+ stocks scanned every 15 minutes. Only patterns with tight consolidation, bullish MA stack, and confirmed volume expansion advance.
-          </p>
-        </div>
-
-        <div class="card p-7">
-          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
-          </div>
-          <div class="mt-5 stat-label">Step 2 · Classify</div>
-          <h3 class="mt-2 text-xl font-semibold text-white">Actionable vs. Extension.</h3>
-          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
-            Every candidate is labeled <span class="text-emerald-400">Actionable</span> (fresh breakout from a real base) or <span class="text-amber-400">Extension</span> (continuation of a recent breakout). Confidence weighted by consolidation quality, volume, and structure.
-          </p>
-        </div>
-
-        <div class="card p-7 ring-1 ring-amber-500/30">
-          <div class="w-11 h-11 rounded-lg bg-amber-500/25 border border-amber-500/40 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/><circle cx="12" cy="12" r="3"/></svg>
-          </div>
-          <div class="mt-5 stat-label text-amber-400">Step 3 · Enrich</div>
-          <h3 class="mt-2 text-xl font-semibold text-white">AI reads the earnings call.</h3>
-          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
-            For every stock signal, we pull the latest earnings transcript and use AI to extract tone, guidance direction, highlights, and risk flags. You see the fundamentals behind the technical setup.
-          </p>
-        </div>
-
-        <div class="card p-7">
-          <div class="w-11 h-11 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
-          </div>
-          <div class="mt-5 stat-label">Step 4 · Deliver</div>
-          <h3 class="mt-2 text-xl font-semibold text-white">Entry, stop, context.</h3>
-          <p class="mt-3 text-slate-400 leading-relaxed text-sm">
-            Every high-confidence signal shows on your live dashboard with frozen entry, 8% stop, risk/reward, and the AI earnings summary — all in the same view.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────── AI EARNINGS SHOWCASE ─────────── -->
-  <section class="border-t border-slate-800/60">
-    <div class="max-w-6xl mx-auto px-6 py-20 md:py-24">
-      <div class="grid md:grid-cols-2 gap-12 items-center">
+  <main>
+    <!-- ─────────── HERO ─────────── -->
+    <header class="hero">
+      <div class="glow"></div>
+      <div class="grid-lines"></div>
+      <div class="wrap hero-grid">
         <div>
-          <span class="pill">The differentiator</span>
-          <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white leading-tight">
-            Technical setups without earnings context are half a signal.
-          </h2>
-          <p class="mt-5 text-slate-400 leading-relaxed">
-            TradingView tells you a stock broke out. It won't tell you the CEO just guided down for the next two quarters. DataQuant.ai reads every relevant earnings call, so you skip the setups where the fundamentals disagree with the chart.
-          </p>
-          <ul class="mt-6 space-y-3 text-sm text-slate-300">
-            <li class="flex items-start gap-3">
-              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              <span><strong class="text-white">Tone score</strong> (bullish / neutral / bearish, -1 to +1)</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              <span><strong class="text-white">Guidance direction</strong> (raised / maintained / lowered)</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              <span><strong class="text-white">Highlights &amp; risk flags</strong> pulled straight from management's own words</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <svg class="mt-0.5 flex-shrink-0 text-emerald-400" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-              <span><strong class="text-white">Shown on every dashboard row</strong> — no separate research step</span>
-            </li>
-          </ul>
+          <span class="eyebrow">Breakout research, read by AI</span>
+          <h1 class="display">Every stock,<br>read <span class="grad-text">four ways.</span></h1>
+          <p class="lede">DataQuant screens about 3,300 US stocks every session. It grades the base each one is building, reads the latest earnings call, and checks who is buying and who is talking. Then it writes up what it found, in plain words.</p>
+          <div class="hero-ctas">
+            <a href="#pricing" data-cta="start-trial" class="btn btn-primary">Start a 30-day free trial <span class="arrow">→</span></a>
+            <a href="#today" class="btn btn-ghost">See today's screen</a>
+          </div>
+          <p class="hero-note">30 days free, then $49 a month. Cancel from the billing page.</p>
         </div>
 
-        <!-- Mock earnings card -->
-        <div class="card p-6 md:p-7">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2">
-              <span class="font-mono text-white font-bold text-lg">TXG</span>
-              <span class="text-xs text-slate-500">·</span>
-              <span class="text-xs text-slate-500">Q1 2026 earnings</span>
+        <!-- The product in one card. Illustrative, and labelled so. -->
+        <article class="card scorecard" aria-label="Example DataQuant reading">
+          <div class="sc-head">
+            <div>
+              <div class="sc-ticker">ACME</div>
+              <div class="sc-sub">Industrials · example reading</div>
             </div>
-            <span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Bullish · +0.72</span>
+            <div class="sc-score"><b class="grad-text">8</b><small>/10</small><span>breakout grade</span></div>
           </div>
-          <div class="grid grid-cols-2 gap-3 text-xs">
-            <div class="bg-slate-800/40 rounded-md px-3 py-2 ring-1 ring-slate-700/40">
-              <div class="stat-label">Tone</div>
-              <div class="mt-1 text-emerald-400 font-semibold">Bullish</div>
+          <svg class="sc-spark" viewBox="0 0 400 64" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="sf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b7bff" stop-opacity=".28"/><stop offset="1" stop-color="#8b7bff" stop-opacity="0"/></linearGradient>
+              <linearGradient id="sl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient>
+            </defs>
+            <rect x="150" y="14" width="200" height="34" rx="3" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.12)" stroke-dasharray="3 3"/>
+            <line x1="150" y1="20" x2="400" y2="20" stroke="#f5c76b" stroke-opacity=".7" stroke-dasharray="4 4"/>
+            <path d="M0 58 L30 52 L60 46 L90 38 L120 30 L150 22 L175 34 L200 26 L225 38 L250 30 L275 36 L300 28 L325 32 L350 24 L375 12 L400 6 L400 64 L0 64Z" fill="url(#sf)"/>
+            <path d="M0 58 L30 52 L60 46 L90 38 L120 30 L150 22 L175 34 L200 26 L225 38 L250 30 L275 36 L300 28 L325 32 L350 24 L375 12 L400 6" fill="none" stroke="url(#sl)" stroke-width="2"/>
+          </svg>
+          <dl style="margin:0">
+            <div class="lens">
+              <dt>Technicals</dt>
+              <dd>Grade S base, 16 weeks <span class="muted">· RS 94</span><div class="meter"><i style="width:94%"></i></div></dd>
             </div>
-            <div class="bg-slate-800/40 rounded-md px-3 py-2 ring-1 ring-slate-700/40">
-              <div class="stat-label">Guidance</div>
-              <div class="mt-1 text-emerald-400 font-semibold">Raised</div>
+            <div class="lens">
+              <dt>Fundamentals</dt>
+              <dd>Last call read bullish <span class="muted">· guidance raised</span></dd>
+            </div>
+            <div class="lens">
+              <dt>Popularity</dt>
+              <dd>Tape 7 of 10 <span class="muted">· 64% bullish on StockTwits</span></dd>
+            </div>
+          </dl>
+          <div class="ai-read">
+            <span class="chip chip-ai"><span class="dot"></span>AI read</span><br>
+            ACME closed 2.1% past its $48.20 pivot on 2.4x average volume. The base ran 16 weeks and tops out at the 52-week high. Management raised full-year guidance on the last call.
+          </div>
+          <div class="sc-foot">Illustrative example. Live readings are in the dashboard.</div>
+        </article>
+      </div>
+    </header>
+
+    <!-- ─────────── PROOF STRIP ─────────── -->
+    <section class="proof" aria-label="Coverage and research">
+      <div class="wrap proof-grid">
+        <div class="proof-item"><b id="proof-universe">3,300</b><span>US stocks screened each session</span></div>
+        <div class="proof-item"><b>15 min</b><span>between scans in market hours</span></div>
+        <div class="proof-item"><b>97,789</b><span>graded breakouts in the research set</span></div>
+        <div class="proof-item"><b>1970s</b><span>to today, across 5,484 symbols</span></div>
+      </div>
+    </section>
+
+    <!-- ─────────── FOUR LENSES ─────────── -->
+    <section id="lenses" class="section">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="eyebrow">The product</span>
+          <h2 class="h2">One stock, four readings, one page.</h2>
+          <p class="lede">Most tools show a chart, or a balance sheet, or a feed of posts. DataQuant puts the base, the business and the crowd side by side, and has AI say what they add up to.</p>
+        </div>
+
+        <div class="lenses">
+          <article class="card lens-card reveal">
+            <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7cc4ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-8"/><path d="M3 21h18"/></svg></div>
+            <div class="kicker k-tech">Technicals</div>
+            <h3 class="h3">The base, graded.</h3>
+            <p>Each base gets S, A+ or A from its length, its depth and where it sits against the 52-week high. Relative strength ranks the stock 1 to 99 against everything else scanned. A breakout is scored 1 to 10 from the factors that measured as a lift.</p>
+            <div class="measured"><b>PF 2.45</b><span>for breakouts with RS 95 or higher, against 1.73 under 89.</span></div>
+          </article>
+
+          <article class="card lens-card reveal">
+            <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5c76b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+            <div class="kicker k-fund">Fundamentals</div>
+            <h3 class="h3">The earnings call, read.</h3>
+            <p>A language model reads the latest call transcript and returns the tone from −1 to +1, which way guidance moved, the highlights and the risks management named. The Winners and Beat &amp; Raise lists add growth and surprise history.</p>
+            <div class="measured"><b>Every quarter</b><span>for each US stock on the screen.</span></div>
+          </article>
+
+          <article class="card lens-card reveal">
+            <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2fd8a8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14 20c.3-2.5 1.8-4.5 4.5-4.5 1.4 0 2.5.6 3.5 1.5"/></svg></div>
+            <div class="kicker k-pop">Popularity</div>
+            <h3 class="h3">Who is buying, who is talking.</h3>
+            <p>Heavy-volume days show institutions at work. The 13F register names the funds that hold the stock and how much that list changed. StockTwits and X show the crowd's mood, and the news feed shows what they are reacting to.</p>
+            <div class="measured"><b>32%</b><span>reached +20% at a tape score of 7 or more, against 11 to 13% at the bottom.</span></div>
+          </article>
+
+          <article class="card lens-card ai reveal">
+            <div class="ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b3a8ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div>
+            <div class="kicker k-ai">AI</div>
+            <h3 class="h3">Plain words on top.</h3>
+            <p>Every reading comes with a short write-up of what the screen saw. Ask the screen a question in chat and it answers from the rows themselves. AI agents can connect through the MCP server.</p>
+            <div class="measured"><b>dataquant.ai/mcp</b><span>open to any assistant or agent.</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ─────────── TODAY'S SCREEN (live) ─────────── -->
+    <section id="today" class="section">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="eyebrow"><span class="dot dot-live" style="color:var(--up)"></span>Live</span>
+          <h2 class="h2">Today's screen.</h2>
+          <p class="lede">The market-health gauge and the graded bases that cleared their pivot in the last two sessions, straight from the screen.</p>
+        </div>
+
+        <div class="live-grid">
+          <div class="card health reveal" id="health-card">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <h3 style="margin:0;font-size:16px;font-weight:600">Market health</h3>
+              <span class="faint mono" style="font-size:12px" id="health-asof"></span>
+            </div>
+            <div class="gauge">
+              <svg viewBox="0 0 200 110" aria-hidden="true">
+                <defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="#f87171"/><stop offset=".5" stop-color="#fbbf24"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+                <path d="M15 100 A85 85 0 0 1 185 100" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="12" stroke-linecap="round"/>
+                <path id="gauge-arc" d="M15 100 A85 85 0 0 1 185 100" fill="none" stroke="url(#gg)" stroke-width="12" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100"/>
+              </svg>
+              <div class="gauge-num"><b id="health-score">—</b><span class="chip" id="health-regime">loading</span></div>
+            </div>
+            <p id="health-text">Trend, distribution days and breadth, rolled into one score from 0 to 100.</p>
+            <p style="margin-top:16px"><a href="/pulse" class="btn btn-ghost btn-sm">Open Market Pulse <span class="arrow">→</span></a></p>
+          </div>
+
+          <div class="card board reveal">
+            <div class="board-head">
+              <h3>Cleared the pivot</h3>
+              <span class="faint" style="font-size:13px" id="board-sessions">last two sessions</span>
+            </div>
+            <table aria-describedby="board-sessions">
+              <thead><tr><th>Ticker</th><th>Grade</th><th class="r">RS</th><th class="r">Past pivot</th><th class="r hide-sm">Volume</th></tr></thead>
+              <tbody id="board-body">
+                <tr><td colspan="5"><div class="skeleton" style="width:70%"></div></td></tr>
+                <tr><td colspan="5"><div class="skeleton" style="width:55%"></div></td></tr>
+                <tr><td colspan="5"><div class="skeleton" style="width:62%"></div></td></tr>
+              </tbody>
+            </table>
+            <div class="board-foot">
+              <span id="board-week">Weekly receipts count every breakout the screen produced.</span>
+              <a href="#pricing" data-cta="start-trial">Full readings in the dashboard →</a>
             </div>
           </div>
-          <div class="mt-4">
-            <div class="stat-label text-emerald-400">+ Highlights</div>
-            <ul class="mt-2 space-y-1.5 text-sm text-slate-300">
-              <li>Record ACV growth, +47% YoY</li>
-              <li>Gross margin expansion 380 bps</li>
-              <li>Guidance raised on FY revenue</li>
-            </ul>
-          </div>
-          <div class="mt-4">
-            <div class="stat-label text-red-400">⚠ Risk flags</div>
-            <ul class="mt-2 space-y-1.5 text-sm text-slate-300">
-              <li>Enterprise sales cycle lengthening</li>
-            </ul>
-          </div>
-          <div class="mt-5 pt-4 border-t border-slate-800/70 text-xs text-slate-500">
-            Included with every Actionable + Extension signal for US-listed stocks
-          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─────────── DASHBOARD PREVIEW ─────────── -->
-  <section class="border-t border-slate-800/60">
-    <div class="max-w-6xl mx-auto px-6 py-20 md:py-24">
-      <div class="text-center max-w-2xl mx-auto">
-        <span class="pill">The dashboard</span>
-        <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white">
-          Every active signal, one screen.
-        </h2>
-        <p class="mt-4 text-slate-400">
-          Sort by confidence, sector, or days since breakout. Entry, stop, and earnings tone on every row — one screen, one decision per stock.
-        </p>
-      </div>
+    <hr class="rule">
 
-      <!-- Mock dashboard preview -->
-      <div class="mt-12 card p-6 md:p-8">
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-2 text-sm text-slate-400">
-            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
-            Preview · Sample data
-          </div>
-          <div class="hidden md:flex items-center gap-2 text-xs text-slate-500">
-            <span class="kbd">⌘</span><span class="kbd">K</span>
-            <span>quick jump</span>
-          </div>
+    <!-- ─────────── HOW IT WORKS ─────────── -->
+    <section id="how" class="section">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="eyebrow">How it works</span>
+          <h2 class="h2">From 3,300 names to the few worth reading.</h2>
         </div>
-
-        <div class="overflow-x-auto rounded-lg border border-slate-800/70">
-          <table class="w-full text-sm min-w-[640px]">
-            <thead class="bg-slate-800/50">
-              <tr class="text-left text-slate-400 text-xs uppercase tracking-wider">
-                <th class="px-4 py-3 font-medium">Ticker</th>
-                <th class="px-4 py-3 font-medium">Signal</th>
-                <th class="px-4 py-3 font-medium text-right">Entry</th>
-                <th class="px-4 py-3 font-medium text-right">Stop</th>
-                <th class="px-4 py-3 font-medium text-right">R/R</th>
-                <th class="px-4 py-3 font-medium text-center">Earnings</th>
-                <th class="px-4 py-3 font-medium text-right">Confidence</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-800/60">
-              <tr class="row-hover">
-                <td class="px-4 py-3.5 font-mono font-semibold text-white">TXG</td>
-                <td class="px-4 py-3.5"><span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Actionable</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$47.82</td>
-                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$43.99</td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular">2.4</td>
-                <td class="px-4 py-3.5 text-center"><span class="text-emerald-400 text-xs font-semibold">Bullish · Raised</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-emerald-400 tabular font-semibold">99%</td>
-              </tr>
-              <tr class="row-hover">
-                <td class="px-4 py-3.5 font-mono font-semibold text-white">HPE</td>
-                <td class="px-4 py-3.5"><span class="pill">Extension</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$22.14</td>
-                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$20.37</td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular">1.8</td>
-                <td class="px-4 py-3.5 text-center"><span class="text-slate-400 text-xs font-semibold">Neutral · Maintained</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-emerald-400 tabular font-semibold">92%</td>
-              </tr>
-              <tr class="row-hover">
-                <td class="px-4 py-3.5 font-mono font-semibold text-white">MOV</td>
-                <td class="px-4 py-3.5"><span class="pill" style="background: rgba(16, 185, 129, 0.12); color: #34D399; border-color: rgba(16, 185, 129, 0.25);">Actionable</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$31.05</td>
-                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$28.57</td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular">2.1</td>
-                <td class="px-4 py-3.5 text-center"><span class="text-emerald-400 text-xs font-semibold">Bullish · Maintained</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular font-semibold">89%</td>
-              </tr>
-              <tr class="row-hover">
-                <td class="px-4 py-3.5 font-mono font-semibold text-white">VSH</td>
-                <td class="px-4 py-3.5"><span class="pill">Extension</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-amber-400 tabular">$18.44</td>
-                <td class="px-4 py-3.5 text-right font-mono text-red-400 tabular">$16.96</td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular">1.5</td>
-                <td class="px-4 py-3.5 text-center"><span class="text-red-400 text-xs font-semibold">Bearish · Lowered</span></td>
-                <td class="px-4 py-3.5 text-right font-mono text-white tabular font-semibold">84%</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500">
-          <span><span class="text-emerald-400">Actionable</span> = fresh breakout from a real base</span>
-          <span class="text-slate-700 hidden sm:inline">·</span>
-          <span><span class="text-amber-400">Extension</span> = continuation of a recent breakout</span>
-          <span class="text-slate-700 hidden sm:inline">·</span>
-          <span>R/R vs 8% stop</span>
+        <div class="steps">
+          <div class="step reveal"><div class="n">01</div><h3>Screen</h3><p>Every US stock above $300M in market value and a liquidity floor, every 15 minutes in market hours and again after the close.</p></div>
+          <div class="step reveal"><div class="n">02</div><h3>Grade</h3><p>When a close clears a base's pivot, the base is graded and the breakout scored 1 to 10. The board starts at 7.</p></div>
+          <div class="step reveal"><div class="n">03</div><h3>Read</h3><p>AI reads the earnings call. The tape, the 13F register and the crowd go beside it, so the chart never stands alone.</p></div>
+          <div class="step reveal"><div class="n">04</div><h3>Report</h3><p>The dashboard, an email when a graded base clears, and weekly receipts that count every breakout, including the ones that fell through.</p></div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─────────── PRICING ─────────── -->
-  <section id="pricing" class="border-t border-slate-800/60 bg-slate-950/40">
-    <div class="max-w-6xl mx-auto px-6 py-20 md:py-28">
-      <div class="text-center max-w-2xl mx-auto">
-        <span class="pill">Pricing</span>
-        <h2 class="mt-5 text-3xl md:text-5xl font-bold tracking-tight text-white">
-          Built for accounts where signal quality outweighs subscription friction.
-        </h2>
-        <p class="mt-4 text-slate-400">
-          At $49/month — or $449/year — DataQuant.ai works for accounts deploying $10k+. The fee stays under 6% annual friction, and one avoided losing trade covers most of a year of subscription.
-        </p>
-      </div>
+    <hr class="rule">
 
-      <div class="mt-14 max-w-lg mx-auto">
-        <div class="card p-8 md:p-10 relative overflow-hidden">
-          <!-- Amber corner glow -->
-          <div class="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none"></div>
-
-          <div class="relative">
-            <div class="flex items-center gap-3">
-              <span class="pill">Pro</span>
-              <span class="text-xs text-slate-500">Single tier</span>
-            </div>
-            <div class="mt-5 inline-flex bg-slate-800/80 ring-1 ring-slate-700/60 rounded-full p-1 text-sm" role="group" aria-label="Billing period">
-              <button type="button" id="plan-monthly" onclick="setPlan('monthly')" class="px-4 py-1.5 rounded-full font-semibold transition">Monthly</button>
-              <button type="button" id="plan-yearly" onclick="setPlan('yearly')" class="px-4 py-1.5 rounded-full font-semibold transition">Yearly <span class="text-emerald-400 text-xs font-bold">save 24%</span></button>
-            </div>
-            <div class="mt-4 flex items-baseline gap-2">
-              <span id="plan-price" class="text-5xl md:text-6xl font-bold text-white tabular">$49</span>
-              <span id="plan-period" class="text-slate-500 text-lg">/month</span>
-            </div>
-            <p id="plan-note" class="mt-2 text-slate-400 text-sm">30-day free trial. Card required. Cancel anytime.</p>
-
-            <ul class="mt-8 space-y-3.5 text-sm">
-              <!-- Earnings analysis: the differentiator, elevated with amber highlight -->
-              <li class="flex items-start gap-3 bg-amber-500/5 -mx-3 px-3 py-2 rounded-md ring-1 ring-amber-500/20">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200"><strong class="text-amber-300">AI earnings-call analysis</strong> on every stock signal — tone score, guidance direction, highlights, risk flags</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200">All <strong class="text-white">Actionable &amp; Extension</strong> breakout signals</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200">Frozen entry price &amp; 8% stop-loss on every trade</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200">15-minute scans of 3,000+ stocks during market hours</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200">Live dashboard with sortable sector, industry &amp; setup filters</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200"><strong class="text-white">Bonus:</strong> Base setup signals (pre-breakout) on the dashboard</span>
-              </li>
-              <li class="flex items-start gap-3">
-                <svg class="mt-0.5 flex-shrink-0" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg>
-                <span class="text-slate-200">Cancel or manage plan any time via Stripe portal</span>
-              </li>
-            </ul>
-
-            <a href="/signup" data-cta="start-trial" class="btn-primary w-full justify-center mt-8">
-              Start 30-day free trial
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-            </a>
-            <p class="mt-4 text-xs text-slate-500 text-center">
-              Zero charge if you cancel before day 30 · Secured by Stripe
-            </p>
-          </div>
+    <!-- ─────────── RESEARCH ─────────── -->
+    <section id="research" class="section">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="eyebrow">Research</span>
+          <h2 class="h2">Measured, not asserted.</h2>
+          <p class="lede">Every rule on the screen was tested against decades of breakouts before it shipped. The notes are public, including the results that did not flatter the method.</p>
         </div>
-
-        <script>
-          // Billing-period toggle: updates the displayed price and remembers the
-          // choice for the checkout session created after sign-up.
-          function setPlan(plan) {
-            try { sessionStorage.setItem('dqPlan', plan); } catch {}
-            const yearly = plan === 'yearly';
-            document.getElementById('plan-price').textContent = yearly ? '$449' : '$49';
-            document.getElementById('plan-period').textContent = yearly ? '/year' : '/month';
-            document.getElementById('plan-note').textContent = yearly
-              ? '30-day free trial. $449 billed yearly after — about $37/month.'
-              : '30-day free trial. Card required. Cancel anytime.';
-            const on = 'px-4 py-1.5 rounded-full font-semibold transition bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40';
-            const off = 'px-4 py-1.5 rounded-full font-semibold transition text-slate-400 hover:text-white';
-            document.getElementById('plan-monthly').className = yearly ? off : on;
-            document.getElementById('plan-yearly').className = yearly ? on : off;
-          }
-          (function () {
-            let p = 'monthly';
-            try { p = sessionStorage.getItem('dqPlan') === 'yearly' ? 'yearly' : 'monthly'; } catch {}
-            setPlan(p);
-          })();
-        </script>
-
-        <!-- The math -->
-        <div class="mt-6 max-w-lg mx-auto text-center">
-          <p class="text-xs text-slate-500 leading-relaxed">
-            <strong class="text-slate-400">The math:</strong> $49/mo = $588/yr ($449 billed annually). On a $50k account, that's ~1% annual friction — less than one skipped losing trade. On a $10k account, it's ~6% — know your account size.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────── FAQ ─────────── -->
-  <section id="faq" class="border-t border-slate-800/60">
-    <div class="max-w-3xl mx-auto px-6 py-20 md:py-24">
-      <div class="text-center">
-        <span class="pill">FAQ</span>
-        <h2 class="mt-5 text-3xl md:text-4xl font-bold tracking-tight text-white">Common questions.</h2>
-      </div>
-
-      <div class="mt-12 space-y-3">
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">Why not just use TradingView or TrendSpider?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <div class="mt-3 text-slate-400 text-sm leading-relaxed space-y-2">
-            <p>Fair question. If you have the time to build multi-timeframe scanners with MA stacks + volume + consolidation filters, and then read every relevant earnings call yourself, TradingView Pro at $60/mo will get you close on the scanning side.</p>
-            <p>DataQuant is different in three ways:</p>
-            <ul class="space-y-1 pl-4 list-disc marker:text-slate-600">
-              <li><strong class="text-slate-300">Curation.</strong> You get 20-30 signals per month, not 500 alerts. Each pre-filtered to confidence &gt; 80%.</li>
-              <li><strong class="text-slate-300">AI earnings context</strong> on every signal. TradingView doesn't summarize earnings call tone, guidance, or risk flags — you'd read the transcript yourself.</li>
-              <li><strong class="text-slate-300">Frozen entry &amp; disciplined 8% stop.</strong> The trade setup is fixed at the moment of signal — no drift as prices move.</li>
-            </ul>
-            <p>If your account is $50k+ and your time is worth more than $30/hour, the math flips. If not, TradingView is honestly a better choice.</p>
-          </div>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">30 days of data isn't a real backtest. Why should I trust these numbers?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <div class="mt-3 text-slate-400 text-sm leading-relaxed space-y-2">
-            <p>You shouldn't — not as proof of a permanent edge. 30 days is a single market regime. Any breakout strategy will look good when the market is trending up.</p>
-            <p>What the 30-day sample proves is narrower: the system runs, the signals fire, the discipline holds. Treat it as evidence the mechanics work, not evidence they'll always work.</p>
-            <p>We publish updated results monthly — wins and losses both — so you can watch the sample grow across regimes. If the number drops in a chop or bear month, we'll say so. Try the free trial and evaluate on your own experience.</p>
-          </div>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">How does the AI earnings analysis work?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            For every US-listed stock signal, we fetch the most recent earnings call transcript and run it through a large language model to extract: (1) overall tone score (bullish/neutral/bearish, -1 to +1), (2) guidance direction (raised/maintained/lowered), (3) 2-4 highlights pulled from management's own language, (4) 1-3 risk flags. This appears on the dashboard row and inside the signal detail drawer. Results are cached per quarter — the same analysis powers every downstream signal.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">Is this investment advice?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            No. DataQuant.ai provides systematic technical signals for research and educational purposes only. We are not registered investment advisors. Nothing on this site is a recommendation to buy or sell any security. Consult a licensed advisor before trading.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">What's the methodology behind the 30-day results?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            22 signals fired between May 22 – Jun 20, 2026. Each held for 20 trading days or stopped at -8% (whichever came first). Returns averaged equal-weight. Live production data, no cherry-picking, all signals disclosed — not a curated subset. We do not annualize this data or project it forward.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">What happens after the 30-day trial?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            If you don't cancel before day 30, your card is charged for the plan you chose — $49 monthly or $449 yearly (about $37/month) — and your subscription continues. Cancel any time from your Stripe billing portal.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">What stocks do you cover?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            The full US market — every actively-traded NASDAQ, NYSE, and AMEX stock above $300M market cap and 100k average daily volume. That's roughly 3,000+ tickers across all major sectors, re-screened live so the universe stays current.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">How do I receive signals?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            Via your live dashboard. It updates every 15 minutes during market hours and surfaces every signal with entry, 8% stop, risk/reward, and the AI earnings summary. High-confidence signals bubble to the top; sortable filters let you drill in by sector or setup type.
-          </p>
-        </details>
-
-        <details class="card p-6 group">
-          <summary class="flex items-center justify-between cursor-pointer list-none">
-            <span class="font-semibold text-white">Can I export signals to my broker?</span>
-            <svg class="text-slate-500 group-open:rotate-180 transition-transform" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg>
-          </summary>
-          <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-            Direct execution isn't included. Each signal links out to TradingView for chart context; you place trades manually via your own broker.
-          </p>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────── FINAL CTA ─────────── -->
-  <section class="border-t border-slate-800/60 grid-bg">
-    <div class="max-w-3xl mx-auto px-6 py-20 md:py-24 text-center">
-      <h2 class="text-3xl md:text-5xl font-bold tracking-tight text-white">
-        Stop watching charts. Start getting signals.
-      </h2>
-      <p class="mt-4 text-lg text-slate-400">
-        30 days free. Zero risk before the trial ends.
-      </p>
-      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-        <a href="/signup" data-cta="start-trial" class="btn-primary">
-          Start 30-day free trial
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────── FOOTER ─────────── -->
-  <footer class="border-t border-slate-800/60 bg-slate-950/60">
-    <div class="max-w-6xl mx-auto px-6 py-10">
-      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div class="flex items-center gap-2 text-sm font-semibold">
-          <span class="inline-flex w-6 h-6 items-center justify-center rounded bg-amber-500/15 border border-amber-500/30">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#FBBF24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
-          </span>
-          <span>DataQuant<span class="text-amber-400">.ai</span></span>
-        </div>
-        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-400">
-          <a href="https://x.com/tradersud" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 hover:text-white transition">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"/></svg>
-            @tradersud
+        <div class="research">
+          <a class="card paper reveal" href="/learn/exit-rules-study">
+            <span class="tag">Study</span>
+            <h3>What should close a breakout?</h3>
+            <p>26 sell rules over 97,789 graded breakouts, replayed through a slot-limited book.</p>
+            <span class="go">Read the note →</span>
           </a>
-          <a href="/terms" class="hover:text-white transition">Terms</a>
-          <a href="/privacy" class="hover:text-white transition">Privacy</a>
-          <a href="/contact" class="hover:text-white transition">Contact</a>
-          <a href="mailto:hello@dataquant.ai" class="hover:text-white transition">hello@dataquant.ai</a>
+          <a class="card paper reveal" href="/learn/honest-backtest">
+            <span class="tag">Method</span>
+            <h3>The honest backtest</h3>
+            <p>How the screen measures itself, the good month and the bad one, never annualized.</p>
+            <span class="go">Read the note →</span>
+          </a>
+          <a class="card paper reveal" href="/learn/relative-strength-explained">
+            <span class="tag">Guide</span>
+            <h3>Relative strength, explained</h3>
+            <p>The 1 to 99 rank, computed per market, and why it ranks rather than triggers.</p>
+            <span class="go">Read the guide →</span>
+          </a>
+          <a class="card paper reveal" href="/learn/reading-a-base-xray">
+            <span class="tag">Guide</span>
+            <h3>Reading a base X-ray</h3>
+            <p>Pivot, depth, coil, volume dry-up and failed pokes, with worked examples.</p>
+            <span class="go">Read the guide →</span>
+          </a>
+        </div>
+        <p class="reveal" style="margin-top:28px;font-size:14px" ><a href="/learn" class="muted">All guides and notes →</a></p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ─────────── PRICING ─────────── -->
+    <section id="pricing" class="section">
+      <div class="wrap">
+        <div class="head head-center reveal">
+          <span class="eyebrow">Pricing</span>
+          <h2 class="h2">One plan. Everything on the screen.</h2>
+          <p class="lede">Thirty days free. Nothing is charged if you cancel before day 30.</p>
+        </div>
+
+        <div class="price-wrap">
+          <div class="card price-card main reveal">
+            <span class="chip chip-ai"><span class="dot"></span>Pro</span>
+            <div><div class="toggle" role="group" aria-label="Billing period">
+              <button type="button" id="plan-monthly" onclick="setPlan('monthly')">Monthly</button>
+              <button type="button" id="plan-yearly" onclick="setPlan('yearly')">Yearly <span class="save">−24%</span></button>
+            </div></div>
+            <div class="price"><b id="plan-price">$49</b><span id="plan-period">/month</span></div>
+            <p id="plan-note" class="muted" style="margin:10px 0 0;font-size:14px">After a 30-day free trial. Card required, cancel any time.</p>
+            <a href="/signup" data-cta="start-trial" class="btn btn-primary" style="width:100%;margin-top:26px">Start a 30-day free trial <span class="arrow">→</span></a>
+            <p class="faint" style="margin:12px 0 0;font-size:12px;text-align:center">Checkout and billing by Stripe</p>
+          </div>
+
+          <div class="card price-card reveal">
+            <h3 class="h3" style="font-size:18px">What is in it</h3>
+            <ul class="ticks">
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>The full screen: graded breakouts, handles, retests and extensions</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>AI earnings-call reads on every US stock</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>Tape score, 13F holders, social sentiment and news</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>Two-year base X-ray charts for any ticker</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>An email when a graded base clears its pivot</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>Ask the screen: chat over every row it wrote</span></li>
+              <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4 4 8-8"/></svg><span>US and India, sector strength, market health</span></li>
+            </ul>
+          </div>
         </div>
       </div>
-      <div class="divider mt-8"></div>
-      <p class="mt-6 text-xs text-slate-500 leading-relaxed max-w-4xl">
-        <strong class="text-slate-400">Not investment advice.</strong> DataQuant.ai provides technical breakout signals for research and educational purposes only. We are not registered investment advisors or broker-dealers. Nothing on this site constitutes a recommendation to buy or sell any security. Past performance is not indicative of future results. Trading securities involves substantial risk of loss and is not suitable for all investors. You are solely responsible for your own trading decisions.
-      </p>
-      <p class="mt-4 text-xs text-slate-600">© 2026 DataQuant.ai. All rights reserved.</p>
+    </section>
+
+    <hr class="rule">
+
+    <!-- ─────────── FAQ (mirrors the FAQPage JSON-LD above) ─────────── -->
+    <section id="faq" class="section">
+      <div class="wrap wrap-narrow">
+        <div class="head reveal">
+          <span class="eyebrow">Questions</span>
+          <h2 class="h2">Asked and answered.</h2>
+        </div>
+        <div class="faq reveal" style="margin-top:40px">
+          <details open>
+            <summary>What is DataQuant?</summary>
+            <div class="answer"><p>DataQuant is a stock screener for US and Indian markets. It grades the base each liquid stock is building, reads the latest earnings call with AI, and tracks institutional and social activity around each name. It reports what the screen saw. It does not recommend trades.</p></div>
+          </details>
+          <details>
+            <summary>How does DataQuant grade a breakout?</summary>
+            <div class="answer"><p>When a stock closes above the pivot of its base, the base is graded S, A+ or A by its length, depth and distance from the 52-week high.</p><p>The breakout is then scored 1 to 10 from factors that measured as a lift across 97,789 historical breakouts: relative strength, base grade, institutional activity, and how far and on how much volume the close cleared the pivot. Past 5% extension it loses points. The dashboard shows 7 and above by default.</p></div>
+          </details>
+          <details>
+            <summary>What does the AI read?</summary>
+            <div class="answer"><p>A language model reads the most recent earnings call transcript for each US stock on the screen. It returns a tone score from −1 to +1, the direction of guidance, two to four highlights in management's own words and one to three risk flags. Results are cached per quarter.</p></div>
+          </details>
+          <details>
+            <summary>What does popularity mean here?</summary>
+            <div class="answer"><p>Who is buying and who is talking. It combines an institutional activity score from 0 to 10 built from heavy-volume up and down days, the named funds on the 13F register and how much that register turned over, social sentiment from StockTwits and X, and the latest news.</p></div>
+          </details>
+          <details>
+            <summary>Which stocks are covered?</summary>
+            <div class="answer"><p>About 3,300 US stocks and ETFs on NASDAQ, NYSE and AMEX above $300 million in market value and a liquidity floor, plus Indian NSE stocks. The US screen runs every 15 minutes during market hours and again after the close.</p></div>
+          </details>
+          <details>
+            <summary>Can AI assistants and agents use DataQuant?</summary>
+            <div class="answer"><p>Yes. The MCP server at <span class="mono">dataquant.ai/mcp</span> serves the market-health gauge, sector strength, the base X-ray for any stock and search over the research notes. A plain-text summary for language models is at <a href="/llms.txt" class="mono" style="text-decoration:underline">/llms.txt</a>.</p></div>
+          </details>
+          <details>
+            <summary>How much does it cost?</summary>
+            <div class="answer"><p>A 30-day free trial, then $49 a month or $449 a year. Cancel any time from the billing portal; nothing is charged if you cancel before day 30.</p></div>
+          </details>
+          <details>
+            <summary>Is this investment advice?</summary>
+            <div class="answer"><p>No. DataQuant publishes screen output for research and education. It is not a registered investment adviser or broker-dealer, and nothing on the site is a recommendation to buy or sell any security.</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── FINAL CTA ─────────── -->
+    <section class="section final">
+      <div class="glow" style="transform:rotate(180deg)"></div>
+      <div class="wrap reveal" style="position:relative">
+        <h2 class="h2">Read the market the way the screen does.</h2>
+        <p class="lede">Technicals, fundamentals and popularity for every liquid US stock, with AI on top.</p>
+        <div class="hero-ctas">
+          <a href="/signup" data-cta="start-trial" class="btn btn-primary">Start a 30-day free trial <span class="arrow">→</span></a>
+          <a href="/pulse" class="btn btn-ghost">Open Market Pulse</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <a href="/" class="brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>DataQuant</a>
+          <p style="margin:14px 0 0;max-width:300px">Technicals, fundamentals and popularity for every liquid US stock, read by AI.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul><li><a href="/dashboard" data-cta="login">Dashboard</a></li><li><a href="/pulse">Market Pulse</a></li><li><a href="#pricing">Pricing</a></li><li><a href="/chat">Ask the screen</a></li></ul>
+        </div>
+        <div>
+          <h4>Research</h4>
+          <ul><li><a href="/learn">Learn</a></li><li><a href="/learn/exit-rules-study">Exit rules study</a></li><li><a href="/learn/honest-backtest">The honest backtest</a></li><li><a href="/llms.txt">llms.txt</a></li></ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul><li><a href="https://x.com/tradersud" target="_blank" rel="noopener">X · @tradersud</a></li><li><a href="/contact">Contact</a></li><li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul>
+        </div>
+      </div>
+      <p class="footer-legal">Screen output for research, not advice. DataQuant is not a registered investment adviser or broker-dealer, and nothing on this site is a recommendation to buy or sell any security. Past results do not predict future ones, and trading securities carries a substantial risk of loss. © 2026 DataQuant.</p>
     </div>
   </footer>
+
+  <script>
+    // Billing-period toggle: updates the displayed price and remembers the
+    // choice for the checkout session created after sign-up.
+    function setPlan(plan) {
+      try { sessionStorage.setItem('dqPlan', plan); } catch {}
+      const yearly = plan === 'yearly';
+      document.getElementById('plan-price').textContent = yearly ? '$449' : '$49';
+      document.getElementById('plan-period').textContent = yearly ? '/year' : '/month';
+      document.getElementById('plan-note').textContent = yearly
+        ? 'After a 30-day free trial. Billed yearly, about $37 a month.'
+        : 'After a 30-day free trial. Card required, cancel any time.';
+      document.getElementById('plan-monthly').setAttribute('aria-pressed', String(!yearly));
+      document.getElementById('plan-yearly').setAttribute('aria-pressed', String(yearly));
+    }
+    (function () {
+      let p = 'monthly';
+      try { p = sessionStorage.getItem('dqPlan') === 'yearly' ? 'yearly' : 'monthly'; } catch {}
+      setPlan(p);
+    })();
+
+    // Reveal sections as they scroll in.
+    (function () {
+      const els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) { els.forEach((e) => e.classList.add('in')); return; }
+      const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      }), { rootMargin: '0px 0px -8% 0px' });
+      els.forEach((e) => io.observe(e));
+    })();
+
+    // Live data: market health, the cleared-the-pivot board, the week's
+    // receipts and the universe size. Each piece fails quietly to its
+    // static fallback.
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+      get('/api/market-health').then((d) => {
+        if (!d || d.score == null) return;
+        const tone = d.regime === 'risk-on' ? 'chip-up' : d.regime === 'caution' ? 'chip-warn' : 'chip-down';
+        const word = d.regime === 'risk-on' ? 'supportive' : d.regime === 'caution' ? 'mixed' : 'weak';
+        $('health-score').textContent = d.score;
+        $('health-regime').className = 'chip ' + tone;
+        $('health-regime').textContent = 'tape is ' + word;
+        $('gauge-arc').setAttribute('stroke-dasharray', `${Math.max(0, Math.min(100, d.score))} 100`);
+        if (d.asOf) $('health-asof').textContent = d.asOf;
+        const dd = d.components && d.components.distribution ? d.components.distribution.days : null;
+        const br = d.components && d.components.breadth ? d.components.breadth.pctPositive1m : null;
+        const bits = [];
+        if (dd != null) bits.push(`${dd} distribution days in the last 25 sessions`);
+        if (br != null) bits.push(`${br}% of stocks up on the month`);
+        if (bits.length) $('health-text').textContent = bits.join(', and ') + '.';
+      });
+
+      get('/api/cleared').then((d) => {
+        const body = $('board-body');
+        const rows = d && Array.isArray(d.cleared) ? d.cleared.slice(0, 6) : [];
+        if (!rows.length) {
+          body.innerHTML = '<tr><td colspan="5" class="muted" style="white-space:normal">No graded base cleared its pivot in the last two sessions. The screen reports quiet days too.</td></tr>';
+          return;
+        }
+        if (d.sessions && d.sessions.length) $('board-sessions').textContent = d.sessions.slice().reverse().join(' to ');
+        body.innerHTML = rows.map((r) => {
+          const g = String(r.grade || '');
+          const gc = g === 'S' ? 'grade-S' : g === 'A+' ? 'grade-Aplus' : '';
+          const pct = Number(r.pctPast);
+          return `<tr>
+            <td class="t">${esc(r.asset)}</td>
+            <td>${g ? `<span class="grade ${gc}">${esc(g)}</span>` : '<span class="faint">—</span>'}</td>
+            <td class="r mono">${r.rs ?? '—'}</td>
+            <td class="r mono ${pct >= 0 ? 'up' : 'down'}">${Number.isFinite(pct) ? (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%' : '—'}</td>
+            <td class="r mono hide-sm muted">${r.volRatio != null ? Number(r.volRatio).toFixed(1) + 'x' : '—'}</td>
+          </tr>`;
+        }).join('');
+      });
+
+      get('/api/alerts').then((d) => {
+        const s = d && d.summary;
+        if (!s || !s.count) return;
+        $('board-week').textContent = `This week the screen emailed ${s.count} breakout${s.count === 1 ? '' : 's'}. ${s.past} still past the pivot, ${s.fell} fell through the fail level.`;
+      });
+
+      get('/api/sector-strength').then((d) => {
+        const n = d && d.universe;
+        if (n) $('proof-universe').textContent = Number(n).toLocaleString();
+      });
+    })();
+  </script>
 
   <script>
     // Clerk auth wiring. Publishable key is safe to embed (it's public by design;

@@ -78,96 +78,158 @@
   ]
 }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#07080b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%238b7bff'/%3E%3Cstop offset='1' stop-color='%232fd8a8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2310131a'/%3E%3Cpath d='M7 21l5-5 4 3 9-9' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
-    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-    html { scroll-behavior: smooth; }
-    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
-    .tabular { font-variant-numeric: tabular-nums; }
-    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
-    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
-    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
-    article li { margin-bottom:0.4rem; }
-    article strong { color:var(--fg); }
-    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
-    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
-    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
-    .metric b { color:var(--fg); }
-    .metric span { color:var(--muted); font-size:0.95rem; }
-    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
-    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
-    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
-    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+    /* ── Article (Learn) ── */
+    .art-head { position: relative; overflow: hidden; padding: 64px 0 44px; border-bottom: 1px solid var(--line); }
+    .art-head .wrap { position: relative; }
+    .crumbs { font-size: 13px; color: var(--fg-3); margin: 0 0 26px; }
+    .crumbs a { color: var(--fg-2); }
+    .crumbs a:hover { color: var(--fg); }
+    .art-title { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; margin: 18px 0 0; text-wrap: balance; }
+    .art-head .lede { margin-top: 18px; }
+    .art-meta { margin: 24px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-family: var(--mono); font-size: 12px; color: var(--fg-3); }
+    .art-meta span + span::before { content: '·'; margin-right: 14px; color: var(--fg-3); }
+    .art-body { padding: 44px 0 96px; }
+    .art-body > .prose > :first-child { margin-top: 0; }
+    .callout { margin: 0 0 36px; padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--line-2); background: rgba(255,255,255,.025); font-size: 14px; line-height: 1.6; color: var(--fg-2); }
+    .prose .metric { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin: 0 0 10px; font-size: 15.5px; line-height: 1.65; }
+    .prose .metric b { color: var(--fg); font-weight: 600; }
+    .prose .metric span { color: var(--fg-2); }
+    .prose .hi-up { color: var(--up); font-weight: 600; }
+    .prose .faq { margin-top: 20px; }
+    .prose .faq summary { font-size: 16px; color: var(--fg); padding: 18px 0; }
+    .prose .faq .answer { font-size: 15.5px; }
+    .related { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+    .prose .related a { display: flex; flex-direction: column; gap: 6px; padding: 18px; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; }
+    .prose .related a:hover { border-color: var(--line-2); transform: translateY(-2px); }
+    .rel-t { font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; line-height: 1.35; }
+    .rel-d { font-size: 13.5px; line-height: 1.55; color: var(--fg-2); }
+    @media (max-width: 560px) { .related { grid-template-columns: 1fr; } }
+    .end-cta { position: relative; overflow: hidden; margin-top: 64px; padding: 36px 28px; text-align: center; }
+    .prose .end-cta h2 { margin: 0; font-size: 24px; }
+    .prose .end-cta p { margin: 10px auto 22px; max-width: 480px; color: var(--fg-2); font-size: 15.5px; }
+    .prose a.btn { text-decoration: none; }
+    .prose a.btn-primary { color: #08090c; }
   </style>
 </head>
 <body>
-  <nav class="border-b border-slate-800/60">
-    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
-      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
-      <div class="flex items-center gap-5 text-slate-400">
-        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
-        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
-        <a href="/dashboard" style="text-decoration:none" class="hover:text-white">Dashboard</a>
-        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a href="/" class="brand" aria-label="DataQuant home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DataQuant
+      </a>
+      <div class="nav-links">
+        <a href="/#lenses">Product</a>
+        <a href="/#today">Today</a>
+        <a href="/learn" aria-current="page">Research</a>
+        <a href="/pulse">Market Pulse</a>
+        <a href="/#pricing">Pricing</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/dashboard" data-cta="login" class="login">Log in</a>
+        <a href="/#pricing" data-cta="start-trial" class="btn btn-primary btn-sm">Start free trial</a>
       </div>
     </div>
   </nav>
-  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
 
-    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">Guide</div>
+  <main>
     <article>
-      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">What Is a Volatility Contraction Pattern (VCP)?</h1>
-      <p class="text-lg text-slate-400 mt-4">A stock about to make a big move usually spends weeks looking like nothing is happening. The swings shrink, volume fades, and the chart gets boring. That boredom is the signal — and it has a name.</p>
-      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
-      
-      <h2>The idea in one paragraph</h2>
-      <p>A Volatility Contraction Pattern is a pause in a rising stock where each swing gets smaller than the last while volume dries up, until price coils tightly beneath a ceiling — the <strong>pivot</strong> — and then breaks through it on a surge of volume. The pattern was named and popularized by Mark Minervini, a two-time US Investing Champion, but the underlying observation runs through a century of trend-following, from Jesse Livermore to William O'Neil.</p>
-      <h2>Why a stock goes quiet before it runs</h2>
-      <p>During the base, ownership changes hands. Impatient holders — the ones who bought late or without a plan — get bored or shaken out and sell. Steadier buyers absorb those shares. Volume fades not because nothing is happening, but because the <em>sellers are running out</em>. When almost no one is left to sell, it takes very little buying to move the price. That is why the eventual breakout can be so sharp: the resistance quietly evaporated while the chart looked dull.</p>
-      <h2>The anatomy, step by step</h2>
-      <p>Every real VCP tells the same story in the same order. First, a <strong>prior uptrend</strong> — the VCP is a pause inside strength, never a bottom-fishing pattern; a stock nobody wanted doesn't get quieter because sellers ran out, it gets quieter because nobody cares. Second, the <strong>base</strong>: price stops advancing and drifts sideways. Third, the <strong>contractions</strong> — each pullback inside the base is shallower than the one before, the visible signature of shrinking supply. Fourth, <strong>volume dry-up</strong>: turnover fades through the base, often to a fraction of what the stock traded during its advance. Fifth, the <strong>pivot</strong> — the well-defined ceiling the coiling price presses against. Sixth, the <strong>breakout</strong>: price clears the pivot decisively, on volume. Everything before the breakout is preparation; the breakout is the only step that pays.</p>
-      <p>A cup-and-handle, for what it's worth, is a cousin — one specific base outline. A VCP is defined less by any silhouette than by the physics underneath: tightening swings and drying volume. A cup-and-handle whose pullbacks contract <em>is</em> a VCP.</p>
-      <h2>DataQuant's machine definition</h2>
-      <p>"Tightening" is easy to see in hindsight and easy to imagine in foresight, so DataQuant reduces the VCP to measurable gates. A breakout only earns the VCP mark when they pass:</p>
-      <div class="metric"><b>Measured coil.</b> <span>The base's second half is tighter than its first — but only within a calibrated band. Counter-intuitively, our outcome study found <em>extreme</em> tightening underperforms moderate tightening: a tape squeezed unnaturally flat is more often a pinned tape than patient accumulation.</span></div>
-      <div class="metric"><b>Heavy breakout volume.</b> <span>The breakout must print on volume well above the base's average — quiet bases need a loud release, and outcomes in our study scaled directly with breakout volume.</span></div>
-      <p>All base measurements exclude the breakout bar itself, so a big breakout candle can never flatter the quietness of the base it broke out of. The exact thresholds are calibrated against DataQuant's own study of more than two thousand historical bases and are kept private — they're part of the edge subscribers pay for.</p>
-      <h2>An honest failure case: when every rule passes and it still isn't a VCP</h2>
-      <p>In August 2026 DataQuant's scanner flagged DBRG as a textbook VCP: the base ATR was an astonishing 0.26% of price, the contraction ratio 0.74, and the breakout bar expanded 1.95&times; the base range with a close at its high. Mechanically perfect. But a look at the chart told a different story — the stock had been pinned in a $15.90–$15.97 range for weeks, the signature of a tape anchored by a corporate event, not of sellers being patiently absorbed. The "breakout" was a six-cent move.</p>
-      <p>The lesson generalizes: <strong>rules find candidates; context confirms trades.</strong> A pattern detector tells you where to look. It does not excuse you from looking.</p>
-      <h2>How DataQuant uses it</h2>
-      <p>VCP-qualified breakouts carry a purple VCP badge on the dashboard, and a one-click filter shows only VCP breakouts — optionally combined with <a href="/learn/relative-strength-explained">relative strength</a> and blue-sky filters for the strictest screen. Every signal's base is also dissected in the <a href="/learn/reading-a-base-xray">Base X-ray</a>, where you can see the coil, the volume dry-up, and the failed pokes for yourself.</p>
-    
-      
-    <section class="faq mt-12">
-      <h2>Frequently asked questions</h2>
-      <div class="mt-2"><details><summary>How many contractions does a VCP need?</summary><p class="text-slate-400">Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the base must be tightening at a measured, calibrated rate — the footprint successive shallower pullbacks leave behind.</p></details><details><summary>Is a VCP breakout on low volume still valid?</summary><p class="text-slate-400">No. The volume gate exists precisely because a quiet base needs a loud release. A breakout that prints on unremarkable volume does not earn the VCP mark.</p></details><details><summary>Can a pattern pass every VCP rule and still be a bad trade?</summary><p class="text-slate-400">Yes. DBRG in August 2026 passed every gate with near-perfect numbers, but the base was a deal-pinned tape stuck in a seven-cent range — a six-cent breakout is not a tradeable move. Rules find candidates; context confirms trades.</p></details><details><summary>Is the VCP reliable?</summary><p class="text-slate-400">It is a probability, not a prediction — plenty fail. Its value comes from pairing it with strict risk control: small losses on the failures, room to run on the ones that work.</p></details></div>
-    </section>
-      
-    <section class="mt-12">
-      <h2>Keep reading</h2>
-      <div class="grid sm:grid-cols-2 gap-3 mt-2"><a href="/learn/reading-a-base-xray" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Reading a Base X-ray</div><div class="text-xs text-slate-400 mt-1">Every base a stock built in two years, measured — coil, dry-up, pokes, outcome.</div></a><a href="/learn/relative-strength-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-xl p-4 hover:border-slate-500 transition" style="text-decoration:none"><div class="font-semibold text-white text-sm">Relative Strength, Explained</div><div class="text-xs text-slate-400 mt-1">The 1-99 report card that tells you whether a stock is leading or lagging.</div></a></div>
-    </section>
-      
-    <div class="cta mt-12">
-      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
-      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
-      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
-    </div>
+      <header class="art-head">
+        <div class="glow"></div>
+        <div class="wrap wrap-narrow">
+          <p class="crumbs"><a href="/learn">← All research</a></p>
+          <span class="eyebrow">Guide</span>
+          <h1 class="art-title">What Is a Volatility Contraction Pattern (VCP)?</h1>
+          <p class="lede">A stock about to make a big move usually spends weeks looking like nothing is happening. The swings shrink, volume fades, and the chart gets boring. That boredom is the signal — and it has a name.</p>
+          <p class="art-meta"><span>4 min read</span><span>Published <time datetime="2026-08-25">August 25, 2026</time></span><span>DataQuant Research</span></p>
+        </div>
+      </header>
 
-    </article>
+      <div class="art-body">
+        <div class="wrap wrap-narrow prose">
+          <div class="callout">Education, not advice. This explains a concept for learning. It is not a recommendation to buy or sell anything, and patterns fail often.</div>
+
     
+    <h2>The idea in one paragraph</h2>
+    <p>A Volatility Contraction Pattern is a pause in a rising stock where each swing gets smaller than the last while volume dries up, until price coils tightly beneath a ceiling — the <strong>pivot</strong> — and then breaks through it on a surge of volume. The pattern was named and popularized by Mark Minervini, a two-time US Investing Champion, but the underlying observation runs through a century of trend-following, from Jesse Livermore to William O'Neil.</p>
+    <h2>Why a stock goes quiet before it runs</h2>
+    <p>During the base, ownership changes hands. Impatient holders — the ones who bought late or without a plan — get bored or shaken out and sell. Steadier buyers absorb those shares. Volume fades not because nothing is happening, but because the <em>sellers are running out</em>. When almost no one is left to sell, it takes very little buying to move the price. That is why the eventual breakout can be so sharp: the resistance quietly evaporated while the chart looked dull.</p>
+    <h2>The anatomy, step by step</h2>
+    <p>Every real VCP tells the same story in the same order. First, a <strong>prior uptrend</strong> — the VCP is a pause inside strength, never a bottom-fishing pattern; a stock nobody wanted doesn't get quieter because sellers ran out, it gets quieter because nobody cares. Second, the <strong>base</strong>: price stops advancing and drifts sideways. Third, the <strong>contractions</strong> — each pullback inside the base is shallower than the one before, the visible signature of shrinking supply. Fourth, <strong>volume dry-up</strong>: turnover fades through the base, often to a fraction of what the stock traded during its advance. Fifth, the <strong>pivot</strong> — the well-defined ceiling the coiling price presses against. Sixth, the <strong>breakout</strong>: price clears the pivot decisively, on volume. Everything before the breakout is preparation; the breakout is the only step that pays.</p>
+    <p>A cup-and-handle, for what it's worth, is a cousin — one specific base outline. A VCP is defined less by any silhouette than by the physics underneath: tightening swings and drying volume. A cup-and-handle whose pullbacks contract <em>is</em> a VCP.</p>
+    <h2>DataQuant's machine definition</h2>
+    <p>"Tightening" is easy to see in hindsight and easy to imagine in foresight, so DataQuant reduces the VCP to measurable gates. A breakout only earns the VCP mark when they pass:</p>
+    <div class="metric"><b>Measured coil.</b> <span>The base's second half is tighter than its first — but only within a calibrated band. Counter-intuitively, our outcome study found <em>extreme</em> tightening underperforms moderate tightening: a tape squeezed unnaturally flat is more often a pinned tape than patient accumulation.</span></div>
+    <div class="metric"><b>Heavy breakout volume.</b> <span>The breakout must print on volume well above the base's average — quiet bases need a loud release, and outcomes in our study scaled directly with breakout volume.</span></div>
+    <p>All base measurements exclude the breakout bar itself, so a big breakout candle can never flatter the quietness of the base it broke out of. The exact thresholds are calibrated against DataQuant's own study of more than two thousand historical bases and are kept private — they're part of the edge subscribers pay for.</p>
+    <h2>An honest failure case: when every rule passes and it still isn't a VCP</h2>
+    <p>In August 2026 DataQuant's scanner flagged DBRG as a textbook VCP: the base ATR was an astonishing 0.26% of price, the contraction ratio 0.74, and the breakout bar expanded 1.95&times; the base range with a close at its high. Mechanically perfect. But a look at the chart told a different story — the stock had been pinned in a $15.90–$15.97 range for weeks, the signature of a tape anchored by a corporate event, not of sellers being patiently absorbed. The "breakout" was a six-cent move.</p>
+    <p>The lesson generalizes: <strong>rules find candidates; context confirms trades.</strong> A pattern detector tells you where to look. It does not excuse you from looking.</p>
+    <h2>How DataQuant uses it</h2>
+    <p>VCP-qualified breakouts carry a purple VCP badge on the dashboard, and a one-click filter shows only VCP breakouts — optionally combined with <a href="/learn/relative-strength-explained">relative strength</a> and blue-sky filters for the strictest screen. Every signal's base is also dissected in the <a href="/learn/reading-a-base-xray">Base X-ray</a>, where you can see the coil, the volume dry-up, and the failed pokes for yourself.</p>
+    
+    
+    
+
+          <section class="art-faq" aria-labelledby="faq-h">
+            <h2 id="faq-h">Frequently asked questions</h2>
+            <div class="faq">
+          <details><summary>How many contractions does a VCP need?</summary><div class="answer"><p>Classically two to four, each shallower than the last. DataQuant measures the effect rather than counting waves: the base must be tightening at a measured, calibrated rate — the footprint successive shallower pullbacks leave behind.</p></div></details>
+          <details><summary>Is a VCP breakout on low volume still valid?</summary><div class="answer"><p>No. The volume gate exists precisely because a quiet base needs a loud release. A breakout that prints on unremarkable volume does not earn the VCP mark.</p></div></details>
+          <details><summary>Can a pattern pass every VCP rule and still be a bad trade?</summary><div class="answer"><p>Yes. DBRG in August 2026 passed every gate with near-perfect numbers, but the base was a deal-pinned tape stuck in a seven-cent range — a six-cent breakout is not a tradeable move. Rules find candidates; context confirms trades.</p></div></details>
+          <details><summary>Is the VCP reliable?</summary><div class="answer"><p>It is a probability, not a prediction — plenty fail. Its value comes from pairing it with strict risk control: small losses on the failures, room to run on the ones that work.</p></div></details>
+            </div>
+          </section>
+
+          <section aria-labelledby="more-h">
+            <h2 id="more-h">Keep reading</h2>
+            <div class="related">
+          <a class="card" href="/learn/reading-a-base-xray"><span class="rel-t">Reading a Base X-ray</span><span class="rel-d">Every base a stock built in two years, measured — coil, dry-up, pokes, outcome.</span></a>
+          <a class="card" href="/learn/relative-strength-explained"><span class="rel-t">Relative Strength, Explained</span><span class="rel-d">The 1-99 report card that tells you whether a stock is leading or lagging.</span></a>
+            </div>
+          </section>
+
+          <aside class="card end-cta">
+            <div class="glow" style="opacity:.6"></div>
+            <div style="position:relative">
+              <h2>Where the market stands today</h2>
+              <p>The market-health gauge, trending tickers and today's tape, updated every session.</p>
+              <a href="/pulse" class="btn btn-primary">Open Market Pulse <span class="arrow">→</span></a>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </article>
   </main>
-  <footer class="border-t border-slate-800/60 mt-8">
-    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
-      DataQuant provides systematic technical signals for research and educational purposes only.
-      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
-      Patterns fail often; historical figures are past data, not predictions.
-      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <a href="/" class="brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>DataQuant</a>
+          <p style="margin:14px 0 0;max-width:300px">Technicals, fundamentals and popularity for every liquid US stock, read by AI.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul><li><a href="/dashboard" data-cta="login">Dashboard</a></li><li><a href="/pulse">Market Pulse</a></li><li><a href="/#pricing">Pricing</a></li><li><a href="/chat">Ask the screen</a></li></ul>
+        </div>
+        <div>
+          <h4>Research</h4>
+          <ul><li><a href="/learn">Learn</a></li><li><a href="/learn/exit-rules-study">Exit rules study</a></li><li><a href="/learn/honest-backtest">The honest backtest</a></li><li><a href="/llms.txt">llms.txt</a></li></ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul><li><a href="https://x.com/tradersud" target="_blank" rel="noopener">X · @tradersud</a></li><li><a href="/contact">Contact</a></li><li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul>
+        </div>
+      </div>
+      <p class="footer-legal">Screen output for research, not advice. DataQuant is not a registered investment adviser or broker-dealer, and nothing on this site is a recommendation to buy or sell any security. Patterns fail often, and historical figures are past data, not predictions. Trading securities carries a substantial risk of loss. © 2026 DataQuant.</p>
     </div>
   </footer>
 </body>

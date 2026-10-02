@@ -24,7 +24,12 @@
       "@type": "CollectionPage",
       "name": "DataQuant Learn",
       "url": "https://dataquant.ai/learn",
-      "description": "Plain-English guides to breakout trading: the VCP, relative strength, distribution days, base anatomy, honest backtesting, and market regime \u2014 grounded in DataQuant's own live data."
+      "description": "Plain-English guides to breakout trading: the VCP, relative strength, distribution days, base anatomy, honest backtesting, and market regime \u2014 grounded in DataQuant's own live data.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "DataQuant",
+        "url": "https://dataquant.ai/"
+      }
     },
     {
       "@type": "ItemList",
@@ -64,103 +69,173 @@
           "position": 6,
           "url": "https://dataquant.ai/learn/market-health-gauge",
           "name": "The Market Health Gauge"
+        },
+        {
+          "@type": "ListItem",
+          "position": 7,
+          "url": "https://dataquant.ai/learn/exit-rules-study",
+          "name": "Exit Rules Study: What Should Close a Breakout Trade"
         }
       ]
     }
   ]
 }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#07080b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%238b7bff'/%3E%3Cstop offset='1' stop-color='%232fd8a8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2310131a'/%3E%3Cpath d='M7 21l5-5 4 3 9-9' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    :root { --amber:#F59E0B; --amber-hi:#FBBF24; --bg:#0F172A; --panel:#111827; --panel-2:#1F2937; --border:#334155; --fg:#F8FAFC; --muted:#94A3B8; --green:#10B981; --red:#EF4444; }
-    * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-    html { scroll-behavior: smooth; }
-    body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--fg); }
-    .tabular { font-variant-numeric: tabular-nums; }
-    article h2 { font-size:1.35rem; font-weight:700; letter-spacing:-0.01em; margin:2.25rem 0 0.75rem; color:var(--fg); }
-    article p, article li { color:#CBD5E1; line-height:1.75; margin-bottom:1rem; font-size:1.02rem; }
-    article ul { list-style:disc; padding-left:1.25rem; margin-bottom:1rem; }
-    article li { margin-bottom:0.4rem; }
-    article strong { color:var(--fg); }
-    article a { color:var(--amber-hi); text-decoration:underline; text-underline-offset:3px; }
-    .callout { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:12px; padding:0.9rem 1.1rem; font-size:0.92rem; color:#FCD34D; }
-    .metric { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; margin-bottom:0.6rem; }
-    .metric b { color:var(--fg); }
-    .metric span { color:var(--muted); font-size:0.95rem; }
-    .cta { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:1.75rem; text-align:center; }
-    .faq details { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.1rem; margin-bottom:0.6rem; }
-    .faq summary { font-weight:600; cursor:pointer; color:var(--fg); }
-    .faq p { margin:0.6rem 0 0; font-size:0.95rem; }
+    .learn-head { position: relative; overflow: hidden; padding: 80px 0 56px; }
+    .learn-head .wrap { position: relative; }
+    .learn-head .display { font-size: clamp(36px, 5.4vw, 60px); margin-top: 20px; max-width: 760px; }
+    .learn-head .lede { margin-top: 20px; max-width: 620px; }
+    .learn-note { margin-top: 26px; font-size: 13px; color: var(--fg-3); max-width: 620px; }
+    .papers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .paper { padding: 24px; display: flex; flex-direction: column; gap: 12px; transition: border-color .15s, transform .15s; }
+    .paper:hover { border-color: var(--line-2); transform: translateY(-2px); }
+    .paper .tag { font-family: var(--mono); font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; }
+    .paper h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; }
+    .paper p { margin: 0; color: var(--fg-2); font-size: 14.5px; }
+    .paper .go { margin-top: auto; padding-top: 6px; font-size: 13px; color: var(--fg); }
+    .paper.lead { grid-column: 1 / -1; padding: 32px; position: relative; overflow: hidden; display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px 40px; align-items: end; }
+    .paper.lead::before {
+      content: ''; position: absolute; inset: -1px; border-radius: var(--radius); padding: 1px; background: var(--brand-grad); opacity: .45;
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+    }
+    .paper.lead h2 { font-size: clamp(22px, 2.6vw, 28px); line-height: 1.2; letter-spacing: -0.02em; margin-top: 12px; }
+    .paper.lead p { font-size: 15.5px; }
+    .lead-stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
+    .lead-stats div { padding: 14px 0 0; }
+    .lead-stats b { display: block; font-family: var(--mono); font-weight: 500; font-size: 20px; letter-spacing: -0.02em; }
+    .lead-stats span { font-size: 12px; color: var(--fg-3); }
+    @media (max-width: 980px) { .papers { grid-template-columns: 1fr 1fr; } .paper.lead { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) { .papers { grid-template-columns: 1fr; } .paper.lead { padding: 24px; } .learn-head { padding: 56px 0 40px; } }
+    .end-cta { position: relative; overflow: hidden; margin-top: 64px; padding: 40px 28px; text-align: center; }
+    .end-cta h2 { margin: 0; font-size: clamp(22px, 3vw, 28px); font-weight: 600; letter-spacing: -0.02em; }
+    .end-cta p { margin: 10px auto 22px; max-width: 480px; color: var(--fg-2); }
   </style>
 </head>
 <body>
-  <nav class="border-b border-slate-800/60">
-    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between text-sm">
-      <a href="/" class="font-bold text-white no-underline" style="text-decoration:none">🟠 DataQuant</a>
-      <div class="flex items-center gap-5 text-slate-400">
-        <a href="/learn" style="text-decoration:none" class="hover:text-white">Learn</a>
-        <a href="/pulse" style="text-decoration:none" class="hover:text-white">Market Pulse</a>
-        <a href="/dashboard" style="text-decoration:none" class="hover:text-white">Dashboard</a>
-        <a href="/" style="text-decoration:none" class="text-amber-400 hover:text-amber-300">Get the signals →</a>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a href="/" class="brand" aria-label="DataQuant home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DataQuant
+      </a>
+      <div class="nav-links">
+        <a href="/#lenses">Product</a>
+        <a href="/#today">Today</a>
+        <a href="/learn" aria-current="page">Research</a>
+        <a href="/pulse">Market Pulse</a>
+        <a href="/#pricing">Pricing</a>
+      </div>
+      <div class="nav-cta">
+        <a href="/dashboard" data-cta="login" class="login">Log in</a>
+        <a href="/#pricing" data-cta="start-trial" class="btn btn-primary btn-sm">Start free trial</a>
       </div>
     </div>
   </nav>
-  <main class="max-w-3xl mx-auto px-6 py-12 md:py-16">
 
-    <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-3">DataQuant Learn</div>
-    <article>
-      <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight">The method, in plain English.</h1>
-      <p class="text-lg text-slate-400 mt-4">Six guides to how DataQuant reads the market, and the research notes behind its rules — no jargon, no hype, and the losing months printed next to the winning ones. Everything here is grounded in the scanner's own data.</p>
-      <div class="callout mt-6">Education, not advice. This explains a concept for learning — it is not a recommendation to buy or sell anything. Patterns fail often.</div>
-      <div class="grid gap-4 mt-10"><a href="/learn/exit-rules-study" class="block bg-[color:var(--panel)] border border-amber-500/40 rounded-2xl p-6 hover:border-amber-400 transition" style="text-decoration:none">
-      <div class="text-[10px] uppercase tracking-wider text-amber-400 font-semibold mb-2">New · Research note</div>
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">Exit Rules Study: What Should Close a Breakout Trade?</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">26 sell rules over 97,789 graded breakouts since the 1970s, replayed through a slot-limited book. The 20% trail beats selling into +20%, and the order you take signals in matters more than any exit.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the study →</span>
-    </a><a href="/learn/volatility-contraction-pattern" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">What Is a Volatility Contraction Pattern (VCP)?</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">The quiet, tightening base that precedes big moves — the exact detection rules, and an honest example of a perfect pattern that wasn't a trade.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a><a href="/learn/relative-strength-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">Relative Strength (RS), Explained</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">The 1-99 report card ranking every stock against its market — why leaders lead, and how to use RS without fooling yourself.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a><a href="/learn/distribution-days-explained" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">Distribution Days: Institutional Selling Before Price Breaks</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">Down days on rising volume, counted. How August 2026 looked healthy on top while breakout win rates halved underneath.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a><a href="/learn/reading-a-base-xray" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">Reading a Base X-ray</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">Every base a stock built in two years — pivot, depth, coil, dry-up, failed pokes — with real outcomes attached.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a><a href="/learn/honest-backtest" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">The Honest Backtest</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">First signal per stock, close-to-close, -8% stop, everything disclosed — including the month the system lost.</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a><a href="/learn/market-health-gauge" class="block bg-[color:var(--panel)] border border-[color:var(--border)] rounded-2xl p-6 hover:border-slate-500 transition" style="text-decoration:none">
-      <h2 style="margin:0" class="text-lg font-bold text-white leading-snug">The Market Health Gauge</h2>
-      <p class="text-sm text-slate-400 mt-2" style="margin-bottom:0">A 0-100 score for the only question that precedes every ticker: does this tape reward breakouts right now?</p>
-      <span class="text-amber-400 text-sm font-medium">Read the guide →</span>
-    </a></div>
-      
-    <div class="cta mt-12">
-      <h2 style="margin-top:0" class="text-xl font-bold">See where the market stands today</h2>
-      <p class="text-slate-400 mt-2 mb-4" style="margin-bottom:1.25rem">The live Market Health gauge, trending tickers, and today's tape — free, no login.</p>
-      <a href="https://dataquant.ai/pulse" class="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-2.5 rounded-lg" style="text-decoration:none">See today's market health →</a>
-    </div>
+  <main>
+    <header class="learn-head">
+      <div class="glow"></div>
+      <div class="grid-lines"></div>
+      <div class="wrap">
+        <span class="eyebrow">DataQuant Learn</span>
+        <h1 class="display">The method, in plain English.</h1>
+        <p class="lede">Six guides to how DataQuant reads the market, and the research notes behind its rules. The losing months are printed next to the winning ones, and every number comes from the screen's own data.</p>
+        <p class="learn-note">Education, not advice. These pages explain concepts for learning. They are not a recommendation to buy or sell anything, and patterns fail often.</p>
+      </div>
+    </header>
 
-    </article>
+    <section class="wrap" aria-label="Guides and research notes" style="padding-bottom:96px">
+      <div class="papers">
+        <a class="card paper lead" href="/learn/exit-rules-study">
+          <div>
+            <span class="chip chip-ai"><span class="dot"></span>Research note · September 2026</span>
+            <h2>Exit Rules Study: What Should Close a Breakout Trade?</h2>
+            <p style="margin-top:12px">26 sell rules over 97,789 graded breakouts since the 1970s, replayed through a slot-limited book. The 20% trail beats selling into +20%, and the order the screen's breakouts are taken in matters more than any exit.</p>
+            <span class="go" style="display:inline-block;margin-top:18px">Read the study →</span>
+          </div>
+          <div class="lead-stats" aria-hidden="true">
+            <div><b>97,789</b><span>breakouts</span></div>
+            <div><b>26</b><span>sell rules</span></div>
+            <div><b>5,484</b><span>symbols</span></div>
+          </div>
+        </a>
+        <a class="card paper" href="/learn/volatility-contraction-pattern">
+          <span class="tag">Guide</span>
+          <h2>What Is a Volatility Contraction Pattern (VCP)?</h2>
+          <p>The quiet, tightening base, the exact detection rules, and an honest example of a perfect pattern that still failed.</p>
+          <span class="go">Read the guide →</span>
+        </a>
+        <a class="card paper" href="/learn/relative-strength-explained">
+          <span class="tag">Guide</span>
+          <h2>Relative Strength (RS), Explained</h2>
+          <p>The 1 to 99 rank of every stock against its own market, why leaders tend to keep leading, and how to use RS without fooling yourself.</p>
+          <span class="go">Read the guide →</span>
+        </a>
+        <a class="card paper" href="/learn/distribution-days-explained">
+          <span class="tag">Guide</span>
+          <h2>Distribution Days: Institutional Selling Before Price Breaks</h2>
+          <p>Down days on rising volume, counted. How August 2026 looked healthy on top while breakout win rates halved underneath.</p>
+          <span class="go">Read the guide →</span>
+        </a>
+        <a class="card paper" href="/learn/reading-a-base-xray">
+          <span class="tag">Guide</span>
+          <h2>Reading a Base X-ray</h2>
+          <p>Every base a stock built in two years, with pivot, depth, coil, dry-up and failed pokes, and the outcome attached to each.</p>
+          <span class="go">Read the guide →</span>
+        </a>
+        <a class="card paper" href="/learn/honest-backtest">
+          <span class="tag">Method</span>
+          <h2>The Honest Backtest</h2>
+          <p>First breakout per stock, close to close, 20 sessions or an 8% drop, everything disclosed, including the month the screen lost.</p>
+          <span class="go">Read the note →</span>
+        </a>
+        <a class="card paper" href="/learn/market-health-gauge">
+          <span class="tag">Guide</span>
+          <h2>The Market Health Gauge</h2>
+          <p>A 0 to 100 score for the question that comes before every ticker: does this tape reward breakouts right now?</p>
+          <span class="go">Read the guide →</span>
+        </a>
+      </div>
 
+      <aside class="card end-cta">
+        <div class="glow" style="opacity:.6"></div>
+        <div style="position:relative">
+          <h2>Where the market stands today</h2>
+          <p>The market-health gauge, trending tickers and today's tape, updated every session.</p>
+          <a href="/pulse" class="btn btn-primary">Open Market Pulse <span class="arrow">→</span></a>
+        </div>
+      </aside>
+    </section>
   </main>
-  <footer class="border-t border-slate-800/60 mt-8">
-    <div class="max-w-3xl mx-auto px-6 py-8 text-xs text-slate-500 leading-relaxed">
-      DataQuant provides systematic technical signals for research and educational purposes only.
-      We are not registered investment advisors, and nothing on this site is a recommendation to buy or sell any security.
-      Patterns fail often; historical figures are past data, not predictions.
-      <div class="mt-2"><a href="/" class="text-slate-400" style="text-decoration:none">Home</a> · <a href="/learn" class="text-slate-400" style="text-decoration:none">Learn</a> · <a href="/pulse" class="text-slate-400" style="text-decoration:none">Market Pulse</a></div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <a href="/" class="brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>DataQuant</a>
+          <p style="margin:14px 0 0;max-width:300px">Technicals, fundamentals and popularity for every liquid US stock, read by AI.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul><li><a href="/dashboard" data-cta="login">Dashboard</a></li><li><a href="/pulse">Market Pulse</a></li><li><a href="/#pricing">Pricing</a></li><li><a href="/chat">Ask the screen</a></li></ul>
+        </div>
+        <div>
+          <h4>Research</h4>
+          <ul><li><a href="/learn">Learn</a></li><li><a href="/learn/exit-rules-study">Exit rules study</a></li><li><a href="/learn/honest-backtest">The honest backtest</a></li><li><a href="/llms.txt">llms.txt</a></li></ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul><li><a href="https://x.com/tradersud" target="_blank" rel="noopener">X · @tradersud</a></li><li><a href="/contact">Contact</a></li><li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul>
+        </div>
+      </div>
+      <p class="footer-legal">Screen output for research, not advice. DataQuant is not a registered investment adviser or broker-dealer, and nothing on this site is a recommendation to buy or sell any security. Patterns fail often, and historical figures are past data, not predictions. Trading securities carries a substantial risk of loss. © 2026 DataQuant.</p>
     </div>
   </footer>
 </body>

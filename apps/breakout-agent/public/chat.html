@@ -6,32 +6,93 @@
   <meta name="robots" content="noindex">
   <title>DataQuant Chat — the alert pool</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#07080b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%238b7bff'/%3E%3Cstop offset='1' stop-color='%232fd8a8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2310131a'/%3E%3Cpath d='M7 21l5-5 4 3 9-9' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    :root { --bg:#111827; --panel:#1f2937; --line:#374151; --fg:#f3f4f6; --muted:#9ca3af; --green:#34d399; --red:#f87171; --amber:#fbbf24; --blue:#60a5fa; }
-    body { background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    /* The widget is styled with Tailwind's gray/blue scale for the dashboard
+       panel. On this page it is re-toned to the site palette, scoped here so
+       the dashboard is untouched. */
+    html, body { height: 100%; }
+    body { display: flex; flex-direction: column; overflow: hidden; }
+    .site-nav { flex-shrink: 0; }
+    .site-nav .wrap { max-width: none; }
+    .chat-crumb { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--fg-2); margin-left: -18px; }
+    .chat-crumb .sep { color: var(--fg-3); }
+    .nav-tools { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .nav-tools select, .nav-tools .tool-btn {
+      height: 32px; padding: 0 10px; border-radius: 999px; font: 500 13px var(--font);
+      background: var(--surface); color: var(--fg-2); border: 1px solid var(--line-2); cursor: pointer;
+    }
+    .nav-tools select:hover, .nav-tools .tool-btn:hover { color: var(--fg); }
+    @media (max-width: 1100px) { .site-nav .nav-links { display: none; } }
+    @media (max-width: 520px) { .chat-crumb { display: none; } .site-nav .wrap { gap: 12px; } }
+
+    #chat-root { flex: 1; min-height: 0; display: flex; }
+    body .dqc { color: var(--fg); font-family: var(--font); }
+    body .dqc .mono { font-family: var(--mono); }
+    body .dqc .bg-gray-900 { background: var(--bg-2); }
+    body .dqc .bg-gray-800 { background: var(--surface-2); }
+    body .dqc .border-gray-800, body .dqc .border-gray-800\/70 { border-color: var(--line); }
+    body .dqc .hover\:bg-gray-800\/60:hover { background: rgba(255, 255, 255, 0.03); }
+    body .dqc .ring-gray-700, body .dqc .ring-gray-800 { --tw-ring-color: var(--line-2); }
+    body .dqc .focus\:ring-blue-500:focus { --tw-ring-color: rgba(139, 123, 255, 0.6); }
+    body .dqc .text-gray-500, body .dqc .text-gray-600 { color: var(--fg-3); }
+    body .dqc .text-gray-400 { color: var(--fg-2); }
+    body .dqc .text-blue-300, body .dqc .hover\:text-blue-300:hover { color: #c4bbff; }
+    body .dqc .accent-blue-500 { accent-color: var(--accent); }
+    body .dqc textarea { border-radius: 14px; padding: 11px 14px; font-size: 14px; }
+    body .dqc #send { background: var(--fg); color: #08090c; border-radius: 999px; font-weight: 500; }
+    body .dqc #send:hover { background: #fff; }
+    body .dqc #stop { border-radius: 999px; background: var(--surface-3); }
+    body .dqc #sel-compare { background: rgba(139, 123, 255, 0.12); color: #c4bbff; --tw-ring-color: rgba(139, 123, 255, 0.35); border-radius: 999px; }
+    body .dqc .msg.bg-blue-600\/20 { background: rgba(139, 123, 255, 0.12); --tw-ring-color: rgba(139, 123, 255, 0.28); }
+    body .dqc .msg { line-height: 1.65; }
+    body .dqc .msg th, body .dqc .msg td { border-color: var(--line-2); }
+    body .dqc .msg th { color: var(--fg-3); font-weight: 500; font-family: var(--mono); }
+    body .dqc .msg code { font-family: var(--mono); background: var(--surface-2); }
+    body .dqc .tool { color: var(--fg-3); }
+    body .dqc .tool::before { color: var(--accent); }
+    body .dqc .chip { height: auto; min-height: 24px; white-space: normal; text-align: left; line-height: 1.4; padding: 5px 11px; border-color: var(--line-2); color: var(--fg-2); }
+    body .dqc .chip.on { border-color: rgba(139, 123, 255, 0.5); color: #c4bbff; background: rgba(139, 123, 255, 0.12); }
+    body .dqc .kbd { border-color: var(--line-2); color: var(--fg-3); font-family: var(--mono); }
+    body .dqc #welcome h1 { font-size: 26px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 600; }
+    body .dqc #welcome p { font-size: 15px; color: var(--fg-2); }
+    body .dqc.page .dqc-pool { border-right-color: var(--line); }
+    @media (max-width: 860px) { body .dqc.page .dqc-pool { inset: 64px 0 0 0; background: var(--bg-2); } }
   </style>
 </head>
-<body class="h-screen flex flex-col">
-  <header class="h-12 flex-shrink-0 flex items-center gap-3 px-3 sm:px-5 border-b border-gray-800 bg-gray-950/95">
-    <a href="/dashboard" class="flex items-center gap-2" title="Screener">
-      <span class="w-6 h-6 rounded-md bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] font-bold">DQ</span>
-      <span class="font-semibold tracking-tight hidden sm:inline">Data Quant</span>
-    </a>
-    <span class="text-gray-600">/</span>
-    <span class="font-semibold">Chat</span>
-    <span class="text-xs text-gray-500 hidden md:inline">the screen's alert pool, in conversation</span>
-    <div class="ml-auto flex items-center gap-2 sm:gap-3 text-xs">
-      <button id="pool-toggle" class="md:hidden px-2.5 py-1 rounded ring-1 ring-gray-700 text-gray-300" onclick="ui.togglePool()">Pool</button>
-      <select id="region" class="bg-gray-900 text-gray-300 rounded px-2 py-1 ring-1 ring-gray-800" onchange="ui.setRegion(this.value)" title="Market">
-        <option value="us">US</option><option value="in">India</option>
-      </select>
-      <a href="/dashboard" class="text-gray-400 hover:text-white">Screener</a>
-      <a href="/pulse" class="text-gray-400 hover:text-white hidden sm:inline">Pulse</a>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a href="/" class="brand" aria-label="DataQuant home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DataQuant
+      </a>
+      <span class="chat-crumb"><span class="sep">/</span>Ask the screen</span>
+      <div class="nav-links">
+        <a href="/#lenses">Product</a>
+        <a href="/#today">Today</a>
+        <a href="/learn">Research</a>
+        <a href="/pulse">Market Pulse</a>
+        <a href="/#pricing">Pricing</a>
+      </div>
+      <div class="nav-cta">
+        <div class="nav-tools">
+          <button id="pool-toggle" class="tool-btn md:hidden" onclick="ui.togglePool()">Pool</button>
+          <select id="region" onchange="ui.setRegion(this.value)" title="Market" aria-label="Market">
+            <option value="us">US</option><option value="in">India</option>
+          </select>
+        </div>
+        <a href="/dashboard" class="login">Screener</a>
+      </div>
     </div>
-  </header>
+  </nav>
 
-  <div id="chat-root" class="flex-1 min-h-0 flex"></div>
+  <div id="chat-root"></div>
 
   <script src="/chat-widget.js"></script>
   <script>

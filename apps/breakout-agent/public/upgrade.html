@@ -3,84 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
   <title>Reactivate — DataQuant.ai</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#07080b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='1' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%238b7bff'/%3E%3Cstop offset='1' stop-color='%232fd8a8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2310131a'/%3E%3Cpath d='M7 21l5-5 4 3 9-9' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: #0F172A;
-      color: #F8FAFC;
-      -webkit-font-smoothing: antialiased;
+    body { min-height: 100vh; display: flex; flex-direction: column; }
+    main { flex: 1; }
+    .re { position: relative; overflow: hidden; padding: 88px 0 104px; }
+    .re .wrap { position: relative; max-width: 520px; text-align: center; }
+    .re h1 { font-size: clamp(30px, 4.4vw, 42px); line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; margin: 20px 0 0; text-wrap: balance; }
+    .re .lede { margin-top: 16px; font-size: 17px; }
+    .re-card { position: relative; margin-top: 40px; padding: 30px; text-align: left; }
+    .re-card::before {
+      content: ''; position: absolute; inset: -1px; border-radius: var(--radius); padding: 1px; background: var(--brand-grad); opacity: .6;
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
     }
-    .card {
-      background: linear-gradient(180deg, rgba(31, 41, 55, 0.6) 0%, rgba(17, 24, 39, 0.6) 100%);
-      border: 1px solid rgba(51, 65, 85, 0.6);
-      border-radius: 12px;
-      backdrop-filter: blur(6px);
-    }
-    .btn-primary {
-      background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 100%);
-      color: #0F172A;
-      font-weight: 600;
-      padding: 12px 22px;
-      border-radius: 8px;
-      transition: transform 180ms ease, box-shadow 220ms ease, filter 180ms ease;
-      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -8px rgba(245, 158, 11, 0.35);
-      border: none;
-    }
-    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.05); }
-    .btn-primary:disabled { opacity: 0.6; cursor: wait; }
-    .tabular { font-variant-numeric: tabular-nums; }
-    .grid-bg {
-      background-image:
-        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245, 158, 11, 0.08), transparent 60%);
-    }
+    .price { margin-top: 20px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .price b { font-family: var(--mono); font-weight: 500; font-size: 52px; letter-spacing: -0.04em; line-height: 1; }
+    .price span { color: var(--fg-2); }
+    .ticks { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 10px; font-size: 15px; }
+    .ticks li { display: grid; grid-template-columns: 18px 1fr; gap: 12px; color: #d6d9e1; }
+    .ticks svg { margin-top: 4px; }
+    #reactivate-btn { width: 100%; margin-top: 26px; }
+    #reactivate-btn:disabled { opacity: .6; cursor: wait; transform: none; }
+    .status { margin: 14px 0 0; min-height: 1em; font-size: 13px; color: var(--fg-3); text-align: center; }
+    .status.err { color: var(--down); }
+    .re-links { margin-top: 28px; font-size: 13px; color: var(--fg-3); }
+    .re-links a { color: var(--fg-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+    .re-links a:hover { color: var(--fg); }
+    @media (max-width: 480px) { .re { padding: 56px 0 72px; } .re-card { padding: 24px 20px; } }
   </style>
 </head>
-<body class="min-h-screen grid-bg">
-  <div class="max-w-lg mx-auto px-6 py-20 md:py-28 text-center">
-    <div class="inline-flex w-14 h-14 items-center justify-center rounded-2xl bg-amber-500/15 border border-amber-500/30 mb-8">
-      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
-    </div>
-
-    <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
-      Your subscription is inactive.
-    </h1>
-    <p class="mt-4 text-slate-400 leading-relaxed">
-      Reactivate to continue receiving signals — $49/month or $449/year. Cancel again any time.
-    </p>
-
-    <div class="card p-8 mt-10 text-left">
-      <div class="flex items-baseline gap-2">
-        <span class="text-4xl font-bold tabular">$49</span>
-        <span class="text-slate-500">/month</span>
-        <span class="text-slate-500 text-sm ml-2">· or $449/year</span>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wrap">
+      <a href="/" class="brand" aria-label="DataQuant home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="bm" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#2fd8a8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        DataQuant
+      </a>
+      <div class="nav-links">
+        <a href="/#lenses">Product</a>
+        <a href="/#today">Today</a>
+        <a href="/learn">Research</a>
+        <a href="/pulse">Market Pulse</a>
+        <a href="/#pricing">Pricing</a>
       </div>
-      <p class="mt-2 text-sm text-slate-400">Cancel anytime from the Stripe portal.</p>
-
-      <button id="reactivate-btn" class="btn-primary w-full justify-center mt-6">
-        Reactivate subscription
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-      </button>
-      <p id="status" class="mt-4 text-xs text-slate-500 text-center"></p>
+      <div class="nav-cta">
+        <a href="/dashboard" data-cta="login" class="login">Dashboard</a>
+      </div>
     </div>
+  </nav>
 
-    <p class="mt-8 text-xs text-slate-500">
-      <a href="/" class="underline hover:text-slate-300">Back to landing</a>
-      <span class="mx-2">·</span>
-      <a href="mailto:hello@dataquant.ai" class="underline hover:text-slate-300">Contact support</a>
-    </p>
-  </div>
+  <main>
+    <section class="re">
+      <div class="glow"></div>
+      <div class="wrap">
+        <span class="eyebrow">Subscription</span>
+        <h1>Your subscription is inactive.</h1>
+        <p class="lede">Reactivate to get the screen, the alerts and the AI reads back. $49 a month or $449 a year, and you can cancel again any time.</p>
+
+        <div class="card re-card">
+          <span class="chip chip-ai"><span class="dot"></span>Pro</span>
+          <div class="price"><b>$49</b><span>/month</span><span class="faint" style="font-size:14px">· or $449/year</span></div>
+          <p class="muted" style="margin:10px 0 0;font-size:14px">Cancel any time from the Stripe portal.</p>
+          <ul class="ticks">
+            <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4 4 8-8"/></svg><span>The full screen: graded breakouts, handles, retests and extensions</span></li>
+            <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4 4 8-8"/></svg><span>AI earnings-call reads, 13F holders and social sentiment</span></li>
+            <li><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#2fd8a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4 4 8-8"/></svg><span>An email when a graded base clears its pivot</span></li>
+          </ul>
+
+          <button id="reactivate-btn" class="btn btn-primary">
+            Reactivate subscription
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+          <p id="status" class="status"></p>
+          <p class="faint" style="margin:6px 0 0;font-size:12px;text-align:center">Checkout and billing by Stripe</p>
+        </div>
+
+        <p class="re-links">
+          <a href="/">Back to the home page</a>
+          <span style="margin:0 8px">·</span>
+          <a href="mailto:hello@dataquant.ai">Contact support</a>
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <div>
+          <a href="/" class="brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#141824"/><rect x=".5" y=".5" width="31" height="31" rx="7.5" fill="none" stroke="rgba(255,255,255,.12)"/><path d="M7 21l5-5 4 3 9-9" fill="none" stroke="url(#bm)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>DataQuant</a>
+          <p style="margin:14px 0 0;max-width:300px">Technicals, fundamentals and popularity for every liquid US stock, read by AI.</p>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <ul><li><a href="/dashboard" data-cta="login">Dashboard</a></li><li><a href="/pulse">Market Pulse</a></li><li><a href="/#pricing">Pricing</a></li><li><a href="/chat">Ask the screen</a></li></ul>
+        </div>
+        <div>
+          <h4>Research</h4>
+          <ul><li><a href="/learn">Learn</a></li><li><a href="/learn/exit-rules-study">Exit rules study</a></li><li><a href="/learn/honest-backtest">The honest backtest</a></li><li><a href="/llms.txt">llms.txt</a></li></ul>
+        </div>
+        <div>
+          <h4>Company</h4>
+          <ul><li><a href="https://x.com/tradersud" target="_blank" rel="noopener">X · @tradersud</a></li><li><a href="/contact">Contact</a></li><li><a href="/terms">Terms</a></li><li><a href="/privacy">Privacy</a></li></ul>
+        </div>
+      </div>
+      <p class="footer-legal">Screen output for research, not advice. DataQuant is not a registered investment adviser or broker-dealer, and nothing on this site is a recommendation to buy or sell any security. Patterns fail often, and historical figures are past data, not predictions. Trading securities carries a substantial risk of loss. © 2026 DataQuant.</p>
+    </div>
+  </footer>
 
   <script>
     const btn = document.getElementById('reactivate-btn');
     const status = document.getElementById('status');
     btn.addEventListener('click', async () => {
       btn.disabled = true;
+      status.className = 'status';
       status.textContent = 'Creating checkout session...';
       try {
         const res = await fetch('/api/create-checkout-session', { method: 'POST' });
@@ -93,7 +136,7 @@
       } catch (e) {
         btn.disabled = false;
         status.textContent = 'Something went wrong: ' + e.message;
-        status.className = 'mt-4 text-xs text-red-400 text-center';
+        status.className = 'status err';
       }
     });
   </script>
