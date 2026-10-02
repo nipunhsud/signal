@@ -391,10 +391,17 @@
         opacity: 0;
       }
     }
-    .delete-btn {
+    /* Scrollbars that belong on a dark page: the default track rendered as a white band under every scrolling table. */
+    * { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+    *::-webkit-scrollbar { width: 8px; height: 8px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    *::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    .delete-btn, .row-hover {
       opacity: 0;
       transition: opacity 0.2s ease;
     }
+    .signal-row:hover .row-hover { opacity: 1; }
     .signal-row:hover .delete-btn {
       opacity: 1;
     }
@@ -1438,30 +1445,36 @@
         const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
         const day = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
         const money = (v) => '$' + Number(v).toFixed(2);
+        // Cards, because the strip is the highlight of the page: orange ring for 2x+ volume, the move since
+        // the pivot as the big number, "emailed" only when it was (saying "not emailed" on most cards was noise).
+        // Fixed rows and nowrap, so nothing reflows into "now / +0.3%" across two lines.
         const cards = list.slice(0, 12).map(c => {
           const power = c.volRatio != null && c.volRatio >= 2;
-          const vol = c.volRatio != null ? `<span class="${power ? 'text-orange-300 font-semibold' : 'text-gray-400'}">${c.volRatio.toFixed(1)}× volume</span>` : '';
-          const mail = c.alertedAt
-            ? `<span class="text-emerald-400">emailed ${day(String(c.alertedAt).slice(0, 10))}</span>`
-            : `<span class="text-gray-500">not emailed</span>`;
+          const past = c.pctPast;
           return `
             <button onclick="dashboard.openAsset('${esc(c.asset)}')"
-              class="text-left bg-gray-800 hover:bg-gray-750 rounded-lg px-3 py-2 ring-1 ${power ? 'ring-orange-500/50' : 'ring-gray-700'} min-w-[210px]">
+              class="shrink-0 w-[220px] text-left bg-gray-800 hover:bg-gray-750 rounded-lg px-3 py-2 ring-1 ${power ? 'ring-orange-500/60 bg-orange-500/[0.04]' : 'ring-gray-700'} whitespace-nowrap">
               <div class="flex items-baseline justify-between gap-2">
-                <span class="font-mono font-bold text-blue-400">${esc(c.asset)}</span>
-                <span class="text-[11px] text-gray-400">grade ${esc(c.grade)}${c.rs != null ? ' · RS ' + c.rs : ''}${c.reclaim ? ' · reclaim' : ''}</span>
+                <span class="font-mono font-bold text-blue-400 text-[15px]">${esc(c.asset)}</span>
+                <span class="text-[11px] text-gray-400">${esc(c.grade)}${c.rs != null ? ' · RS ' + c.rs : ''}${c.reclaim ? ' · reclaim' : ''}</span>
               </div>
-              <div class="text-[12px] text-gray-300 mt-0.5">Cleared ${money(c.pivot)} ${day(c.clearedOn)}, now ${c.pctPast >= 0 ? '+' : ''}${c.pctPast.toFixed(1)}%</div>
-              <div class="text-[11px] mt-0.5 flex gap-2">${vol}${mail}</div>
+              <div class="flex items-baseline justify-between gap-2 mt-1">
+                <span class="text-[12px] text-gray-400 font-mono tabular-nums">${money(c.pivot)} <span class="text-gray-500">${day(c.clearedOn)}</span></span>
+                <span class="text-base font-semibold font-mono tabular-nums ${past > 0 ? 'text-green-400' : past < 0 ? 'text-red-400' : 'text-gray-300'}">${past >= 0 ? '+' : ''}${past.toFixed(1)}%</span>
+              </div>
+              <div class="flex items-baseline justify-between gap-2 mt-0.5 text-[11px] tabular-nums">
+                <span class="${power ? 'text-orange-300 font-semibold' : 'text-gray-500'}">${c.volRatio != null ? c.volRatio.toFixed(1) + '× volume' : ''}</span>
+                ${c.alertedAt ? `<span class="text-emerald-400">emailed ${day(String(c.alertedAt).slice(0, 10))}</span>` : ''}
+              </div>
             </button>`;
         }).join('');
         return `
           <div class="mb-5">
             <div class="flex items-baseline gap-2 mb-2">
-              <h2 class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">Cleared the pivot</h2>
-              <span class="text-[11px] text-gray-500">graded bases, last two sessions, loudest volume first · orange = 2× or more</span>
+              <h2 class="text-sm font-semibold text-gray-200">Cleared the pivot</h2>
+              <span class="text-[11px] text-gray-500">graded bases, last two sessions, loudest volume first · pivot and day cleared, move since · orange = 2× volume or more</span>
             </div>
-            <div class="flex gap-2 overflow-x-auto pb-1" data-keep-scroll="cleared-x">${cards}</div>
+            <div class="flex gap-2 overflow-x-auto pb-2" data-keep-scroll="cleared-x">${cards}</div>
           </div>`;
       }
 
@@ -4682,6 +4695,13 @@
         this.render();
       }
 
+      /** Active filters behind "More filters": the count on its button, so nothing is filtering out of sight. */
+      advancedFilterCount() {
+        const q = this.qualityFilters || {};
+        return ['vcp', 'blueSky', 'leaders', 'cheat', 'deep', 'winners', 'beatRaise', 'unusualVol', 'sectorTop'].filter((k) => q[k]).length
+          + (this.gradeFilter && this.gradeFilter !== 'all' ? 1 : 0) + (this.statusFilter && this.statusFilter !== 'all' ? 1 : 0) + (this.minBaseWeeks > 0 ? 1 : 0);
+      }
+
       resetFilters() {
         this.filtering = '';
         this.minRs = 0;
@@ -6303,30 +6323,27 @@
                                   ${signal.asset}
                                 </a>
                                 <button onclick="dashboard.openChartView('${assetEscaped}'); event.stopPropagation();" class="text-gray-500 hover:text-blue-300 transition flex-shrink-0" title="Open full chart with base X-ray">⤢</button>
-                                <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide ${signal.assetType === 'etf' ? 'bg-amber-900/60 text-amber-300 ring-1 ring-amber-700/40' : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'}">
-                                  ${signal.assetType === 'etf' ? 'ETF' : 'Stock'}
-                                </span>
+                                ${signal.assetType === 'etf' ? '<span class="text-[9px] font-semibold px-1 py-px rounded uppercase tracking-wide bg-amber-900/50 text-amber-300">ETF</span>' : ''}
+                                ${this.gradeChipHtml(signal)}
                                 ${signal.stoppedOut ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-red-500/15 text-red-400 ring-red-500/30" title="Closed 7% or more below the pivot — the breakout failed">Failed</span>' : signal.noEntry ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-gray-500/15 text-gray-300 ring-gray-500/30" title="Price has not closed above the base pivot — no breakout to track yet">Below pivot</span>' : ''}
-                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 ml-auto transition" title="Hide">✕</button>
+                                <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="row-hover ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700" title="Ask the screen about ${signal.asset}">ask</button>
+                                <button onclick="dashboard.removeAsset('${assetEscaped}', event);" class="delete-btn text-xs text-gray-500 hover:text-red-400 px-1.5 py-0.5 rounded hover:bg-red-900/40 transition" title="Hide">✕</button>
                               </div>
-                              <div class="flex flex-wrap items-center gap-1 row-pills">
+                              <div class="flex flex-wrap items-center gap-1 row-pills empty:hidden">
                                 ${signal.politicianBuy ? `<a href="${signal.politicianBuy.link || '#'}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 bg-purple-500/15 text-purple-300 ring-purple-500/30 hover:bg-purple-500/25 transition" title="Politician purchase — ${signal.politicianBuy.name} (${signal.politicianBuy.transactionDate || '?'}) · ${signal.politicianBuy.amount || ''}">🏛 ${signal.politicianBuy.name.split(' ').slice(-1)[0]}</a>` : ''}
                                 ${signal.winnerTier ? `<button onclick="dashboard.jumpToWinner('${assetEscaped}'); event.stopPropagation();" class="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ring-1 transition ${signal.winnerTier === 'A' ? 'bg-green-500/15 text-green-400 ring-green-500/30 hover:bg-green-500/25' : signal.winnerTier === 'B' ? 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30 hover:bg-yellow-500/25' : 'bg-gray-500/15 text-gray-300 ring-gray-500/30 hover:bg-gray-500/25'}" title="Also passes Winners fundamentals gate (tier ${signal.winnerTier}) — click to open Winners filtered to ${signal.asset}">W·${signal.winnerTier} ↗</button>` : ''}
                                 ${this.crossRefPills(signal.asset, 'dashboard', 'winners')}
-                                ${this.gradeChipHtml(signal)}
                                 ${this.deepBaseChipHtml(signal)}
-                                ${this.activityChipHtml(signal)}
+                                ${signal.activity?.score ? this.activityChipHtml(signal) : ''}
                                 ${this.institutionsChipHtml(signal)}
                                 ${this.holdPathChipHtml(signal)}
-                                ${this.sectorChipHtml(signal)}
-                                <button onclick="dashboard.askChat('${assetEscaped}'); event.stopPropagation();" class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded ring-1 ring-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition" title="Ask the screen about ${signal.asset}">ask</button>
                               </div>
                               </div>
                             </td>
                             <td data-label="RS" class="px-3 py-2.5 whitespace-nowrap">${signal.rsRating != null ? `<span class="text-sm font-mono font-semibold tabular-nums ${signal.rsRating >= 80 ? 'text-green-400' : signal.rsRating >= 50 ? 'text-gray-300' : 'text-red-400'}" data-tip="Relative strength: outperforming ${signal.rsRating}% of scanned stocks (trailing returns percentile, per market)">${signal.rsRating}</span>` : '<span class="text-gray-600">—</span>'}</td>
                             <td data-label="Trend" class="px-3 py-2.5 whitespace-nowrap">${this.renderSparkline(signal.asset)}</td>
                             <td data-label="Earnings" class="px-3 py-2.5 text-xs whitespace-nowrap">${earnings}</td>
-                            <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector || '<span class="text-gray-600">—</span>'}</td>
+                            <td data-label="Sector" class="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">${signal.sector ? `${signal.sector} ${this.sectorChipHtml(signal)}` : '<span class="text-gray-600">—</span>'}</td>
                             <td data-label="Signal" class="px-3 py-2.5 whitespace-nowrap">${signalLabel}${this.alertChipHtml(signal) ? ' ' + this.alertChipHtml(signal) : ''}${signal.signalType === 'breakout' && signal.isBlueSky && !signal.baseGrade ? ' <span class="badge bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30" data-tip="Base sits at the 52-week high — no trapped sellers overhead"><span class="badge-dot"></span>Blue Sky</span>' : ''}${signal.cohort ? ' ' + this.cohortChipHtml(signal) : ''}</td>
                             <td data-label="Price" class="px-3 py-2.5 text-sm font-mono text-white whitespace-nowrap tabular-nums">${price}</td>
                             <td data-label="Levels" class="px-3 py-2.5 text-xs font-mono whitespace-nowrap tabular-nums">${levels}</td>
@@ -6379,50 +6396,27 @@
                   { key: 'extension', label: 'Extension',  count: extCount,      accent: 'border-yellow-500', glow: 'shadow-yellow-500/10', text: 'text-yellow-400' },
                   { key: 'stopped',   label: 'Failed',     count: stoppedCount,  accent: 'border-red-500',    glow: 'shadow-red-500/10',    text: 'text-red-400' },
                 ];
+                // One row of tabs: the counts are the signal-type filter (keys 1-4), so the toolbar no
+                // longer repeats them. Market breadth is a caption on the same line, not a block of its own.
+                const b = this.breadth || {};
+                const share = (r) => r && r.totalScanned > 0 ? Math.round((r.baseCount / r.totalScanned) * 100) : 0;
+                const breadth = (b.stocks || b.etfs) ? `
+                  <span class="ml-auto text-[11px] text-gray-500" data-tip="Names forming a base in the latest scan, out of everything scanned — an accumulation gauge across the universe, not a signal.">
+                    Bases forming: ${b.stocks ? `<span class="text-gray-300 tabular-nums">${b.stocks.baseCount.toLocaleString()}</span> stocks (${share(b.stocks)}%)` : ''}${b.stocks && b.etfs ? ' · ' : ''}${b.etfs ? `<span class="text-gray-300 tabular-nums">${b.etfs.baseCount.toLocaleString()}</span> ETFs (${share(b.etfs)}%)` : ''}
+                  </span>` : '';
                 return `
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                <div class="flex items-center gap-1 flex-wrap mb-4 border-b border-gray-700/70">
                   ${stats.map(s => {
                     const isActive = this.signalTypeFilter === s.key;
-                    const isEmpty = s.count === 0;
                     return `
                     <button onclick="dashboard.setFilter('signalTypeFilter', '${s.key}');"
-                      class="group relative bg-gray-800 hover:bg-gray-750 px-4 py-3 rounded-lg border-l-4 text-left transition-all
-                        ${isActive ? s.accent + ' ring-1 ring-gray-600 ' + s.glow + ' shadow-lg' : 'border-gray-700 hover:' + s.accent}
-                        ${isEmpty ? 'opacity-60' : ''}">
-                      <div class="flex items-baseline justify-between gap-2">
-                        <p class="text-[11px] uppercase tracking-wider text-gray-400 font-medium">${s.label}</p>
-                        ${isActive ? `<span class="text-[9px] uppercase tracking-wider ${s.text} font-bold">Active</span>` : ''}
-                      </div>
-                      <p class="text-2xl font-bold ${isEmpty ? 'text-gray-500' : 'text-white'} tabular-nums leading-tight mt-0.5">${s.count.toLocaleString()}</p>
-                    </button>
-                  `; }).join('')}
-                  <button onclick="dashboard.setView('shortlist')"
-                    class="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-lg border-l-4 border-yellow-500 text-left transition-all ${this.shortlist.length === 0 ? 'opacity-60' : ''}">
-                    <p class="text-[11px] uppercase tracking-wider text-yellow-400/80 font-medium">★ Shortlist</p>
-                    <p class="text-2xl font-bold ${this.shortlist.length > 0 ? 'text-yellow-400' : 'text-gray-500'} tabular-nums leading-tight mt-0.5">${this.shortlist.length}</p>
+                      class="px-3 py-2 -mb-px border-b-2 text-sm transition ${isActive ? s.accent + ' text-white font-semibold' : 'border-transparent text-gray-400 hover:text-gray-200'} ${s.count === 0 && !isActive ? 'opacity-50' : ''}">
+                      ${s.label} <span class="ml-1 tabular-nums ${isActive ? s.text : 'text-gray-500'}">${s.count.toLocaleString()}</span>
+                    </button>`; }).join('')}
+                  <button onclick="dashboard.setView('shortlist')" class="px-3 py-2 -mb-px border-b-2 border-transparent text-sm text-gray-400 hover:text-yellow-300 transition">
+                    ★ Shortlist <span class="ml-1 tabular-nums ${this.shortlist.length ? 'text-yellow-400' : 'text-gray-500'}">${this.shortlist.length}</span>
                   </button>
-                </div>
-                `;
-              })()}
-
-              <!-- Market breadth: aggregate count of loose setup-base candidates
-                   from the most recent scan. Not tradable per-stock but a
-                   useful accumulation/distribution gauge across the universe. -->
-              ${(() => {
-                const b = this.breadth || {};
-                if (!b.stocks && !b.etfs) return '';
-                const fmt = (row, label) => {
-                  if (!row) return '';
-                  const pct = row.totalScanned > 0
-                    ? Math.round((row.baseCount / row.totalScanned) * 100)
-                    : 0;
-                  return `<span class="mr-4"><span class="text-gray-400">${label}:</span> <span class="text-gray-200 tabular-nums">${row.baseCount.toLocaleString()}</span> <span class="text-gray-500">(${pct}% of ${row.totalScanned.toLocaleString()})</span></span>`;
-                };
-                return `
-                <div class="mb-5 -mt-2 px-1 text-[11px] uppercase tracking-wider">
-                  <span class="text-gray-500 font-medium mr-2">Market breadth (bases)</span>
-                  ${fmt(b.stocks, 'Stocks')}
-                  ${fmt(b.etfs, 'ETFs')}
+                  ${breadth}
                 </div>
                 `;
               })()}
@@ -6448,20 +6442,6 @@
                     ].map(tab => `<button onclick="dashboard.setFilter('assetTypeFilter', '${tab.key}');"
                       title="${tab.key === 'stock' ? 'Stocks only' : tab.key === 'etf' ? 'ETFs only' : 'All assets'}"
                       class="px-2.5 py-1 rounded text-xs font-medium transition ${this.assetTypeFilter === tab.key ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}">
-                      ${tab.label}
-                    </button>`).join('')}
-                  </div>
-
-                  <!-- Signal Type pills -->
-                  <div class="flex gap-0.5 bg-gray-800 p-0.5 rounded">
-                    ${[
-                      { key: 'breakout',  label: 'Breakout',  color: 'bg-green-600',  shortcut: '1' },
-                      { key: 'setup',     label: 'Setup',     color: 'bg-blue-600',   shortcut: '2' },
-                      { key: 'extension', label: 'Extension', color: 'bg-yellow-600', shortcut: '3' },
-                      { key: 'stopped',   label: 'Failed',    color: 'bg-red-600',    shortcut: '4' },
-                    ].map(tab => `<button onclick="dashboard.setFilter('signalTypeFilter', '${tab.key}');"
-                      title="Press ${tab.shortcut} to toggle"
-                      class="px-2.5 py-1 rounded text-xs font-medium transition ${this.signalTypeFilter === tab.key ? tab.color + ' text-white' : 'text-gray-400 hover:text-white'}">
                       ${tab.label}
                     </button>`).join('')}
                   </div>
@@ -6526,8 +6506,18 @@
                   </label>
                   ` : ''}
 
-                  <!-- Quality filters: each active chip is a hard requirement -->
-                  <div class="flex items-center gap-1.5">
+                  ${(() => {
+                    const n = this.advancedFilterCount();
+                    return `<button onclick="dashboard.showMoreFilters = !dashboard.showMoreFilters; dashboard.render();"
+                      class="ml-auto px-2.5 py-1 rounded text-xs font-medium ring-1 transition ${this.showMoreFilters || n ? 'bg-blue-500/15 text-blue-300 ring-blue-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">
+                      More filters${n ? ` <span class="tabular-nums">(${n})</span>` : ''} ${this.showMoreFilters ? '▴' : '▾'}
+                    </button>`;
+                  })()}
+                </div>
+                <!-- Pattern, cross-list, grade, status and base filters: behind "More filters".
+                     Each active one is a hard requirement and shows as a chip below while hidden. -->
+                <div class="${this.showMoreFilters ? 'flex' : 'hidden'} items-center gap-2 flex-wrap mt-2">
+                  <div class="flex items-center gap-1.5 flex-wrap">
                     <button onclick="dashboard.toggleQualityFilter('vcp')" data-tip="Only VCP breakouts: tight base, volatility contracting into the pivot, breakout bar expanding upward — Minervini's volatility contraction pattern."
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.vcp ? 'bg-purple-500/20 text-purple-300 ring-purple-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">VCP</button>
                     <button onclick="dashboard.toggleQualityFilter('blueSky')" data-tip="Only blue-sky bases: the pivot sits at the 52-week high, so a breakout clears every holder from the past year — no trapped sellers overhead."
@@ -6536,8 +6526,6 @@
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.deep ? 'bg-orange-500/20 text-orange-300 ring-orange-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">Deep</button>
                     <button onclick="dashboard.toggleQualityFilter('cheat')" data-tip="Only cheat entries: the close cleared a shelf inside a base that has not resolved — low cheat (lower third), cheat (middle), handle (upper). Minervini's early entries. Emailed when the base is within grade limits."
                       class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.cheat ? 'bg-teal-500/20 text-teal-300 ring-teal-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">Cheat</button>
-                    <button onclick="dashboard.toggleQualityFilter('leaders')" data-tip="Only leaders: relative strength 70+, i.e. outperforming at least 70% of the scanned market — O'Neil and Minervini's minimum bar. Hides signals whose RS isn't computed yet."
-                      class="px-2.5 py-1 rounded text-xs font-semibold transition ring-1 ${this.qualityFilters?.leaders ? 'bg-green-500/20 text-green-300 ring-green-500/40' : 'text-gray-400 hover:text-white bg-gray-800 ring-gray-700/60'}">RS ≥ 70</button>
                     <span class="w-px h-4 bg-gray-700 mx-0.5"></span>
                     <!-- Cross-list filters. Same letters, same colours as the
                          pills on each row, so the control and the badge match. -->
@@ -6564,35 +6552,31 @@
                   </div>
 
                 </div>
-                <div class="text-[10px] text-gray-500 mt-1.5 font-mono">
-                  shortcuts: <kbd class="px-1 bg-gray-800 rounded">⌘K</kbd> jump · <kbd class="px-1 bg-gray-800 rounded">[</kbd>/<kbd class="px-1 bg-gray-800 rounded">]</kbd> tabs · <kbd class="px-1 bg-gray-800 rounded">/</kbd> search · <kbd class="px-1 bg-gray-800 rounded">1</kbd>/<kbd class="px-1 bg-gray-800 rounded">2</kbd>/<kbd class="px-1 bg-gray-800 rounded">3</kbd> breakout/setup/ext · <kbd class="px-1 bg-gray-800 rounded">←</kbd>/<kbd class="px-1 bg-gray-800 rounded">→</kbd> nav · <kbd class="px-1 bg-gray-800 rounded">space</kbd> next · <kbd class="px-1 bg-gray-800 rounded">esc</kbd> close
-                </div>
+
               </div>
 
               <!-- Active filter chips -->
               ${(() => {
                 const chips = [];
                 if (this.filtering) chips.push({ label: `Search: "${this.filtering}"`, clear: `dashboard.filtering=''; dashboard.render();` });
-                if (this.assetTypeFilter !== 'all') chips.push({ label: `Type: ${this.assetTypeFilter === 'stock' ? 'Stocks' : 'ETFs'}`, clear: `dashboard.setFilter('assetTypeFilter', 'all')` });
-                if (this.sectorFilter !== 'all') chips.push({ label: `Sector: ${this.sectorFilter}`, clear: `dashboard.setFilter('sectorFilter', 'all')` });
-                if (this.minRs > 0) chips.push({ label: `RS ≥ ${this.minRs}`, clear: `dashboard.setFilter('minRs', 0)` });
-                if (this.minGrade > 0) chips.push({ label: `Grade ≥ ${this.minGrade}`, clear: `dashboard.setFilter('minGrade', 0)` });
-                if (this.signalTypeFilter === 'breakout' && this.lookbackDays !== 3) chips.push({ label: `Since ${this.lookbackSinceDate()}`, clear: `dashboard.setLookback(3)` });
-                if (this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
-                if (this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
-                if (this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
-                if (this.qualityFilters?.cheat) chips.push({ label: 'Cheat entries only', clear: `dashboard.toggleQualityFilter('cheat')` });
-                if (this.qualityFilters?.deep) chips.push({ label: 'Deep bases only', clear: `dashboard.toggleQualityFilter('deep')` });
+                // Type, sector, min grade, min RS and the date are on screen in the toolbar already; a chip
+                // for each said everything twice. Chips are for what's hidden: the "More filters" panel.
+                const hiddenOnly = !this.showMoreFilters;
+                if (hiddenOnly && this.qualityFilters?.vcp) chips.push({ label: 'VCP only', clear: `dashboard.toggleQualityFilter('vcp')` });
+                if (hiddenOnly && this.qualityFilters?.blueSky) chips.push({ label: 'Blue Sky only', clear: `dashboard.toggleQualityFilter('blueSky')` });
+                if (hiddenOnly && this.qualityFilters?.leaders) chips.push({ label: 'RS ≥ 70', clear: `dashboard.toggleQualityFilter('leaders')` });
+                if (hiddenOnly && this.qualityFilters?.cheat) chips.push({ label: 'Cheat entries only', clear: `dashboard.toggleQualityFilter('cheat')` });
+                if (hiddenOnly && this.qualityFilters?.deep) chips.push({ label: 'Deep bases only', clear: `dashboard.toggleQualityFilter('deep')` });
                 for (const [k, label] of [['winners', 'Also in Winners'], ['beatRaise', 'Also in Beat & Raise'], ['unusualVol', 'Also in Unusual Vol'], ['sectorTop', 'Sector top name']]) {
-                  if (this.qualityFilters?.[k]) chips.push({ label, clear: `dashboard.toggleQualityFilter('${k}')` });
+                  if (hiddenOnly && this.qualityFilters?.[k]) chips.push({ label, clear: `dashboard.toggleQualityFilter('${k}')` });
                 }
-                if (this.gradeFilter && this.gradeFilter !== 'all') chips.push({ label: `Grade ≥ ${this.gradeFilter}`, clear: `dashboard.setFilter('gradeFilter', 'all')` });
-                if (this.statusFilter && this.statusFilter !== 'all') chips.push({ label: `Status: ${this.statusFilter}`, clear: `dashboard.setFilter('statusFilter', 'all')` });
-                if (this.minBaseWeeks > 0) chips.push({ label: `Base ≥ ${this.minBaseWeeks}wk`, clear: `dashboard.setFilter('minBaseWeeks', 0)` });
+                if (hiddenOnly && this.gradeFilter && this.gradeFilter !== 'all') chips.push({ label: `Grade ≥ ${this.gradeFilter}`, clear: `dashboard.setFilter('gradeFilter', 'all')` });
+                if (hiddenOnly && this.statusFilter && this.statusFilter !== 'all') chips.push({ label: `Status: ${this.statusFilter}`, clear: `dashboard.setFilter('statusFilter', 'all')` });
+                if (hiddenOnly && this.minBaseWeeks > 0) chips.push({ label: `Base ≥ ${this.minBaseWeeks}wk`, clear: `dashboard.setFilter('minBaseWeeks', 0)` });
                 if (chips.length === 0) return '';
                 return `
                 <div class="flex flex-wrap items-center gap-1.5 mb-3 -mt-1">
-                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium mr-1">Filters:</span>
+                  <span class="text-[10px] uppercase tracking-wider text-gray-500 font-medium mr-1">Also filtering:</span>
                   ${chips.map(c => `
                     <button onclick="${c.clear}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-blue-500/10 text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-500/20 transition">
                       ${c.label} <span class="text-blue-400 font-bold">×</span>
