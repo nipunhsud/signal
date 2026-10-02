@@ -35,3 +35,14 @@ test('X_HASHTAGS=false turns tags off', () => {
     delete process.env.X_HASHTAGS;
   }
 });
+
+test('the account is Premium by default; X_PREMIUM=false restores 280', async () => {
+  const { xMaxChars } = await import('../dist/x-post.js');
+  assert.equal(xMaxChars(), 10000);
+  process.env.X_PREMIUM = 'false';
+  try {
+    assert.equal(xMaxChars(), 280);
+  } finally {
+    delete process.env.X_PREMIUM;
+  }
+});

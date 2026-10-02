@@ -2457,7 +2457,7 @@
       // maxChars (account limit), tags (suggested hashtags).
       openTweetEditor(endpoint, asset, tweets, label, opts = {}) {
         document.getElementById('tweet-editor-overlay')?.remove();
-        const max = opts.maxChars || 280;
+        const max = opts.maxChars || 10000; // the account is Premium; the server enforces X_PREMIUM=false
         const sugg = (opts.tags && opts.tags.length ? opts.tags : ['#stocks', '#breakout']).slice(0, 4);
         const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const URL_RE = /https?:\/\/\S+|\b[a-z0-9-]+\.(?:ai|com|io|net|org)(?:\/\S*)?/gi;

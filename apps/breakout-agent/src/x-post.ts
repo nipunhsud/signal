@@ -91,15 +91,15 @@ export async function postXThreadDetailed(
 }
 
 // ── Length and hashtags ─────────────────────────────────────────────────────
-// X counts every link as 23 characters whatever its length, and a Premium
-// account may post up to 25k (we cap at 10k above). X_PREMIUM=true lifts the
-// per-post limit; without it a post must fit the standard 280.
+// X counts every link as 23 characters whatever its length. The posting
+// account is Premium, which allows up to 25k per post (we cap at 10k above);
+// X_PREMIUM=false drops back to the standard 280 if that ever lapses.
 const URL_RE = /https?:\/\/\S+/g;
 export function xLength(text: string): number {
   return [...String(text).replace(URL_RE, "x".repeat(23))].length;
 }
 export function xMaxChars(): number {
-  return process.env.X_PREMIUM === "true" ? 10000 : 280;
+  return process.env.X_PREMIUM === "false" ? 280 : 10000;
 }
 
 // Hashtags put a post in front of people who do not follow the account. X's
