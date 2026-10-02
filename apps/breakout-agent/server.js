@@ -22,7 +22,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { postXThread, postXThreadDetailed } from './dist/x-post.js';
+import { postXThread, postXThreadDetailed, withHashtags, hashtagsFor, xLength, xMaxChars } from './dist/x-post.js';
 import { renderScorecardPng, renderMarketHealthPng, metaFor, metaHtml } from './og-card.js';
 import { detectBases } from './base-detect.js';
 import { handleMcpRequest, loadLearn } from './mcp.js';
@@ -450,7 +450,7 @@ function composeEarningsTweets(asset, ta, sig) {
   // the closing line must not repeat $ASSET.
   sections.push(`The full read and the chart: dataquant.ai. Screen output for research, not advice.`);
 
-  return [sections.join('\n\n')];
+  return [withHashtags(sections.join('\n\n'), hashtagsFor('earnings', { sector: sig?.sector, industry: sig?.industry }))];
 }
 
 async function isAdmin(req) {
@@ -723,7 +723,7 @@ function composeBreakoutTweet(asset, sig) {
   // forever. A fresh query per signal forces a fresh scrape.
   const ver = encodeURIComponent(String(sig.id || Date.now()).slice(-10));
   const reply = `The chart and the 2-year base X-ray: https://dataquant.ai/$${encodeURIComponent(asset)}?s=${ver}`;
-  return [main, reply];
+  return [withHashtags(main, hashtagsFor('breakout', { sector: sig.sector, industry: sig.industry })), reply];
 }
 
 app.post('/api/admin/tweet-breakout', async (req, res) => {
@@ -738,7 +738,7 @@ app.post('/api/admin/tweet-breakout', async (req, res) => {
   if (!sig) return res.status(404).json({ error: `No breakout signal on record for ${asset}` });
 
   const tweets = composeBreakoutTweet(asset, sig);
-  if (!req.body?.confirm) return res.json({ preview: true, tweets });
+  if (!req.body?.confirm) return res.json({ preview: true, tweets, maxChars: xMaxChars(), tags: hashtagsFor('breakout', { sector: sig.sector, industry: sig.industry }) });
 
   // The editor may send edited text; validate and prefer it over the composed draft.
   const edited = sanitizeEditedTweets(req.body?.tweets);
@@ -764,8 +764,9 @@ function sanitizeEditedTweets(raw) {
   const tweets = raw.map((t) => String(t)).map((t) => t.trim()).filter((t) => t.length);
   if (!tweets.length) return { error: 'no non-empty tweets provided' };
   if (tweets.length > 6) return { error: 'at most 6 tweets per thread' };
-  const over = tweets.findIndex((t) => t.length > 280);
-  if (over >= 0) return { error: `tweet ${over + 1} exceeds 280 characters (${tweets[over].length})` };
+  const max = xMaxChars();
+  const over = tweets.findIndex((t) => xLength(t) > max);
+  if (over >= 0) return { error: `tweet ${over + 1} exceeds ${max} characters (${xLength(tweets[over])}, links counted as 23)` };
   return { tweets };
 }
 
@@ -802,7 +803,7 @@ app.post('/api/admin/tweet-earnings', async (req, res) => {
   const sig = await db.breakoutSignal.findFirst({ where: { asset }, orderBy: { createdAt: 'desc' } });
   const tweets = composeEarningsTweets(asset, ta, sig);
 
-  if (!req.body?.confirm) return res.json({ preview: true, tweets });
+  if (!req.body?.confirm) return res.json({ preview: true, tweets, maxChars: xMaxChars(), tags: hashtagsFor('earnings', { sector: sig?.sector, industry: sig?.industry }) });
 
   const edited = sanitizeEditedTweets(req.body?.tweets);
   if (edited?.error) return res.status(400).json({ error: edited.error });
@@ -2629,7 +2630,7 @@ async function postWeeklyMarketHealth() {
   const reply = `How the score is built: https://dataquant.ai/learn/market-health-gauge`;
   let mediaPng = null;
   try { mediaPng = renderMarketHealthPng(mh); } catch (e) { console.warn('[weekly-health] card render failed:', e.message); }
-  const r = await postXThreadDetailed([text, reply], mediaPng ? { mediaPng } : undefined);
+  const r = await postXThreadDetailed([withHashtags(text, hashtagsFor('market')), reply], mediaPng ? { mediaPng } : undefined);
   console.log(r.ok ? `✓ Weekly market-health posted (${mh.score} ${mh.regime})` : `⊘ Weekly market-health post failed: ${r.error}`);
 }
 
@@ -2677,6 +2678,7 @@ async function postWeeklyReceipts() {
   const ledger = await alertLedger({ since, until, region: 'us' });
   if (ledger.summary.count < 1) { console.log('⊘ Weekly receipts: no alerts in the window — skipping'); return; }
   const tweets = composeReceipts(ledger, weekEnding);
+  if (tweets.length) tweets[0] = withHashtags(tweets[0], hashtagsFor('receipts'));
   const r = await postXThreadDetailed(tweets);
   console.log(r.ok ? `✓ Weekly receipts posted (${ledger.summary.count} alerts, avg ${ledger.summary.avgCappedPct}%)` : `⊘ Weekly receipts failed: ${r.error}`);
 }

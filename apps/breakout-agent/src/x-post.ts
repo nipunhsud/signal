@@ -90,6 +90,50 @@ export async function postXThreadDetailed(
   }
 }
 
+// ── Length and hashtags ─────────────────────────────────────────────────────
+// X counts every link as 23 characters whatever its length, and a Premium
+// account may post up to 25k (we cap at 10k above). X_PREMIUM=true lifts the
+// per-post limit; without it a post must fit the standard 280.
+const URL_RE = /https?:\/\/\S+/g;
+export function xLength(text: string): number {
+  return [...String(text).replace(URL_RE, "x".repeat(23))].length;
+}
+export function xMaxChars(): number {
+  return process.env.X_PREMIUM === "true" ? 10000 : 280;
+}
+
+// Hashtags put a post in front of people who do not follow the account. X's
+// ranking reads more than two as spam, so: at most two, from a fixed list,
+// on the main post only (never the link reply), on their own last line, and
+// only when the post still fits. X_HASHTAGS=false turns them off.
+export type XPostKind = "breakout" | "earnings" | "market" | "receipts";
+const SECTOR_TAGS: Array<[RegExp, string]> = [
+  [/semiconductor/i, "#Semiconductors"],
+  [/biotech/i, "#Biotech"],
+  [/technology|software/i, "#TechStocks"],
+  [/energy|oil/i, "#EnergyStocks"],
+];
+export function hashtagsFor(kind: XPostKind, ctx: { sector?: string | null; industry?: string | null } = {}): string[] {
+  const where = `${ctx.industry || ""} ${ctx.sector || ""}`;
+  const sectorTag = SECTOR_TAGS.find(([re]) => re.test(where))?.[1];
+  switch (kind) {
+    case "breakout": return ["#stocks", sectorTag || "#breakout"];
+    case "earnings": return ["#earnings", sectorTag || "#stocks"];
+    case "market": return ["#StockMarket", "#investing"];
+    case "receipts": return ["#stocks", "#StockMarket"];
+  }
+}
+export function withHashtags(text: string, tags: string[], max = xMaxChars()): string {
+  if (process.env.X_HASHTAGS === "false") return text;
+  const body = String(text).trimEnd();
+  const fresh = tags.filter((t) => !new RegExp(`(^|\\s)${t.replace("#", "#")}(\\s|$)`, "i").test(body)).slice(0, 2);
+  for (let n = fresh.length; n > 0; n--) {
+    const out = `${body}\n\n${fresh.slice(0, n).join(" ")}`;
+    if (xLength(out) <= max) return out;
+  }
+  return body;
+}
+
 // Boolean wrapper kept for the digest/teaser call sites — fails open as before.
 export async function postXThread(tweets: string[]): Promise<boolean> {
   return (await postXThreadDetailed(tweets)).ok;

@@ -4,7 +4,7 @@ import { holdOddsWords } from "../hold-odds.js";
 import { analyzeBreakout, analyzeSetup } from "./tools/breakout-logic.js";
 import { screenSetupWinner, screenMovingWinners } from "./tools/winners-logic.js";
 import { sendEmail } from "./email.js";
-import { postXThread } from "./x-post.js";
+import { postXThread, withHashtags, hashtagsFor } from "./x-post.js";
 import { classifyShelf, cheatGate } from "../shelf.js";
 // @ts-ignore — plain JS at the app root
 import { activityWords } from "../activity.js";
@@ -1725,7 +1725,7 @@ Screen output for research, not advice.
         : `$${s.asset} closed above its pivot today, $${(s.entryPrice as number).toFixed(2)}. ` +
           `Grade ${r.baseGrade} base${weeks ? `, ${weeks} weeks long` : ""}.`;
       const reply = `Why it graded ${r.baseGrade}, and the rest of today's screen: ${dqLink(s.asset)}`;
-      const posted = await postXThread([lead, reply]);
+      const posted = await postXThread([withHashtags(lead, hashtagsFor("breakout", { sector: s.sector, industry: (s as any).industry })), reply]);
       if (posted) {
         await db.breakoutSignal.updateMany({ where: { asset: s.asset }, data: { xPostedAt: now } });
         console.log(`✓ X tease posted: ${s.asset} (grade ${r.baseGrade})`);
@@ -1767,7 +1767,7 @@ Screen output for research, not advice.
       .filter((t: any) => t.count > 0)
       .map((t: any) => `${t.label}: ${t.count}, ${t.winRate.toFixed(0)}% past the pivot, ${fmtPct(t.avgReturn)} average.`);
 
-    const thread = [lead];
+    const thread = [withHashtags(lead, hashtagsFor("receipts"), 280)];
     if (tierLines.length) thread.push(...chunkLines(["By confidence tier.", ...tierLines], 270));
     thread.push(ctaReply());
     await postXThread(thread);
@@ -1823,7 +1823,7 @@ Screen output for research, not advice.
         : "no guidance was given";
       const lead = `${brk} The Q${ta.quarter} ${ta.year} call read ${ta.tone} and ${guideWord}.`;
 
-      const thread = [lead, truncate(ta.summary, 270)];
+      const thread = [withHashtags(lead, hashtagsFor("earnings", { sector: (c as any).sector, industry: (c as any).industry }), 280), truncate(ta.summary, 270)];
       if (highlights.length) thread.push(...chunkLines(["What management said.", ...highlights], 270));
       if (risks.length) thread.push(...chunkLines(["What to keep an eye on.", ...risks], 270));
       thread.push(ctaReply(ta.asset));
@@ -1888,7 +1888,7 @@ Screen output for research, not advice.
         revLine +
         ` It is on the screen.`;
 
-      const ok = await postXThread([card, ctaReply(s.asset)]);
+      const ok = await postXThread([withHashtags(card, hashtagsFor("earnings", { sector: (s as any).sector, industry: (s as any).industry }), 280), ctaReply(s.asset)]);
       if (ok) {
         await db.breakoutSignal.updateMany({
           where: { asset: s.asset },
