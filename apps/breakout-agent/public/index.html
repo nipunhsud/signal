@@ -2441,8 +2441,8 @@
             body: JSON.stringify({ asset }),
           });
           if (!pv.ok) throw new Error((await pv.json()).error || 'HTTP ' + pv.status);
-          const { tweets, maxChars, tags } = await pv.json();
-          this.openTweetEditor('/api/admin/tweet-breakout', asset, tweets, 'breakout', { autoCard: true, maxChars, tags });
+          const { tweets, maxChars, tags, autoCard } = await pv.json();
+          this.openTweetEditor('/api/admin/tweet-breakout', asset, tweets, 'breakout', { autoCard: autoCard !== false, maxChars, tags });
         } catch (err) {
           this.toast('Tweet failed: ' + err.message, { kind: 'warn' });
         }
@@ -2967,6 +2967,7 @@
                     <span class="tabular-nums">${assetPosition || '—'}</span>
                     <button onclick="dashboard.stepAsset(1)" class="dq-icon-btn !w-6 text-xs" aria-label="Next ticker" title="Next (space / →)">›</button>
                   </span>
+                  ${this.isAdmin && !noSignal ? `<button onclick="dashboard.tweetBreakout('${assetEscaped}', event)" class="mr-1 h-7 px-2.5 rounded-full text-[11px] font-semibold ring-1 ring-sky-500/40 text-sky-300 hover:bg-sky-500/10 inline-flex items-center gap-1.5" title="Draft an X post for this row (admin)"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"/></svg>Post</button>` : ''}
                   <button onclick="dashboard.toggleShortlist('${assetEscaped}', event);" class="dq-icon-btn ${inShortlist ? 'text-yellow-400' : ''}" title="${inShortlist ? 'Remove from shortlist' : 'Add to shortlist'}" aria-label="Shortlist">${inShortlist ? '★' : '☆'}</button>
                   <button onclick="dashboard.openChartView('${assetEscaped}')" class="dq-icon-btn" title="Full chart (c)" aria-label="Full chart">⤢</button>
                   <a href="${this.getTradingViewUrl(signal.asset)}" target="_blank" rel="noopener noreferrer" class="dq-icon-btn" title="Open on TradingView" aria-label="Open on TradingView">↗</a>
@@ -3053,7 +3054,6 @@
               <section id="dsec-chart" data-dsec="chart" class="dq-dsec">
                 <h3 class="dq-dsec-title">Chart<span>6 months, daily</span>
                   <span class="dq-dsec-actions">
-                    ${this.isAdmin && (signal.signalType === 'breakout' || signal.signalType === 'extension') ? `<button onclick="dashboard.tweetBreakout('${assetEscaped}', event)" title="Tweet this breakout to X (admin)" class="text-xs px-2 py-0.5 rounded-full ring-1 ring-sky-500/40 text-sky-300 hover:bg-sky-500/10 font-medium">Post to X</button>` : ''}
                     <button onclick="dashboard.logTrade('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition" title="Log this as a trade in your book">Log</button>
                     <button onclick="dashboard.askChat('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition" title="Ask the screen about this name">Ask</button>
                     <button onclick="dashboard.openChartView('${assetEscaped}')" class="text-blue-400 hover:text-blue-300 transition">Full chart ⤢</button>
